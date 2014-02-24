@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Silas S. Brown 2012-14 - public domain  (version 1.38)
+# Silas S. Brown 2012-14 - public domain  (version 1.4)
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile,
 # or if you prefer you can keep it in a separate file
@@ -15,7 +15,13 @@ if test -d /Volumes && test "$(uname -s)" == Darwin; then
 
 export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV # avoid recursion
 
-if which brew >/dev/null; then
+if ! test "a$Last_MacLinux_Run" == a && test "$Last_MacLinux_Run" == "$(date +%s)"; then
+  echo "Warning: maclinux script run again in same second"
+  echo "- consider sourcing your profile subshell scripts"
+  # (TODO: is this still needed now we've made it faster?)
+fi
+
+if which -s brew; then
   # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
   alias brew="BASH_ENV= $(which brew)"
 fi
@@ -28,7 +34,7 @@ if test -e /sw/bin/init.sh; then . /sw/bin/init.sh; fi
 
 shopt -s expand_aliases # so can use in scripts if BASH_ENV
 
-if ! which wget >/dev/null; then
+if ! which -s wget; then
 # Alias wget to curl with appropriate options.  Useful
 # if you're in the habit of typing "wget".  Note that
 # it is not real wget however and it won't recognise
@@ -37,12 +43,12 @@ alias wget="curl -L --remote-name-all --compressed"
 # for older curl: alias wget="curl -OL"
 fi
 
-if ! which watch >/dev/null; then
+if ! which -s watch; then
 # primitive emulation of the "watch" command
 watch () (while true; do clear; date; echo $@; echo; $@; sleep 2; done)
 fi
 
-if ! which free >/dev/null; then
+if ! which -s free; then
 alias free="top -l 1 -s 0 | grep -m 1 PhysMem"
 fi
 alias do-i-need-more-ram="if test $((vm_stat|grep '^Page[io]'|sed -e 's/.*://' -e 's/\.$//';echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 100)) -lt 10; then echo 'Maybe'; else echo 'Probably not'; fi" # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
@@ -56,49 +62,31 @@ alias do-i-need-more-ram="if test $((vm_stat|grep '^Page[io]'|sed -e 's/.*://' -
 # If a command already exists, we will append -app to it
 # (unless command-app already exists as well), for example
 # Emacs.app will become emacs-app if there's already emacs.
-
-for App in $(find /Applications /usr/local/Cellar/emacs -type d -name '*.app' -prune|sed -e 's/ /@SP@/g'); do
-  export App=$(echo "$App"|sed -e 's/@SP@/ /g')
-  if test -d "$App"; then # (just in case)
-    export Command=$(echo "$App"|sed -e 's,.*/,,' -e 's/.app$//' -e 's/ /-/g'|tr A-Z a-z)
-    if ! which "$Command"; then
-      alias "$Command"="open -W -a \"$App\""
-    elif ! which "$Command-app"; then
-      alias "$Command-app"="open -W -a \"$App\""
-    fi
-    if test "$Command" == xcode; then
-      # look inside xcode's Contents/Applications also
-      # (might find iphone-simulator etc there)
-      for App in $(find "$App/Contents/Applications" -name '*.app' -prune|sed -e 's/ /@SP@/g'); do # (not -type d, might include symlinks into ../Developer)
-        export App=$(echo "$App"|sed -e 's/@SP@/ /g')
-        if test -d "$App"; then # (just in case)
-          export Command=$(echo "$App"|sed -e 's,.*/,,' -e 's/.app$//' -e 's/ /-/g'|tr A-Z a-z)
-          if ! which "$Command"; then
-            alias "$Command"="open -W -a \"$App\""
-          elif ! which "$Command-app"; then
-            alias "$Command-app"="open -W -a \"$App\""
-          fi
-        fi
-      done
-    fi
-  fi
-done >/dev/null 2>/dev/null
+# The version below unfortunately requires a temp file,
+# but it's usually faster than repeated calls to sed as in
+# previous versions of this script (1.38 and below).
+# (Bash can't source a /dev/fd from <(...), and there's no
+# /dev/shm on the Mac, so we have to use /tmp)
+AliasApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find $@ '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 python -c 'import sys,re;print "\n".join((lambda Command:"if ! which -s \""+Command+"\"; then alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\"; elif ! which -s \""+Command+"-app\"; then alias \""+Command+"-app\"=\"open -W -a \\\""+App+"\\\"\"; fi")(re.sub(".*/","",App)[:-4].replace(" ","-").lower()) for App in sys.argv[1:])' >> $T ; . $T ; rm $T ; unset T; }
+AliasApps /Applications /usr/local/Cellar/emacs
+if alias xcode >/dev/null 2>/dev/null; then AliasApps "$(alias xcode|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
+unset AliasApps
 
 # One slight annoyance is if you use some Macs that
 # have bbedit installed but others that just have
 # TextWrangler.  Let's alias those edit commands:
-if which bbedit >/dev/null; then alias edit=bbedit
-elif which edit >/dev/null; then alias bbedit=edit
+if which -s bbedit; then alias edit=bbedit
+elif which -s edit; then alias bbedit=edit
 else alias edit="open -e"; fi
 
 # Ditto for mixed Mac/Linux environments where you
 # can type "jmacs" on the Linux terminal to get a
 # quick emacs-like editor:
-if ! which jmacs >/dev/null; then
+if ! which -s jmacs; then
 alias jmacs="emacs -q"; fi
 
 # and make sure you can type "play" to play sound files
-if ! which play >/dev/null; then
+if ! which -s play; then
 alias play=afplay; fi
 
 # and "umount" to eject auto-mounted USB sticks etc:
@@ -120,36 +108,36 @@ alias gnome-open=open
 # If you do use ftpfs and the server is running it via
 # inetd then you might need to increase the connections/min
 # allowed in inetd.conf, e.g. "ftp stream tcp nowait.32767"
-if alias|grep macfusion >/dev/null; then
-  export MF_Path=$(alias|grep macfusion|sed -e 's/[^"]*"//' -e 's/".*//')
+if alias macfusion 2>/dev/null >/dev/null; then
+  export MF_Path=$(alias macfusion|sed -e 's/[^"]*"//' -e 's/".*//')
   export sshfs_Path="$MF_Path/Contents/PlugIns/sshfs.mfplugin/Contents/Resources/sshfs-static"
   export curlftpfs_Path="$MF_Path/Contents/PlugIns/ftpfs.mfplugin/Contents/Resources/curlftpfs_static_mg"
-  if ! which curlftpfs >/dev/null &&
+  if ! which -s curlftpfs &&
     test -e "$curlftpfs_Path"; then
       alias curlftpfs="\"$curlftpfs_Path\" -o uid=$(id -u)"
       alias ftpfs=curlftpfs # might as well
   fi
-  if ! which sshfs >/dev/null &&
+  if ! which -s sshfs &&
     test -e "$sshfs_Path"; then
       alias sshfs="\"$sshfs_Path\""
   fi
 fi
 
-if (! which kchmviewer && alias|grep chmox)>/dev/null; then
+if alias chmox 2>/dev/null >/dev/null && ! which -s kchmviewer; then
   alias kchmviewer=chmox
   # kchmviewer is probably easier to auto-complete, as
   # chmox will suggest chmod also.
   # Intel binaries are included in chmox 0.4+
 fi
 
-if (! which acroread && alias|grep adobe-reader)>/dev/null; then
+if alias adobe-reader 2>/dev/null >/dev/null && ! which -s acroread; then
   alias acroread=adobe-reader
 fi
 
 # If you have installed fuse-ext2 then might as well alias
 # its mke2fs (although usually you'd use fuse-ext2 or
 # mount -t fuse-ext2)
-if ! which mke2fs >/dev/null && which fuse-ext2.mke2fs >/dev/null; then
+if ! which -s mke2fs && which -s fuse-ext2.mke2fs; then
   alias mke2fs=fuse-ext2.mke2fs
   alias e2fsmount=fuse-ext2
 fi
@@ -219,6 +207,7 @@ else
   export PS1='\h:\w\$ '
 fi
 
+export Last_MacLinux_Run="$(date +%s)"
 export BASH_ENV="$__OldBashEnv"
 
 fi # end of "we're on a Mac" block
