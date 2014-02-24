@@ -131,6 +131,14 @@ secondary_imap_delay = 24 * 3600
 # End of configuration options
 # ------------------------------------------------------
 
+# CHANGES
+# -------
+# If you want to compare this code to old versions, most old
+# versions are being kept on SourceForge's E-GuideDog SVN repository
+# http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
+# To check out the repository, you can do:
+# svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
+
 from imapfix_config import *
 
 if filtered_inbox==None: spamprobe_command = None

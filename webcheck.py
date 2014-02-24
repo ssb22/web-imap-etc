@@ -1,6 +1,14 @@
 
-# webcheck.py v1.01 (c) 2014 Silas S. Brown.  License: GPL
+# webcheck.py v1.02 (c) 2014 Silas S. Brown.  License: GPL
 # See website for description and usage instructions
+
+# CHANGES
+# -------
+# If you want to compare this code to old versions, most old
+# versions are being kept on SourceForge's E-GuideDog SVN repository
+# http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
+# To check out the repository, you can do:
+# svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 
 max_threads = 10
 delay = 2 # seconds
@@ -37,9 +45,15 @@ class HTMLStrings(HTMLParser.HTMLParser):
     def __init__(self):
         HTMLParser.HTMLParser.__init__(self)
         self.theTxt = []
-    def handle_data(self, data): self.theTxt.append(re.sub('[ \t\r\n]+',' ',data.replace(unichr(160).encode('utf-8'),' ')))
+    def handle_data(self, data):
+        if not data: return
+        elif not data.strip(): self.ensure(' ')
+        else:
+          d2 = data.lstrip()
+          if not d2==data: self.ensure(' ') # (always collapse multiple spaces, even across tags)
+          if d2: self.theTxt.append(re.sub('[ \t\r\n]+',' ',d2.replace(unichr(160).encode('utf-8'),' ')))
     def ensure(self,thing):
-        if self.theTxt and self.theTxt[-1]==thing: return
+        if self.theTxt and self.theTxt[-1].endswith(thing): return
         self.theTxt.append(thing)
     def handle_starttag(self, tag, attrs):
         if tag in "p br div h1 h2 h3 h4 h5 h6 tr td table".split(): self.ensure(' ') # space rather than newline because we might want to watch for a string that goes across headings etc
