@@ -1,0 +1,226 @@
+# -*- mode: shell-script -*-
+# Script to make the Mac more Linux-like
+# Silas S. Brown 2012-14 - public domain  (version 1.38)
+
+# This goes in your ~/.bashrc and/or ~/.bash_profile,
+# or if you prefer you can keep it in a separate file
+# and source it from your .bashrc and/or .bash_profile
+
+# If you also want the extra commands to be available
+# in scripts, get your ~/.bashrc and ~/.bash_profile to
+# export BASH_ENV to the location of this script as well.
+
+if test -d /Volumes && test "$(uname -s)" == Darwin; then
+# we're on a Mac
+
+export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV # avoid recursion
+
+if which brew >/dev/null; then
+  # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
+  alias brew="BASH_ENV= $(which brew)"
+fi
+
+# Support installations of HomeBrew/MacTex/MacPorts/Fink:
+export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
+# (gnubin (from coreutils package) comes last so Mac versions take priority, just in case; coreutils has some commands not otherwise available e.g. factor, md5sum)
+export MANPATH=$MANPATH:/usr/local/opt/coreutils/libexec/gnuman
+if test -e /sw/bin/init.sh; then . /sw/bin/init.sh; fi
+
+shopt -s expand_aliases # so can use in scripts if BASH_ENV
+
+if ! which wget >/dev/null; then
+# Alias wget to curl with appropriate options.  Useful
+# if you're in the habit of typing "wget".  Note that
+# it is not real wget however and it won't recognise
+# wget options like -c.
+alias wget="curl -L --remote-name-all --compressed"
+# for older curl: alias wget="curl -OL"
+fi
+
+if ! which watch >/dev/null; then
+# primitive emulation of the "watch" command
+watch () (while true; do clear; date; echo $@; echo; $@; sleep 2; done)
+fi
+
+if ! which free >/dev/null; then
+alias free="top -l 1 -s 0 | grep -m 1 PhysMem"
+fi
+alias do-i-need-more-ram="if test $((vm_stat|grep '^Page[io]'|sed -e 's/.*://' -e 's/\.$//';echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 100)) -lt 10; then echo 'Maybe'; else echo 'Probably not'; fi" # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
+
+# Alias the /Applications to "open -a" commands so you
+# can type for example "libreoffice", "gimp",
+# "audacity" etc with a relative pathname and Mac open
+# will take care of translating it into an absolute
+# pathname and opening the appropriate Mac app with it.
+# Spaces are turned into hyphens, e.g. for google-chrome.
+# If a command already exists, we will append -app to it
+# (unless command-app already exists as well), for example
+# Emacs.app will become emacs-app if there's already emacs.
+
+for App in $(find /Applications /usr/local/Cellar/emacs -type d -name '*.app' -prune|sed -e 's/ /@SP@/g'); do
+  export App=$(echo "$App"|sed -e 's/@SP@/ /g')
+  if test -d "$App"; then # (just in case)
+    export Command=$(echo "$App"|sed -e 's,.*/,,' -e 's/.app$//' -e 's/ /-/g'|tr A-Z a-z)
+    if ! which "$Command"; then
+      alias "$Command"="open -W -a \"$App\""
+    elif ! which "$Command-app"; then
+      alias "$Command-app"="open -W -a \"$App\""
+    fi
+    if test "$Command" == xcode; then
+      # look inside xcode's Contents/Applications also
+      # (might find iphone-simulator etc there)
+      for App in $(find "$App/Contents/Applications" -name '*.app' -prune|sed -e 's/ /@SP@/g'); do # (not -type d, might include symlinks into ../Developer)
+        export App=$(echo "$App"|sed -e 's/@SP@/ /g')
+        if test -d "$App"; then # (just in case)
+          export Command=$(echo "$App"|sed -e 's,.*/,,' -e 's/.app$//' -e 's/ /-/g'|tr A-Z a-z)
+          if ! which "$Command"; then
+            alias "$Command"="open -W -a \"$App\""
+          elif ! which "$Command-app"; then
+            alias "$Command-app"="open -W -a \"$App\""
+          fi
+        fi
+      done
+    fi
+  fi
+done >/dev/null 2>/dev/null
+
+# One slight annoyance is if you use some Macs that
+# have bbedit installed but others that just have
+# TextWrangler.  Let's alias those edit commands:
+if which bbedit >/dev/null; then alias edit=bbedit
+elif which edit >/dev/null; then alias bbedit=edit
+else alias edit="open -e"; fi
+
+# Ditto for mixed Mac/Linux environments where you
+# can type "jmacs" on the Linux terminal to get a
+# quick emacs-like editor:
+if ! which jmacs >/dev/null; then
+alias jmacs="emacs -q"; fi
+
+# and make sure you can type "play" to play sound files
+if ! which play >/dev/null; then
+alias play=afplay; fi
+
+# and "umount" to eject auto-mounted USB sticks etc:
+alias umount="diskutil umount"
+alias eject="drutil eject" # for CDs
+
+# and the general "web browser" command used by some
+# scripts in Debian etc
+alias x-www-browser=open # should recognise a URL
+alias gnome-open=open
+
+# If you have installed Macfusion (which requires MacFUSE
+# or the MacFUSE compatibility layer of OSXFUSE) then
+# make its curlftpfs and sshfs commands available.  Note
+# however that curlftpfs can be unreliable, e.g. some
+# versions do not properly truncate files when you try to
+# overwrite with less data, plus large transfers can break,
+# so some situations might be better using .netrc or TRAMP.
+# If you do use ftpfs and the server is running it via
+# inetd then you might need to increase the connections/min
+# allowed in inetd.conf, e.g. "ftp stream tcp nowait.32767"
+if alias|grep macfusion >/dev/null; then
+  export MF_Path=$(alias|grep macfusion|sed -e 's/[^"]*"//' -e 's/".*//')
+  export sshfs_Path="$MF_Path/Contents/PlugIns/sshfs.mfplugin/Contents/Resources/sshfs-static"
+  export curlftpfs_Path="$MF_Path/Contents/PlugIns/ftpfs.mfplugin/Contents/Resources/curlftpfs_static_mg"
+  if ! which curlftpfs >/dev/null &&
+    test -e "$curlftpfs_Path"; then
+      alias curlftpfs="\"$curlftpfs_Path\" -o uid=$(id -u)"
+      alias ftpfs=curlftpfs # might as well
+  fi
+  if ! which sshfs >/dev/null &&
+    test -e "$sshfs_Path"; then
+      alias sshfs="\"$sshfs_Path\""
+  fi
+fi
+
+if (! which kchmviewer && alias|grep chmox)>/dev/null; then
+  alias kchmviewer=chmox
+  # kchmviewer is probably easier to auto-complete, as
+  # chmox will suggest chmod also.
+  # Intel binaries are included in chmox 0.4+
+fi
+
+if (! which acroread && alias|grep adobe-reader)>/dev/null; then
+  alias acroread=adobe-reader
+fi
+
+# If you have installed fuse-ext2 then might as well alias
+# its mke2fs (although usually you'd use fuse-ext2 or
+# mount -t fuse-ext2)
+if ! which mke2fs >/dev/null && which fuse-ext2.mke2fs >/dev/null; then
+  alias mke2fs=fuse-ext2.mke2fs
+  alias e2fsmount=fuse-ext2
+fi
+
+ulimit -n 1024 # allow programs to have more open files
+
+# Setting the volume from the command line (this
+# doesn't exactly emulate the Linux commands on various
+# distributions but at least it's a start) -
+volume () {
+  if test "a$1" == a; then
+    # if no argument, print current percentage
+    osascript -e "output volume of (get volume settings)"
+  else osascript -e "set volume output volume $1"; fi }
+# older Macs just had "set volume" with a number 0 to 7
+
+# might as well have some iTunes command-line access too -
+# here's a function that plays a track whose name contains
+# whatever string you pass to the function:
+play-track () { osascript -e "tell application \"iTunes\" to play (get item 1 of (get every track of current playlist where name contains \"$*\"))"; }
+alias list-track-names="osascript -e \"set AppleScript's text item delimiters to \\\"@@@\\\"\" -e \"tell application \\\"iTunes\\\" to get name of (every track of current playlist) as string\"|sed -e $'s/@@@/\\\\\\n/g'|less -S"
+alias next-track='osascript -e "tell application \"iTunes\" to next track"'
+alias previous-track='osascript -e "tell application \"iTunes\" to previous track"'
+alias pause='osascript -e "tell application \"iTunes\" to pause"' # resume from GUI for now (right-click on the dock)
+alias stop='osascript -e "tell application \"iTunes\" to stop"'
+
+# we can also do the following without sudo, as long as a desktop session is running:
+alias halt='osascript -e "tell application \"Finder\" to shut down";exit'
+alias poweroff=halt
+alias reboot='osascript -e "tell application \"Finder\" to restart";exit'
+alias logout='osascript -e "tell application \"System Events\" to log out";exit'
+# (the "exit"s at the end of the above are so the terminal doesn't stop it with "are you sure", unless there are other terminal sessions)
+
+# Spotlight is required by app-store, e.g. for XCode updates (otherwise can get misleading error messages about account sign-in).  But you might want Spotlight disabled at other times (especially when accessing removable media).
+alias spotlight-disable="sudo launchctl unload -w /System/Library/LaunchDaemons/com.apple.metadata.mds.plist"
+alias spotlight-enable="sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.metadata.mds.plist"
+
+alias updatedb='sudo /usr/libexec/locate.updatedb'
+
+# Here's a function to install arbitrary commands to run at desktop login
+# Notes: (1) PATH might be incomplete, (2) this maclinux won't have been executed (unless you source it in the script),
+# (3) if the script starts any background processes, it MUST do a "wait" before finishing if you don't want launchctl to terminate its background processes
+install-login-command () {
+  if ! test -e "/$1"; then echo "Syntax: install-login-command executable-full-path"; echo "(see comments in maclinux for caveats)"; return; fi
+  export L="$(echo "$1"|sed -e 's,.*/,,')"
+  if test -e "$HOME/Library/LaunchAgents/$L.plist" || test "a$L" == a || ! touch "$HOME/Library/LaunchAgents/$L.plist" 2>/dev/null; then
+    # can't use executable name as plist name (exists or can't create), so make a generic one
+    export C=0; while test -e "$HOME/Library/LaunchAgents/loginscript$C.plist"; do export C=$[$C+1]; done; export L=loginscript$C
+  fi
+  export F="$HOME/Library/LaunchAgents/$L.plist"; (echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";echo "<!DOCTYPE plist PUBLIC \"-//Apple Computer//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>Label</key><string>$L</string><key>Program</key><string>$1</string><key>RunAtLoad</key><true/></dict></plist>") > "$F"
+  launchctl load "$F"
+  echo "Installed to $F" # (use "launchctl unload" and "rm" to uninstall)
+  echo "To test now, do: launchctl start $L";
+  echo "(errors to /var/log/system.log)";
+}
+# (change $HOME/Library/LaunchAgents to /Library/LaunchAgents to run on boot instead of login, but crontab @reboot can do that)
+
+# Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
+if test "a$SSH_CLIENT" == a; then
+  # simpler prompt for a local Mac (hostname can be a bit long)
+  export PS1='mac:\w\$ '
+elif test "$(hostname -s)" == mac; then
+  # if hostname has been SET to mac, better make it different
+  # to distinguish between a local one and one over SSH
+  export PS1='mac.ssh:\w\$ '
+else
+  export PS1='\h:\w\$ '
+fi
+
+export BASH_ENV="$__OldBashEnv"
+
+fi # end of "we're on a Mac" block
+# (so you can put all this into a .bashrc that will
+# get sourced from either Mac or Linux machines)
