@@ -1,30 +1,26 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Silas S. Brown 2012-14 - public domain  (version 1.4)
+# Silas S. Brown 2012-14 - public domain  (version 1.41)
+
+# TODO: . is not allowed in function names by Bash 3
+# TODO: - is not allowed in function names by /bin/sh
+# (which is used by 'man' etc, so 'man' won't work if the
+# environment has these exported).  Might have to bring back
+# BASH_ENV and use aliases again, especially if want (e.g.)
+# x-www-browser to work.
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile,
 # or if you prefer you can keep it in a separate file
 # and source it from your .bashrc and/or .bash_profile
 
-# If you also want the extra commands to be available
-# in scripts, get your ~/.bashrc and ~/.bash_profile to
-# export BASH_ENV to the location of this script as well.
+# You might wish to also put it in BASH_ENV to ensure all
+# commands are copied to subshells, although commands without
+# hyphens and dots should be copied over anyway.
 
 if test -d /Volumes && test "$(uname -s)" == Darwin; then
 # we're on a Mac
 
 export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV # avoid recursion
-
-if ! test "a$Last_MacLinux_Run" == a && test "$Last_MacLinux_Run" == "$(date +%s)"; then
-  echo "Warning: maclinux script run again in same second"
-  echo "- consider sourcing your profile subshell scripts"
-  # (TODO: is this still needed now we've made it faster?)
-fi
-
-if which -s brew; then
-  # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
-  alias brew="BASH_ENV= $(which brew)"
-fi
 
 # Support installations of HomeBrew/MacTex/MacPorts/Fink:
 export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
@@ -32,28 +28,39 @@ export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local
 export MANPATH=$MANPATH:/usr/local/opt/coreutils/libexec/gnuman
 if test -e /sw/bin/init.sh; then . /sw/bin/init.sh; fi
 
-shopt -s expand_aliases # so can use in scripts if BASH_ENV
+if which -s brew; then
+  # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
+  brew () { BASH_ENV= $(which brew) $@ ; } ; export -f brew
+fi
 
 if ! which -s wget; then
-# Alias wget to curl with appropriate options.  Useful
-# if you're in the habit of typing "wget".  Note that
-# it is not real wget however and it won't recognise
-# wget options like -c.
-alias wget="curl -L --remote-name-all --compressed"
-# for older curl: alias wget="curl -OL"
+  # Set wget to curl with appropriate options.  Useful
+  # if you're in the habit of typing "wget".  Note that
+  # it is not real wget however and it won't recognise
+  # wget options like -c.
+  wget () { curl -L --remote-name-all --compressed $@ ; }
+  # for older curl: alias wget="curl -OL"
+  export -f wget
 fi
 
 if ! which -s watch; then
-# primitive emulation of the "watch" command
-watch () (while true; do clear; date; echo $@; echo; $@; sleep 2; done)
+  # primitive emulation of the "watch" command
+  watch () (while true; do clear; date; echo $@; echo; $@; sleep 2; done)
+  export -f watch
 fi
 
 if ! which -s free; then
-alias free="top -l 1 -s 0 | grep -m 1 PhysMem"
+  free () { top -l 1 -s 0 | grep -m 1 PhysMem ; }
+  export -f free
 fi
 alias do-i-need-more-ram="if test $((vm_stat|grep '^Page[io]'|sed -e 's/.*://' -e 's/\.$//';echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 100)) -lt 10; then echo 'Maybe'; else echo 'Probably not'; fi" # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
 
-# Alias the /Applications to "open -a" commands so you
+# Note: Anything with a hyphen in it must be an alias, not a
+# function (or at least not exported), or /bin/sh won't like
+# it and commands like "man" will fail.  Hence the above
+# comment about BASH_ENV.
+
+# Define the /Applications as "open -a" commands so you
 # can type for example "libreoffice", "gimp",
 # "audacity" etc with a relative pathname and Mac open
 # will take care of translating it into an absolute
@@ -65,33 +72,50 @@ alias do-i-need-more-ram="if test $((vm_stat|grep '^Page[io]'|sed -e 's/.*://' -
 # The version below unfortunately requires a temp file,
 # but it's usually faster than repeated calls to sed as in
 # previous versions of this script (1.38 and below).
-# (Bash can't source a /dev/fd from <(...), and there's no
-# /dev/shm on the Mac, so we have to use /tmp)
-AliasApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find $@ '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 python -c 'import sys,re;print "\n".join((lambda Command:"if ! which -s \""+Command+"\"; then alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\"; elif ! which -s \""+Command+"-app\"; then alias \""+Command+"-app\"=\"open -W -a \\\""+App+"\\\"\"; fi")(re.sub(".*/","",App)[:-4].replace(" ","-").lower()) for App in sys.argv[1:])' >> $T ; . $T ; rm $T ; unset T; }
-AliasApps /Applications /usr/local/Cellar/emacs
-if alias xcode >/dev/null 2>/dev/null; then AliasApps "$(alias xcode|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
-unset AliasApps
+# (Bash can't source a /dev/fd from <(...), piping to a
+# source /dev/stdin invokes a subshell so it loses the
+# functions; no /dev/shm on Mac, so we have to use /tmp)
+# (see also comments around make-ramdisk function below).
+# TODO: if we must write to /tmp, can we keep it cached
+# so that new tabs in the Terminal window don't need to do
+# a disk write? (e.g. by putting whole script in an 'if'
+# clause which also does echo commands to declare the
+# functions, or cache the o/p of "declare" and somehow
+# remove what we didn't add), but how to check the age of
+# the cache?  -newer /Applications?  with timeout?
+# just make an 'update-functions' cmd for use when wanted?
+DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find $@ '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 python -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" $@ ; } ; export -f "+Command'$'\n\n''print "\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:])' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
+DefineApps /Applications /usr/local/Cellar/emacs
+if declare -F xcode >/dev/null; then DefineApps "$(declare|grep -i /Xcode.app|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
+unset DefineApps
 
 # One slight annoyance is if you use some Macs that
 # have bbedit installed but others that just have
-# TextWrangler.  Let's alias those edit commands:
-if which -s bbedit; then alias edit=bbedit
-elif which -s edit; then alias bbedit=edit
-else alias edit="open -e"; fi
+# TextWrangler.  Let's function-ify those edit commands:
+if which -s bbedit; then
+  edit () { bbedit $@ ; }
+  export -f edit
+elif which -s edit; then
+  bbedit () { edit $@ ; }
+  export -f bbedit
+else
+  edit () { open -e $@ ; }
+  export -f edit
+fi
 
 # Ditto for mixed Mac/Linux environments where you
 # can type "jmacs" on the Linux terminal to get a
 # quick emacs-like editor:
 if ! which -s jmacs; then
-alias jmacs="emacs -q"; fi
+jmacs () { emacs -q $@ ; } ; export -f jmacs ; fi
 
 # and make sure you can type "play" to play sound files
 if ! which -s play; then
-alias play=afplay; fi
+play () { afplay $@ ; } ; export -f play ; fi
 
 # and "umount" to eject auto-mounted USB sticks etc:
-alias umount="diskutil umount"
-alias eject="drutil eject" # for CDs
+umount () { diskutil umount $@ ; } ; export -f umount
+eject () { drutil eject ; } ; export -f eject # for CDs
 
 # and the general "web browser" command used by some
 # scripts in Debian etc
@@ -108,38 +132,42 @@ alias gnome-open=open
 # If you do use ftpfs and the server is running it via
 # inetd then you might need to increase the connections/min
 # allowed in inetd.conf, e.g. "ftp stream tcp nowait.32767"
-if alias macfusion 2>/dev/null >/dev/null; then
-  export MF_Path=$(alias macfusion|sed -e 's/[^"]*"//' -e 's/".*//')
+if declare -F macfusion >/dev/null; then
+  export MF_Path=$(declare|grep -i /Macfusion.app|sed -e 's/[^"]*"//' -e 's/".*//')
   export sshfs_Path="$MF_Path/Contents/PlugIns/sshfs.mfplugin/Contents/Resources/sshfs-static"
   export curlftpfs_Path="$MF_Path/Contents/PlugIns/ftpfs.mfplugin/Contents/Resources/curlftpfs_static_mg"
   if ! which -s curlftpfs &&
     test -e "$curlftpfs_Path"; then
-      alias curlftpfs="\"$curlftpfs_Path\" -o uid=$(id -u)"
-      alias ftpfs=curlftpfs # might as well
+      curlftpfs () { "$curlftpfs_Path" -o uid="$(id -u)" $@ ; }
+      ftpfs () { curlftpfs $@ ; } # might as well
+      export -f curlftpfs ftpfs
   fi
   if ! which -s sshfs &&
     test -e "$sshfs_Path"; then
-      alias sshfs="\"$sshfs_Path\""
+      sshfs () { "$sshfs_Path" $@ ; }
+      export -f sshfs
   fi
 fi
 
-if alias chmox 2>/dev/null >/dev/null && ! which -s kchmviewer; then
-  alias kchmviewer=chmox
+if declare -F chmox >/dev/null && ! which -s kchmviewer; then
+  kchmviewer () { chmox $@ ; } ; export -f kchmviewer
   # kchmviewer is probably easier to auto-complete, as
   # chmox will suggest chmod also.
   # Intel binaries are included in chmox 0.4+
 fi
 
-if alias adobe-reader 2>/dev/null >/dev/null && ! which -s acroread; then
-  alias acroread=adobe-reader
+if declare -F adobe-reader >/dev/null && ! which -s acroread; then
+  acroread () { adobe-reader $@ ; }
+  export -f acroread
 fi
 
-# If you have installed fuse-ext2 then might as well alias
+# If you have installed fuse-ext2 then might as well set
 # its mke2fs (although usually you'd use fuse-ext2 or
 # mount -t fuse-ext2)
 if ! which -s mke2fs && which -s fuse-ext2.mke2fs; then
-  alias mke2fs=fuse-ext2.mke2fs
-  alias e2fsmount=fuse-ext2
+  mke2fs () { fuse-ext2.mke2fs $@ ; }
+  e2fsmount () { fuse-ext2 $@ ; }
+  export -f mke2fs e2fsmount
 fi
 
 ulimit -n 1024 # allow programs to have more open files
@@ -153,6 +181,7 @@ volume () {
     osascript -e "output volume of (get volume settings)"
   else osascript -e "set volume output volume $1"; fi }
 # older Macs just had "set volume" with a number 0 to 7
+export -f volume
 
 # might as well have some iTunes command-line access too -
 # here's a function that plays a track whose name contains
@@ -161,26 +190,29 @@ play-track () { osascript -e "tell application \"iTunes\" to play (get item 1 of
 alias list-track-names="osascript -e \"set AppleScript's text item delimiters to \\\"@@@\\\"\" -e \"tell application \\\"iTunes\\\" to get name of (every track of current playlist) as string\"|sed -e $'s/@@@/\\\\\\n/g'|less -S"
 alias next-track='osascript -e "tell application \"iTunes\" to next track"'
 alias previous-track='osascript -e "tell application \"iTunes\" to previous track"'
-alias pause='osascript -e "tell application \"iTunes\" to pause"' # resume from GUI for now (right-click on the dock)
-alias stop='osascript -e "tell application \"iTunes\" to stop"'
+pause () { osascript -e "tell application \"iTunes\" to pause" ; } # resume from GUI for now (right-click on the dock)
+stop () { osascript -e "tell application \"iTunes\" to stop" ; }
+export -f pause stop
 
 # we can also do the following without sudo, as long as a desktop session is running:
-alias halt='osascript -e "tell application \"Finder\" to shut down";exit'
-alias poweroff=halt
-alias reboot='osascript -e "tell application \"Finder\" to restart";exit'
-alias logout='osascript -e "tell application \"System Events\" to log out";exit'
+halt () { (sleep 0.5 ; osascript -e "tell application \"Finder\" to shut down") & exit ; }
+poweroff () { halt ; }
+reboot () { (sleep 0.5 ; osascript -e "tell application \"Finder\" to restart") & exit ; }
+logout () { (sleep 0.5 ; osascript -e "tell application \"System Events\" to log out") & exit ; }
+export -f halt poweroff reboot logout
 # (the "exit"s at the end of the above are so the terminal doesn't stop it with "are you sure", unless there are other terminal sessions)
 
 # Spotlight is required by app-store, e.g. for XCode updates (otherwise can get misleading error messages about account sign-in).  But you might want Spotlight disabled at other times (especially when accessing removable media).
 alias spotlight-disable="sudo launchctl unload -w /System/Library/LaunchDaemons/com.apple.metadata.mds.plist"
 alias spotlight-enable="sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.metadata.mds.plist"
 
-alias updatedb='sudo /usr/libexec/locate.updatedb'
+updatedb () { sudo /usr/libexec/locate.updatedb ; }
+export -f updatedb
 
 # Here's a function to install arbitrary commands to run at desktop login
 # Notes: (1) PATH might be incomplete, (2) this maclinux won't have been executed (unless you source it in the script),
 # (3) if the script starts any background processes, it MUST do a "wait" before finishing if you don't want launchctl to terminate its background processes
-install-login-command () {
+_install_login_command () {
   if ! test -e "/$1"; then echo "Syntax: install-login-command executable-full-path"; echo "(see comments in maclinux for caveats)"; return; fi
   export L="$(echo "$1"|sed -e 's,.*/,,')"
   if test -e "$HOME/Library/LaunchAgents/$L.plist" || test "a$L" == a || ! touch "$HOME/Library/LaunchAgents/$L.plist" 2>/dev/null; then
@@ -194,6 +226,15 @@ install-login-command () {
   echo "(errors to /var/log/system.log)";
 }
 # (change $HOME/Library/LaunchAgents to /Library/LaunchAgents to run on boot instead of login, but crontab @reboot can do that)
+alias install-login-command=_install_login_command
+
+# Here's a function to make RAMdisks.  1st param = dir
+# (e.g. /tmp/maclinux-RAMdisk, must not already exist),
+# 2nd param = num of 512-byte blocks (e.g. 1024 for a 512k
+# disk; unfortunately can't auto-expand like /dev/shm)
+_make_ramdisk () { mkdir "$1" && mount -t hfs "$(echo "$(newfs_hfs $(hdid -nomount "ram://$2"))"|sed -e 's,[^/]*/,/,' -e 's/ .*//' -e 's,/rdisk,/disk,')" "$1" ; }
+# (10.5+ can also do e.g. diskutil erasevolume HFS+ "maclinux-RAMdisk" $(hdiutil attach -nomount ram://1024) for /Volumes/maclinux-RAMdisk)
+alias make-ramdisk=_make_ramdisk
 
 # Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
 if test "a$SSH_CLIENT" == a; then
@@ -207,7 +248,6 @@ else
   export PS1='\h:\w\$ '
 fi
 
-export Last_MacLinux_Run="$(date +%s)"
 export BASH_ENV="$__OldBashEnv"
 
 fi # end of "we're on a Mac" block
