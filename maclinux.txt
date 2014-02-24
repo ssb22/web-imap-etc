@@ -2,13 +2,6 @@
 # Script to make the Mac more Linux-like
 # Silas S. Brown 2012-14 - public domain  (version 1.41)
 
-# TODO: . is not allowed in function names by Bash 3
-# TODO: - is not allowed in function names by /bin/sh
-# (which is used by 'man' etc, so 'man' won't work if the
-# environment has these exported).  Might have to bring back
-# BASH_ENV and use aliases again, especially if want (e.g.)
-# x-www-browser to work.
-
 # This goes in your ~/.bashrc and/or ~/.bash_profile,
 # or if you prefer you can keep it in a separate file
 # and source it from your .bashrc and/or .bash_profile
@@ -16,6 +9,11 @@
 # You might wish to also put it in BASH_ENV to ensure all
 # commands are copied to subshells, although commands without
 # hyphens and dots should be copied over anyway.
+
+# If you want to compare this code to old versions, the old
+# versions are being kept on SourceForge's E-GuideDog SVN repository
+# http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
+# although some early ones are missing.
 
 if test -d /Volumes && test "$(uname -s)" == Darwin; then
 # we're on a Mac
