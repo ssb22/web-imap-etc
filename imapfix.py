@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.11 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.12 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -86,6 +86,14 @@ copyself_delete_attachments = False # if True, attachments
 # IMAP folder (but a record is still kept of what was
 # attached, unlike the fcc_attach='no' setting in Mutt 1.5)
 copyself_folder_name = "Sent Items"
+copyself_alt_folder = None # or the name of an IMAP folder
+# - any messages found in here (if folder exists) will be
+# moved to copyself_folder_name, with their attachments
+# deleted if copyself_delete_attachments is True.  You can
+# specify more than one folder by separating them with a
+# comma.  Might be useful if some of your IMAP programs
+# insist on doing their own sent-mail filing to folders of
+# their own choice rather than yours.
 
 archive_path = "oldmail"
 archive_rules = [
@@ -110,6 +118,10 @@ secondary_imap_hostname = ""
 secondary_imap_username = "me"
 secondary_imap_password = "xxxxxxxx"
 secondary_imap_delay = 24 * 3600
+
+exit_if_imapfix_config_py_changes = False # if True, does
+# what it says, on the assumption that a wrapper script
+# will restart it (TODO: make it restart by itself?)
 
 # Run with --quicksearch (search string) to search both
 # archive_path and the server (all folders), but "quick"
@@ -392,6 +404,36 @@ def do_maildir_to_copyself():
         save_to(copyself_folder_name,msg.as_string(),imap_flags_from_maildir_msg(msg),t)
         del m[k]
 
+def do_copyself_to_copyself():
+    for folder in copyself_alt_folder.split(","):
+        if folder==copyself_folder_name:
+            debug("Cannot specify copyself_folder_name in copyself_alt_folder: skipping "+folder)
+            continue
+        make_sure_logged_in()
+        typ, data = imap.select(folder)
+        if not typ=='OK':
+            debug("Skipping non-selectable folder "+folder)
+            continue
+        typ, data = imap.search(None, 'ALL')
+        if not typ=='OK': raise Exception(typ)
+        said = False
+        for msgID in data[0].split():
+            typ, data = imap.fetch(msgID, '(RFC822)')
+            if not typ=='OK': continue
+            message = data[0][1]
+            if not said:
+                debug("Moving messages from "+folder+" to "+copyself_folder_name)
+                said = True
+            msg = email.message_from_string(message)
+            globalise_charsets(msg)
+            if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
+            else: t = None # undated message ??
+            if copyself_delete_attachments:
+                delete_attachments(msg)
+            save_to(copyself_folder_name,msg.as_string(),"\\Seen",t)
+            imap.store(msgID, '+FLAGS', '\\Deleted')
+        check_ok(imap.expunge())
+
 def globalise_header_charset(match):
     charset = match.group(1).lower()
     if charset=="utf-8":
@@ -457,9 +499,12 @@ def mainloop():
   newtime = oldtime = time.localtime()[:3]
   done_spamprobe_cleanup = False
   secondary_imap_due = 0
+  if exit_if_imapfix_config_py_changes:
+    mtime = os.stat("imapfix_config.py").st_mtime
   while True:
     if maildirs_to_imap: do_maildirs_to_imap()
     if maildir_to_copyself: do_maildir_to_copyself()
+    if copyself_alt_folder: do_copyself_to_copyself()
     if filtered_inbox:
         process_imap_inbox()
         if time.time() > secondary_imap_due and secondary_imap_hostname:
@@ -470,6 +515,7 @@ def mainloop():
         done_spamprobe_cleanup = True
     if logout_before_sleep: make_sure_logged_out()
     if not poll_interval: break
+    if exit_if_imapfix_config_py_changes and not mtime == os.stat("imapfix_config.py").st_mtime: break
     debug("Sleeping for "+str(poll_interval)+" seconds")
     time.sleep(poll_interval) # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
     newtime = time.localtime()[:3]

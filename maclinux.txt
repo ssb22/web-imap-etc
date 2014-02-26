@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Silas S. Brown 2012-14 - public domain  (version 1.41)
+# Silas S. Brown 2012-14 - public domain  (version 1.42)
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile,
 # or if you prefer you can keep it in a separate file
@@ -28,7 +28,7 @@ if test -e /sw/bin/init.sh; then . /sw/bin/init.sh; fi
 
 if which -s brew; then
   # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
-  brew () { BASH_ENV= $(which brew) $@ ; } ; export -f brew
+  brew () { BASH_ENV= $(which brew) "$@" ; } ; export -f brew
 fi
 
 if ! which -s wget; then
@@ -36,14 +36,14 @@ if ! which -s wget; then
   # if you're in the habit of typing "wget".  Note that
   # it is not real wget however and it won't recognise
   # wget options like -c.
-  wget () { curl -L --remote-name-all --compressed $@ ; }
+  wget () { curl -L --remote-name-all --compressed "$@" ; }
   # for older curl: alias wget="curl -OL"
   export -f wget
 fi
 
 if ! which -s watch; then
   # primitive emulation of the "watch" command
-  watch () (while true; do clear; date; echo $@; echo; $@; sleep 2; done)
+  watch () (while true; do clear; date; echo "$@"; echo; "$@"; sleep 2; done)
   export -f watch
 fi
 
@@ -82,7 +82,7 @@ alias do-i-need-more-ram="if test $((vm_stat|grep '^Page[io]'|sed -e 's/.*://' -
 # remove what we didn't add), but how to check the age of
 # the cache?  -newer /Applications?  with timeout?
 # just make an 'update-functions' cmd for use when wanted?
-DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find $@ '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 python -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" $@ ; } ; export -f "+Command'$'\n\n''print "\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:])' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
+DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 python -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" \"$@\" ; } ; export -f "+Command'$'\n\n''print "\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:])' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
 DefineApps /Applications /usr/local/Cellar/emacs
 if declare -F xcode >/dev/null; then DefineApps "$(declare|grep -i /Xcode.app|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
 unset DefineApps
@@ -91,13 +91,13 @@ unset DefineApps
 # have bbedit installed but others that just have
 # TextWrangler.  Let's function-ify those edit commands:
 if which -s bbedit; then
-  edit () { bbedit $@ ; }
+  edit () { bbedit "$@" ; }
   export -f edit
 elif which -s edit; then
-  bbedit () { edit $@ ; }
+  bbedit () { edit "$@" ; }
   export -f bbedit
 else
-  edit () { open -e $@ ; }
+  edit () { open -e "$@" ; }
   export -f edit
 fi
 
@@ -105,14 +105,14 @@ fi
 # can type "jmacs" on the Linux terminal to get a
 # quick emacs-like editor:
 if ! which -s jmacs; then
-jmacs () { emacs -q $@ ; } ; export -f jmacs ; fi
+jmacs () { emacs -q "$@" ; } ; export -f jmacs ; fi
 
 # and make sure you can type "play" to play sound files
 if ! which -s play; then
-play () { afplay $@ ; } ; export -f play ; fi
+play () { afplay "$@" ; } ; export -f play ; fi
 
 # and "umount" to eject auto-mounted USB sticks etc:
-umount () { diskutil umount $@ ; } ; export -f umount
+umount () { diskutil umount "$@" ; } ; export -f umount
 eject () { drutil eject ; } ; export -f eject # for CDs
 
 # and the general "web browser" command used by some
@@ -136,26 +136,26 @@ if declare -F macfusion >/dev/null; then
   export curlftpfs_Path="$MF_Path/Contents/PlugIns/ftpfs.mfplugin/Contents/Resources/curlftpfs_static_mg"
   if ! which -s curlftpfs &&
     test -e "$curlftpfs_Path"; then
-      curlftpfs () { "$curlftpfs_Path" -o uid="$(id -u)" $@ ; }
-      ftpfs () { curlftpfs $@ ; } # might as well
+      curlftpfs () { "$curlftpfs_Path" -o uid="$(id -u)" "$@" ; }
+      ftpfs () { curlftpfs "$@" ; } # might as well
       export -f curlftpfs ftpfs
   fi
   if ! which -s sshfs &&
     test -e "$sshfs_Path"; then
-      sshfs () { "$sshfs_Path" $@ ; }
+      sshfs () { "$sshfs_Path" "$@" ; }
       export -f sshfs
   fi
 fi
 
 if declare -F chmox >/dev/null && ! which -s kchmviewer; then
-  kchmviewer () { chmox $@ ; } ; export -f kchmviewer
+  kchmviewer () { chmox "$@" ; } ; export -f kchmviewer
   # kchmviewer is probably easier to auto-complete, as
   # chmox will suggest chmod also.
   # Intel binaries are included in chmox 0.4+
 fi
 
 if declare -F adobe-reader >/dev/null && ! which -s acroread; then
-  acroread () { adobe-reader $@ ; }
+  acroread () { adobe-reader "$@" ; }
   export -f acroread
 fi
 
@@ -163,8 +163,8 @@ fi
 # its mke2fs (although usually you'd use fuse-ext2 or
 # mount -t fuse-ext2)
 if ! which -s mke2fs && which -s fuse-ext2.mke2fs; then
-  mke2fs () { fuse-ext2.mke2fs $@ ; }
-  e2fsmount () { fuse-ext2 $@ ; }
+  mke2fs () { fuse-ext2.mke2fs "$@" ; }
+  e2fsmount () { fuse-ext2 "$@" ; }
   export -f mke2fs e2fsmount
 fi
 
