@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.08 (c) 2013 Silas S. Brown.  License: GPL
+# ImapFix v1.12 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -8,6 +8,8 @@
 hostname = "imap4-ssl.example.org"
 username = "me"
 password = "xxxxxxxx"
+login_retry = False # True = don't stop on login failure
+# (useful if your network connection is not always on)
 
 filtered_inbox = "in" # or =None if you don't want to do
 # any moving from inbox to filtered_inbox (i.e. no rules)
@@ -23,6 +25,14 @@ newmail_directory = None
 # - any new mail put into any folder by header_rules will
 # result in a file being created in that local directory
 # with the same name as the folder
+
+max_size_of_first_part = 48*1024
+# any messages whose first part is longer than this will be
+# converted into attachments.  This is for sync'ing in
+# bandwidth-limited situations using a device that knows to
+# not fetch attachments but doesn't necessarily know to not
+# fetch more than a certain amount of text (especially if
+# it's only HTML).
 
 header_rules = [
     ("folder-name-1",
@@ -42,6 +52,7 @@ def extra_rules(message_as_string): return False
 # you can override this to any function you want, which
 # returns the name of a folder, or None to delete the
 # message, or False = no decision
+catch_extraRules_errors = True
 
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
@@ -56,6 +67,8 @@ midnight_command = None
 # (useful if you don't have crontab access on the machine)
 
 quiet = True # False = print messages (including quota)
+# If you set quiet = 2, will be quiet if and only if the
+# standand output is not connected to a terminal
 
 maildirs_to_imap = None # or path to a local directory of
 # maildirs; messages will be moved to their corresponding
@@ -73,6 +86,14 @@ copyself_delete_attachments = False # if True, attachments
 # IMAP folder (but a record is still kept of what was
 # attached, unlike the fcc_attach='no' setting in Mutt 1.5)
 copyself_folder_name = "Sent Items"
+copyself_alt_folder = None # or the name of an IMAP folder
+# - any messages found in here (if folder exists) will be
+# moved to copyself_folder_name, with their attachments
+# deleted if copyself_delete_attachments is True.  You can
+# specify more than one folder by separating them with a
+# comma.  Might be useful if some of your IMAP programs
+# insist on doing their own sent-mail filing to folders of
+# their own choice rather than yours.
 
 archive_path = "oldmail"
 archive_rules = [
@@ -98,6 +119,10 @@ secondary_imap_username = "me"
 secondary_imap_password = "xxxxxxxx"
 secondary_imap_delay = 24 * 3600
 
+exit_if_imapfix_config_py_changes = False # if True, does
+# what it says, on the assumption that a wrapper script
+# will restart it (TODO: make it restart by itself?)
+
 # Run with --quicksearch (search string) to search both
 # archive_path and the server (all folders), but "quick"
 # in that it doesn't decode MIME attachments etc
@@ -112,15 +137,26 @@ secondary_imap_delay = 24 * 3600
 # useful from scripts etc (you can get the note without
 # having to wait for it to go through SMTP and polling).
 # Run with --htmlnote to do the same but send as HTML.
+# Run with --maybenote to do --note only if standard input
+# has text (no mail left if your script printed nothing).
 
 # End of configuration options
 # ------------------------------------------------------
+
+# CHANGES
+# -------
+# If you want to compare this code to old versions, most old
+# versions are being kept on SourceForge's E-GuideDog SVN repository
+# http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
+# To check out the repository, you can do:
+# svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 
 from imapfix_config import *
 
 if filtered_inbox==None: spamprobe_command = None
 
-import imaplib,email,email.utils,time,os,sys,re,base64,quopri,mailbox
+import imaplib,email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback
+from cStringIO import StringIO
 
 if compression=="bz2":
     import bz2
@@ -132,7 +168,7 @@ else: compression_ext = ""
 
 def debug(msg):
     if not quiet: print msg
-
+    
 def check_ok(r):
     "Checks that the return value of an IMAP call 'r' is OK, raises exception if not"
     typ, data = r
@@ -184,12 +220,18 @@ def process_imap_inbox():
         # (especially if they've been developed based on
         # post-charset-conversion saved messages)
         msg = email.message_from_string(message)
-        if globalise_charsets(msg):
-            message = msg.as_string()
+        changed = globalise_charsets(msg)
+        if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
+        if changed: message = msg.as_string()
         header = message[:message.find("\r\n\r\n")]
         box = process_header_rules(header)
         if box==False:
-            box = rename_folder(extra_rules(message))
+            try: box = rename_folder(extra_rules(message))
+            except:
+                if not catch_extraRules_errors: raise
+                o = StringIO() ; traceback.print_exc(None,o)
+                save_to(filtered_inbox,"From: imapfix.py\r\nSubject: imapfix_config problem in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(time.time()),o.getvalue()))
+                box = filtered_inbox
             if box==False: box = spamprobe_rules(message)
         if box:
             debug("Saving message to "+box)
@@ -362,6 +404,36 @@ def do_maildir_to_copyself():
         save_to(copyself_folder_name,msg.as_string(),imap_flags_from_maildir_msg(msg),t)
         del m[k]
 
+def do_copyself_to_copyself():
+    for folder in copyself_alt_folder.split(","):
+        if folder==copyself_folder_name:
+            debug("Cannot specify copyself_folder_name in copyself_alt_folder: skipping "+folder)
+            continue
+        make_sure_logged_in()
+        typ, data = imap.select(folder)
+        if not typ=='OK':
+            debug("Skipping non-selectable folder "+folder)
+            continue
+        typ, data = imap.search(None, 'ALL')
+        if not typ=='OK': raise Exception(typ)
+        said = False
+        for msgID in data[0].split():
+            typ, data = imap.fetch(msgID, '(RFC822)')
+            if not typ=='OK': continue
+            message = data[0][1]
+            if not said:
+                debug("Moving messages from "+folder+" to "+copyself_folder_name)
+                said = True
+            msg = email.message_from_string(message)
+            globalise_charsets(msg)
+            if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
+            else: t = None # undated message ??
+            if copyself_delete_attachments:
+                delete_attachments(msg)
+            save_to(copyself_folder_name,msg.as_string(),"\\Seen",t)
+            imap.store(msgID, '+FLAGS', '\\Deleted')
+        check_ok(imap.expunge())
+
 def globalise_header_charset(match):
     charset = match.group(1).lower()
     if charset=="utf-8":
@@ -378,13 +450,28 @@ def globalise_header_charset(match):
         return match.group()
     return "=?UTF-8?B?"+base64.encodestring(text.encode('utf-8')).replace("\n","")+"?="
 
+import email.mime.multipart,email.mime.message,email.mime.text
+def turn_into_attachment(message):
+    m2 = email.mime.multipart.MIMEMultipart()
+    for k,v in message.items():
+        if not k.lower() in ['content-length','content-type','content-transfer-encoding','lines']: m2[k]=v
+    m2.attach(email.mime.text.MIMEText("Large message converted to attachment")) # by imapfix, but best not mention this as it might bias the filters?
+    m2.attach(email.mime.message.MIMEMessage(message))
+    return m2
+def size_of_first_part(message):
+    if message.is_multipart():
+        for i in message.get_payload():
+            return size_of_first_part(i)
+        return 0
+    return len(message.get_payload())
+
 def globalise_charsets(message):
     """'Globalises' the character sets of all parts of
         email.message.Message object 'message'.
         Only us-ascii and utf-8 charsets are 'global'.
         Returns True if any changes were made."""
     changed = False
-    for line in ["From","To","Cc","Subject"]:
+    for line in ["From","To","Cc","Subject","Reply-To"]:
         if not line in message: continue
         l = message[line]
         l2 = re.sub(r'=\?(.*?)\?(.*?)\?(.*?)\?=',globalise_header_charset,l)
@@ -412,9 +499,12 @@ def mainloop():
   newtime = oldtime = time.localtime()[:3]
   done_spamprobe_cleanup = False
   secondary_imap_due = 0
+  if exit_if_imapfix_config_py_changes:
+    mtime = os.stat("imapfix_config.py").st_mtime
   while True:
     if maildirs_to_imap: do_maildirs_to_imap()
     if maildir_to_copyself: do_maildir_to_copyself()
+    if copyself_alt_folder: do_copyself_to_copyself()
     if filtered_inbox:
         process_imap_inbox()
         if time.time() > secondary_imap_due and secondary_imap_hostname:
@@ -425,6 +515,7 @@ def mainloop():
         done_spamprobe_cleanup = True
     if logout_before_sleep: make_sure_logged_out()
     if not poll_interval: break
+    if exit_if_imapfix_config_py_changes and not mtime == os.stat("imapfix_config.py").st_mtime: break
     debug("Sleeping for "+str(poll_interval)+" seconds")
     time.sleep(poll_interval) # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
     newtime = time.localtime()[:3]
@@ -435,9 +526,13 @@ def mainloop():
 
 def process_secondary_imap():
     global imap
-    imap = imaplib.IMAP4_SSL(secondary_imap_hostname)
-    check_ok(imap.login(secondary_imap_username,secondary_imap_password))
-    process_imap_inbox()
+    try:
+        imap = imaplib.IMAP4_SSL(secondary_imap_hostname)
+        check_ok(imap.login(secondary_imap_username,secondary_imap_password))
+    except:
+        debug("Could not log in to secondary IMAP: skipping it this time")
+        imap = None
+    if imap: process_imap_inbox()
     imap = saveImap
 
 def do_archive():
@@ -457,16 +552,19 @@ def yield_folders():
         if not typ=='OK': continue
         yield foldername
 
-def do_note(subject,ctype=""):
+def do_note(subject,ctype="",maybe=0):
     subject = subject.strip()
     if not subject: subject = "Note to self (via imapfix)"
     if isatty(sys.stdout): print "Type the note, then EOF"
     body = sys.stdin.read()
-    if not body: body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
+    if not body:
+        if maybe: return
+        body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
     save_to(filtered_inbox,"From: imapfix.py\r\nSubject: "+subject+"\r\nDate: "+email.utils.formatdate(time.time())+ctype+"\r\n\r\n"+body+"\n")
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
-    
+if quiet==2: quiet = not isatty(sys.stdout)
+
 def do_delete(foldername):
     foldername = foldername.strip()
     if not foldername:
@@ -507,9 +605,15 @@ def shell_quote(s):  return "'"+s.replace("'",r"'\''")+"'"
 imap = None
 def make_sure_logged_in():
     global imap, saveImap
-    if imap==None:
-        imap = saveImap = imaplib.IMAP4_SSL(hostname)
-        check_ok(imap.login(username,password))
+    while imap==None:
+        try:
+            imap = saveImap = imaplib.IMAP4_SSL(hostname)
+            check_ok(imap.login(username,password))
+        except:
+            if not login_retry: raise
+            imap = None
+            debug("Login failed; retry in 30 seconds")
+            time.sleep(30)
 def make_sure_logged_out():
     global imap, saveImap
     if not imap==None:
@@ -521,5 +625,6 @@ if __name__ == "__main__":
   elif '--quicksearch' in sys.argv: do_quicksearch(' '.join(sys.argv[sys.argv.index('--quicksearch')+1:]))
   elif '--delete' in sys.argv: do_delete(' '.join(sys.argv[sys.argv.index('--delete')+1:]))
   elif '--note' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]))
+  elif '--maybenote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--maybenote')+1:]),maybe=1)
   elif '--htmlnote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--htmlnote')+1:]),"\r\nContent-type: text/html")
   else: mainloop()
