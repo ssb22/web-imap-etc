@@ -1,5 +1,5 @@
 
-# webcheck.py v1.02 (c) 2014 Silas S. Brown.  License: GPL
+# webcheck.py v1.03 (c) 2014 Silas S. Brown.  License: GPL
 # See website for description and usage instructions
 
 # CHANGES
@@ -66,14 +66,12 @@ class HTMLStrings(HTMLParser.HTMLParser):
         if ref in htmlentitydefs.name2codepoint: self.handle_data(unichr(htmlentitydefs.name2codepoint[ref]).encode('utf-8'))
         else: self.handle_data('&'+ref+';')
     def text(self): return ''.join(self.theTxt).strip()
-def htmlStrings(text):
+def htmlStrings(html):
+    parser = HTMLStrings()
     try:
-        parser = HTMLStrings()
-        parser.feed(text) ; parser.close()
-        return parser.text()
-    except:
-        sys.stdout.write("Problem extracting strings from HTML\n"+traceback.format_exc())
-        return text # might still work for 'was that text still there' queries
+        parser.feed(html) ; parser.close()
+        return parser.text(), ""
+    except: return html, "\n- problem extracting strings from HTML at line %d offset %d\n%s" % parser.getpos()+(traceback.format_exc(),) # returning html might still work for 'was that text still there' queries; error message is displayed only if it doesn't
 
 def main():
 
@@ -120,12 +118,13 @@ def worker_thread(*args):
               if lm: previous_timestamps[(url,'lastMod')] = lm
           textContent = None
           for _,t in daysTextList:
+              errmsg = ""
               if t.startswith('>'):
-                  check(t[1:],content,"Source of "+url)
+                  check(t[1:],content,"Source of "+url,errmsg)
                   continue
               elif textContent==None:
-                  textContent = htmlStrings(content)
-              check(t,textContent,url)
+                  textContent,errmsg=htmlStrings(content)
+              check(t,textContent,url,errmsg)
         jobs.task_done()
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
@@ -159,7 +158,7 @@ def tryGzip(t):
     try: return gzip.GzipFile('','rb',9,StringIO.StringIO(t)).read()
     except: return t
 
-def check(text,content,url):
+def check(text,content,url,errmsg):
     if ' #' in text: text,comment = text.split(' #',1) # TODO: document this (comments must be preceded by a space, otherwise interpreted as part of the text as this is sometimes needed in codes)
     else: comment = ""
     comment = comment.strip()
@@ -169,8 +168,8 @@ def check(text,content,url):
     if text.startswith("!"):
         if len(text)==1: return # TODO: print error?
         if text[1:] in content:
-            sys.stdout.write(url+" contains "+text[1:]+comment+"\n") # don't use 'print' or can have problems with threads
+            sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
     elif not text in content:
-        sys.stdout.write(url+" no longer contains "+text+comment+"\n")
+        sys.stdout.write(url+" no longer contains "+text+comment+errmsg+"\n")
 
 if __name__=="__main__": main()
