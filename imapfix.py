@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.2 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.21 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -72,6 +72,13 @@ smtps_auth = None # or e.g. " with esmtpsa (LOGIN:me)"
 # you really did authenticate over HTTPS).  You may also
 # set smtps_auth to a list of strings, any one of which is
 # acceptable, e.g. smtps_auth=["esmtpsa (LOGIN:me)","esmtpsa (PLAIN:me)"]
+# Note: if trusted_domain and smtps_auth is set, any message
+# that does NOT contain any Received headers will be assumed
+# to be generated from your own account and therefore treated
+# as though it had been authenticated by smtps_auth (which
+# might be useful for using --multinote with the real inbox).
+# You should therefore ensure that your local network ALWAYS
+# adds at least one Received header to incoming mail.
 
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
@@ -242,6 +249,15 @@ def process_header_rules(header):
         return rename_folder(box)
   return False
 
+def myAsString(msg):
+    message = msg.as_string()
+    if not "\r\n\r\n" in message:
+        # oops, broken library?
+        message=message.replace("\n\n","\r\n\r\n",1)
+        a,b = message.split("\r\n\r\n")
+        message = a.replace("\n","\r\n")+"\r\n\r\n"+b
+    return message
+
 def process_imap_inbox():
     make_sure_logged_in()
     check_ok(imap.select()) # the inbox
@@ -257,22 +273,24 @@ def process_imap_inbox():
             if imapMsgid: # somehow ended up with 2, delete one
                 imap.store(imapMsgid, '+FLAGS', '\\Deleted')
             imapMsgid = msgID ; continue
-        # globalise charsets BEFORE the filtering rules
-        # (especially if they've been developed based on
-        # post-charset-conversion saved messages)
         msg = email.message_from_string(message)
-        changed = globalise_charsets(msg)
-        if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
-        if changed: message = msg.as_string()
         box = False
         if authenticates(msg):
+          # do auth'd-msgs processing first, before any charset conversion or convert-to-attachment, so handle_authenticated_message can get it in its original form
           debug("Message authenticates")
           try: box = handle_authenticated_message(msg.get("Subject",""),message[message.find("\r\n\r\n"):].lstrip())
           except:
             if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
             o = StringIO() ; traceback.print_exc(None,o)
             save_to(filtered_inbox,"From: imapfix.py\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(time.time()),o.getvalue()))
-        if box==False:
+        if not box==None:
+         # globalise charsets BEFORE the filtering rules
+         # (especially if they've been developed based on
+         # post-charset-conversion saved messages)
+         changed = globalise_charsets(msg)
+         if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
+         if changed: message = myAsString(msg)
+         if box==False:
           header = message[:message.find("\r\n\r\n")]
           box = process_header_rules(header)
           if box==False:
@@ -302,7 +320,9 @@ def process_imap_inbox():
 
 def authenticates(msg):
     if not trusted_domain or not smtps_auth: return
-    for rx in msg.get_all("Received",[]):
+    rxd = msg.get_all("Received",[])
+    if not rxd: return True # no Received headers = put in by imapfix on another machine
+    for rx in rxd:
       rx = re.sub(r'\s+',' ',rx)
       m=re.match(r"from ([^ ]+) (\([^)]*\))? by ([^ ]+)",rx)
       if not m: break
@@ -445,7 +465,7 @@ def do_maildirs_to_imap():
             globalise_charsets(msg)
             if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
             else: t = None # undated message ??
-            save_to(to,msg.as_string(),imap_flags_from_maildir_msg(msg),t)
+            save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg),t)
             del m[k]
         newcurtmp = ["new","cur","tmp"]
         if not any(os.listdir(d2+os.sep+ntc) for ntc in newcurtmp): # folder is now empty: remove it
@@ -467,7 +487,7 @@ def do_maildir_to_copyself():
         else: t = None # undated message ??
         if copyself_delete_attachments:
             delete_attachments(msg)
-        save_to(copyself_folder_name,msg.as_string(),imap_flags_from_maildir_msg(msg),t)
+        save_to(copyself_folder_name,myAsString(msg),imap_flags_from_maildir_msg(msg),t)
         del m[k]
 
 def do_copyself_to_copyself():
@@ -496,7 +516,7 @@ def do_copyself_to_copyself():
             else: t = None # undated message ??
             if copyself_delete_attachments:
                 delete_attachments(msg)
-            save_to(copyself_folder_name,msg.as_string(),"\\Seen",t)
+            save_to(copyself_folder_name,myAsString(msg),"\\Seen",t)
             imap.store(msgID, '+FLAGS', '\\Deleted')
         check_ok(imap.expunge())
 
