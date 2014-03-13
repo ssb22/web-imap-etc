@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.21 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.22 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -382,8 +382,9 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if mbox:
         mbox.close()
-        if compression:
-            open_compressed(mboxpath,'wb').write(open(mboxpath,'rb').read())
+        if not os.stat(mboxpath).st_size: os.remove(mboxpath) # ended up with an empty file - delete it
+        elif compression:
+            open_compressed(mboxpath,'wb').write(open(mboxpath,'rb').read()) # will write a .bz2 etc
             os.remove(mboxpath)
     # don't do this until got here without error:
     check_ok(imap.expunge())
@@ -432,7 +433,8 @@ def open_compressed(fname,mode):
     elif compression=="gz":
         return gzip.open(fname+".gz",mode)
         # (again, compresslevel default is 9)
-    else: return open(fname,mode)
+    elif compression: raise Exception("Unrecognised compression type") # essential, as archive() assumes it can delete the original file after calling open_compressed
+    return open(fname,mode)
 
 already_created = set()
 def save_to(mailbox, message_as_string,
