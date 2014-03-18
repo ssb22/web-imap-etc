@@ -167,9 +167,13 @@ def check(text,content,url,errmsg):
     if not text: return # TODO: print error?
     if text.startswith("!"):
         if len(text)==1: return # TODO: print error?
-        if text[1:] in content:
+        if myFind(text[1:],content):
             sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
-    elif not text in content:
+    elif not myFind(text,content):
         sys.stdout.write(url+" no longer contains "+text+comment+errmsg+"\n")
+
+def myFind(text,content):
+  if text.startswith("*"): return re.search(text[1:],content)
+  else: return text in content
 
 if __name__=="__main__": main()

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.22 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.23 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -54,13 +54,16 @@ def extra_rules(message_as_string): return False
 # message, or False = no decision
 catch_extraRules_errors = True
 
-def handle_authenticated_message(subject,body):
+def handle_authenticated_message(subject,firstPart):
     return False
 # - you can override this to any function you want, which
 # does anything you want in response to messages that are
 # SSL-authenticated as coming from yourself (see below).
 # Returns the name of a folder, or None to delete the
 # message, or False = undecided (normal rules will apply).
+# firstPart is a UTF-8 copy of the first part of the body
+# (which will typically contain plain text even if you
+# were using an HTML mailer).
 trusted_domain = None # or e.g. ".example.org" specifying
 # the domain of "our" network whose Received headers we
 # can trust for SMTPS authentication (below)
@@ -276,9 +279,9 @@ def process_imap_inbox():
         msg = email.message_from_string(message)
         box = False
         if authenticates(msg):
-          # do auth'd-msgs processing first, before any charset conversion or convert-to-attachment, so handle_authenticated_message can get it in its original form
+          # do auth'd-msgs processing before any convert-to-attachment etc
           debug("Message authenticates")
-          try: box = handle_authenticated_message(msg.get("Subject",""),message[message.find("\r\n\r\n"):].lstrip())
+          try: box = handle_authenticated_message(msg.get("Subject",""),getFirstPart(msg).lstrip())
           except:
             if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
             o = StringIO() ; traceback.print_exc(None,o)
@@ -376,6 +379,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
         else: t = time.time() # undated message ??
         if t >= time.time() - age: continue
+        globalise_charsets(msg) # in case wasn't done on receive (this also makes sure UTF-8 is quopri if it would be shorter, which can make archives easier to search)
         if archived_attachments_path:
             save_attachments_separately(msg)
         mbox.add(msg) # TODO: .set_flags A=answered R=read ?  (or doesn't it matter so much for old-message archiving; flags aren't always right anyway as you might have answered something using another method)
@@ -541,7 +545,7 @@ def utf8_to_header(u8):
     if u8.startswith('=?') or re.search(r"[^ -~]",u8): return "=?UTF-8?B?"+base64.encodestring(u8).replace("\n","")+"?="
     else: return u8 # ASCII and no encoding needed
 
-import email.mime.multipart,email.mime.message,email.mime.text
+import email.mime.multipart,email.mime.message,email.mime.text,email.charset
 def turn_into_attachment(message):
     m2 = email.mime.multipart.MIMEMultipart()
     for k,v in message.items():
@@ -556,10 +560,24 @@ def size_of_first_part(message):
         return 0
     return len(message.get_payload())
 
+def getFirstPart(message):
+    if message.is_multipart():
+        for i in message.get_payload():
+            return getFirstPart(i)
+        return ""
+    try: pl = message.get_payload(decode=True)
+    except: return ""
+    cs = message.get_content_charset(None)
+    if cs in [None,'us-ascii','utf-8']: return pl
+    if cs in ['gb2312','gbk']: cs = 'gb18030'
+    return pl.decode(cs).encode('utf-8')
+
 def globalise_charsets(message):
     """'Globalises' the character sets of all parts of
         email.message.Message object 'message'.
         Only us-ascii and utf-8 charsets are 'global'.
+        Also tries to use quoted-printable rather than
+        base64 if doing so won't increase the length.
         Returns True if any changes were made."""
     changed = False
     for line in ["From","To","Cc","Subject","Reply-To"]:
@@ -576,15 +594,25 @@ def globalise_charsets(message):
             if globalise_charsets(i): changed = True
         return changed
     m = message.get_content_charset(None)
-    if m in [None,'us-ascii','utf-8']: return changed # no further conversion required
+    if m in [None,'us-ascii','utf-8'] and (not 'Content-Transfer-Encoding' in message or message['Content-Transfer-Encoding']=='quoted-printable'): return changed # no further conversion required
     if m in ['gb2312','gbk']: m = 'gb18030'
     try: p = message.get_payload(decode=True).decode(m)
     except: return changed # problems decoding this message
+    if message.get_content_type()=="text/html":
+        q = '[\'"]' # could use either " or ' quotes
+        p = re.sub(r'(?i)<meta\s+http[_-]equiv='+q+r'?content-type'+q+r'?\s+content='+q+'[^\'"]*'+q+r'>','',p) # better remove charset meta tags after we changed the charset (TODO: what if they conflict with the message header anyway?)
+    p = p.encode('utf-8')
     if 'Content-Transfer-Encoding' in message:
+        isQP = (message['Content-Transfer-Encoding']=='quoted-printable')
         del message['Content-Transfer-Encoding']
-    if message.get_content_type()=="text/html": p = re.sub(r'(?i)<meta\s+http[-_]equiv="?content-type"?\s+content="[^"]*">','',p) # better remove charset meta tags after we changed the charset (TODO: what if they conflict with the message header anyway?)
-    message.set_payload(p.encode('utf-8'),'utf-8')
+    else: isQP = False
+    if isQP or len(quopri.encodestring(p)) <= len(base64.encodestring(p)): email_u8_quopri()
+    else: email_u8_default()
+    message.set_payload(p,'utf-8')
+    email_u8_default() # just in case
     return True # charset changed
+def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.QP,'utf-8') # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
+def email_u8_default(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
 
 def mainloop():
   newtime = oldtime = time.localtime()[:3]
@@ -666,7 +694,7 @@ def multinote(filelist):
         os.remove(f)
     
 def do_multinote(body):
-    body = body.strip()
+    body = re.sub("\r\n?","\n",body.strip())
     if not body:
         debug("Not creating message from blank file")
         return
@@ -708,7 +736,7 @@ def do_quicksearch(s):
     for f in os.listdir(archive_path):
         f = archive_path+os.sep+f
         if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'r')
-        else: f2 = open(f) # ??
+        else: f2 = open(f) # ?? (shouldn't happen, as all the files we put there should end with compression_ext, but just in case; TODO other forms of compression?)
         for l in f2:
             if s.lower() in l.lower(): try_print(f,l.strip())
 
