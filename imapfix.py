@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.23 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.231 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -583,7 +583,7 @@ def globalise_charsets(message):
     for line in ["From","To","Cc","Subject","Reply-To"]:
         if not line in message: continue
         l = message[line]
-        l2 = re.sub(r'=\?(.*?)\?(.*?)\?(.*?)\?=',globalise_header_charset,l)
+        l2 = re.sub(r'=\?(.*?)\?(.*?)\?(.*?)\?=',globalise_header_charset,l).replace('\n',' ').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
         if l==l2: continue
         # debug("Setting "+line+" to "+repr(l2))
         del message[line]
