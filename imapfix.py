@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.231 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.232 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -376,6 +376,17 @@ def archive(foldername, mboxpath, age, spamprobe_action):
             run_spamprobe(spamprobe_action, message)
         if not age: continue
         msg = email.message_from_string(message)
+        if not message.startswith("From "): # needed for Unix mbox, otherwise mbox lib fills it in with MAILER-DAEMON
+            f = []
+            if 'From' in msg:
+                fr = msg['From']
+                if '<' in fr and '>' in fr[fr.index('<'):]:
+                    fr = fr[fr.index('<'):fr.rindex('>')]
+                f.append(fr)
+                if 'Date' in msg: f.append(msg['Date'])
+                if fr:
+                  message="From "+' '.join(f)+"\r\n"+message
+                  msg = email.message_from_string(message)
         if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
         else: t = time.time() # undated message ??
         if t >= time.time() - age: continue
