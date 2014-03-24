@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.232 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.233 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -63,7 +63,7 @@ def handle_authenticated_message(subject,firstPart):
 # message, or False = undecided (normal rules will apply).
 # firstPart is a UTF-8 copy of the first part of the body
 # (which will typically contain plain text even if you
-# were using an HTML mailer).
+# were using an HTML mailer); subject is also UTF-8 coded.
 trusted_domain = None # or e.g. ".example.org" specifying
 # the domain of "our" network whose Received headers we
 # can trust for SMTPS authentication (below)
@@ -281,7 +281,7 @@ def process_imap_inbox():
         if authenticates(msg):
           # do auth'd-msgs processing before any convert-to-attachment etc
           debug("Message authenticates")
-          try: box = handle_authenticated_message(msg.get("Subject",""),getFirstPart(msg).lstrip())
+          try: box = handle_authenticated_message(re.sub(r'=\?(.*?)\?(.*?)\?(.*?)\?=',header_to_u8,msg.get("Subject","")),getFirstPart(msg).lstrip())
           except:
             if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
             o = StringIO() ; traceback.print_exc(None,o)
@@ -537,10 +537,8 @@ def do_copyself_to_copyself():
             imap.store(msgID, '+FLAGS', '\\Deleted')
         check_ok(imap.expunge())
 
-def globalise_header_charset(match):
+def header_to_u8(match):
     charset = match.group(1).lower()
-    if charset=="utf-8":
-        return match.group() # no changes needed
     if charset in ['gb2312','gbk']: charset='gb18030'
     encoding = match.group(2)
     text = match.group(3)
@@ -551,7 +549,11 @@ def globalise_header_charset(match):
     except:
         debug("Bad header line: exception decoding "+repr(text)+" in "+charset+", leaving unchanged")
         return match.group()
-    return utf8_to_header(text.encode('utf-8'))
+    return text.encode('utf-8')
+def globalise_header_charset(match):
+    if match.group(1).lower()=="utf-8":
+        return match.group() # no changes needed
+    return utf8_to_header(header_to_u8(match))
 def utf8_to_header(u8):
     if u8.startswith('=?') or re.search(r"[^ -~]",u8): return "=?UTF-8?B?"+base64.encodestring(u8).replace("\n","")+"?="
     else: return u8 # ASCII and no encoding needed
@@ -645,7 +647,6 @@ def mainloop():
         done_spamprobe_cleanup = True
     if logout_before_sleep: make_sure_logged_out()
     if not poll_interval: break
-    if exit_if_imapfix_config_py_changes and not mtime == os.stat("imapfix_config.py").st_mtime: break
     debug("Sleeping for "+str(poll_interval)+" seconds")
     time.sleep(poll_interval) # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
     newtime = time.localtime()[:3]
@@ -653,6 +654,7 @@ def mainloop():
       oldtime=newtime
       if midnight_command: os.system(midnight_command)
       done_spamprobe_cleanup = False
+    if exit_if_imapfix_config_py_changes and not mtime == os.stat("imapfix_config.py").st_mtime: break
 
 def process_secondary_imap():
     global imap
