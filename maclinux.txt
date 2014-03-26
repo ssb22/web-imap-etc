@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Silas S. Brown 2012-14 - public domain  (version 1.42)
+# Silas S. Brown 2012-14 - public domain  (version 1.43)
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile,
 # or if you prefer you can keep it in a separate file
@@ -154,8 +154,8 @@ if declare -F chmox >/dev/null && ! which -s kchmviewer; then
   # Intel binaries are included in chmox 0.4+
 fi
 
-if declare -F adobe-reader >/dev/null && ! which -s acroread; then
-  acroread () { adobe-reader "$@" ; }
+if alias adobe-reader >/dev/null && ! which -s acroread; then
+  acroread () { open -W -a "$(alias adobe-reader|sed -e 's/[^"]*"//' -e 's/".*//')" "$@" ; } # must define it this way, not just by calling adobe-reader within the function, because our aliases might not be available in a subshell
   export -f acroread
 fi
 
