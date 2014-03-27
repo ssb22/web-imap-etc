@@ -282,7 +282,7 @@ def authenticated_wrapper(subject,firstPart):
         save_to(filtered_inbox,"From: imapfix.py\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(time.time()),o.getvalue()))
         r=False
     if type(r)==int:
-        callAuth_time = time.time() + ret ; return None
+        callAuth_time = time.time() + r ; return None
     else: return r
 
 def yield_all_messages():
