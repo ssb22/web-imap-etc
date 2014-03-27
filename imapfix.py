@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.233 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.234 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -61,6 +61,11 @@ def handle_authenticated_message(subject,firstPart):
 # SSL-authenticated as coming from yourself (see below).
 # Returns the name of a folder, or None to delete the
 # message, or False = undecided (normal rules will apply).
+# Or returns an integer, which is equivalent to None but
+# also specifies the minimum number of seconds before it
+# can be called again (for example if the command results
+# in sending mail to others and you don't want to do this
+# too quickly if lots of commands have become batched up).
 # firstPart is a UTF-8 copy of the first part of the body
 # (which will typically contain plain text even if you
 # were using an HTML mailer); subject is also UTF-8 coded.
@@ -261,17 +266,41 @@ def myAsString(msg):
         message = a.replace("\n","\r\n")+"\r\n\r\n"+b
     return message
 
+callAuth_time = None
+def authenticated_wrapper(subject,firstPart):
+    global callAuth_time
+    if callAuth_time:
+        toSleep = max(0,callAuth_time-time.time())
+        if toSleep: debug("Sleeping for another %d seconds before calling handle_authenticated_message again" % toSleep)
+        time.sleep(toSleep)
+        callAuth_time = None
+    try:
+        r=handle_authenticated_message(subject,firstPart)
+    except:
+        if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
+        o = StringIO() ; traceback.print_exc(None,o)
+        save_to(filtered_inbox,"From: imapfix.py\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(time.time()),o.getvalue()))
+        r=False
+    if type(r)==int:
+        callAuth_time = time.time() + ret ; return None
+    else: return r
+
+def yield_all_messages():
+    typ, data = imap.search(None, 'ALL')
+    if not typ=='OK': raise Exception(typ)
+    for msgID in data[0].split():
+        typ, data = imap.fetch(msgID, '(FLAGS)')
+        if not typ=='OK': continue
+        if '\\Deleted' in data[0]: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
+        typ, data = imap.fetch(msgID, '(RFC822)')
+        if not typ=='OK': continue
+        yield msgID, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
+
 def process_imap_inbox():
     make_sure_logged_in()
     check_ok(imap.select()) # the inbox
-    typ, data = imap.search(None, 'ALL')
-    if not typ=='OK': raise Exception(typ)
     imapMsgid = None ; newMail = False
-    for msgID in data[0].split():
-        typ, data = imap.fetch(msgID, '(RFC822)')
-        if not typ=='OK': continue
-        # data[0][0] is e.g. '1 (RFC822 {1015}'
-        message = data[0][1]
+    for msgID,message in yield_all_messages():
         if leave_note_in_inbox and imap==saveImap and isImapfixNote(message):
             if imapMsgid: # somehow ended up with 2, delete one
                 imap.store(imapMsgid, '+FLAGS', '\\Deleted')
@@ -281,11 +310,7 @@ def process_imap_inbox():
         if authenticates(msg):
           # do auth'd-msgs processing before any convert-to-attachment etc
           debug("Message authenticates")
-          try: box = handle_authenticated_message(re.sub(r'=\?(.*?)\?(.*?)\?(.*?)\?=',header_to_u8,msg.get("Subject","")),getFirstPart(msg).lstrip())
-          except:
-            if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
-            o = StringIO() ; traceback.print_exc(None,o)
-            save_to(filtered_inbox,"From: imapfix.py\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(time.time()),o.getvalue()))
+          box = authenticated_wrapper(re.sub(r'=\?(.*?)\?(.*?)\?(.*?)\?=',header_to_u8,msg.get("Subject","")),getFirstPart(msg).lstrip())
         if not box==None:
          # globalise charsets BEFORE the filtering rules
          # (especially if they've been developed based on
@@ -319,7 +344,7 @@ def process_imap_inbox():
         # un-"seen" it (in case the IMAP server treats our fetching it as "seen"); TODO what if the client really read it but didn't delete?
         imap.store(imapMsgid, '-FLAGS', '\\Seen')
     check_ok(imap.expunge())
-    if (not quiet) and imap==saveImap: debug("Quota "+repr(imap.getquotaroot(filtered_inbox)[1]))
+    if (not quiet) and imap==saveImap: debug("Quota "+repr(imap.getquotaroot(filtered_inbox)[1])) # RFC 2087 "All mailboxes that share the same named quota root share the resource limits of the quota root" - so if the IMAP server has been set up in a typical way with just one limit, this command should print the current and max values for that shared limit.  (STORAGE = size in Kb, MESSAGE = number)
 
 def authenticates(msg):
     if not trusted_domain or not smtps_auth: return
@@ -365,12 +390,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
     make_sure_logged_in()
     typ, data = imap.select(foldername)
     if not typ=='OK': return # couldn't select that folder
-    typ, data = imap.search(None, 'ALL')
-    if not typ=='OK': raise Exception(typ)
-    for msgID in data[0].split():
-        typ, data = imap.fetch(msgID, '(RFC822)')
-        if not typ=='OK': continue
-        message = data[0][1]
+    for msgID,message in yield_all_messages():
         if spamprobe_action:
             # TODO: combine multiple messages first?
             run_spamprobe(spamprobe_action, message)
@@ -517,14 +537,9 @@ def do_copyself_to_copyself():
         if not typ=='OK':
             debug("Skipping non-selectable folder "+folder)
             continue
-        typ, data = imap.search(None, 'ALL')
-        if not typ=='OK': raise Exception(typ)
         said = False
-        for msgID in data[0].split():
-            typ, data = imap.fetch(msgID, '(RFC822)')
-            if not typ=='OK': continue
-            message = data[0][1]
-            if not said:
+        for msgID,message in yield_all_messages():
+            if not said: # don't say until we know there's at least some messages in the folder
                 debug("Moving messages from "+folder+" to "+copyself_folder_name)
                 said = True
             msg = email.message_from_string(message)
@@ -628,7 +643,7 @@ def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,
 def email_u8_default(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
 
 def mainloop():
-  newtime = oldtime = time.localtime()[:3]
+  newDay = oldDay = time.localtime()[:3] # for midnight
   done_spamprobe_cleanup = False
   secondary_imap_due = 0
   if exit_if_imapfix_config_py_changes:
@@ -649,12 +664,20 @@ def mainloop():
     if not poll_interval: break
     debug("Sleeping for "+str(poll_interval)+" seconds")
     time.sleep(poll_interval) # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
-    newtime = time.localtime()[:3]
-    if not oldtime==newtime:
-      oldtime=newtime
+    newDay = time.localtime()[:3]
+    if not oldDay==newDay:
+      oldDay=newDay
       if midnight_command: os.system(midnight_command)
       done_spamprobe_cleanup = False
-    if exit_if_imapfix_config_py_changes and not mtime == os.stat("imapfix_config.py").st_mtime: break
+    if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime): break
+
+def near_equal(time1,time2):
+    # allow small difference due to filesystem quirks
+    # (e.g. if the server caches file times at a higher
+    # resolution than the underlying filesystem, which can
+    # be the case in some Linux+NetWare setups)
+    if time1 > time2: time2,time1 = time1,time2
+    return (time2-time1) <= 5
 
 def process_secondary_imap():
     global imap
@@ -711,15 +734,9 @@ def do_multinote(body):
     if not body:
         debug("Not creating message from blank file")
         return
-    body += "\n"
-    subject = body.split("\n",1)[0]
-    try: box = handle_authenticated_message(subject,body) # TODO: we haven't yet called utf8_to_header on it, whereas we didn't decode MIME subjects before calling handle_authenticated_message from process_imap_inbox above; make the process_imap_inbox behaviour same as this one?
-    except:
-        if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
-        o = StringIO() ; traceback.print_exc(None,o)
-        save_to(filtered_inbox,"From: imapfix.py\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(time.time()),o.getvalue()))
-        box = False
-    if box==False: box = filtered_inbox
+    subject,body = (body+"\n").split("\n",1)
+    box = authenticated_wrapper(subject,body)
+    if box==False: box=filtered_inbox
     if not box==None: save_to(box,"From: imapfix.py\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+body+"\n")
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
