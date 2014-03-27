@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.235 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.236 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -326,7 +326,7 @@ def process_imap_inbox():
         if authenticates(msg):
           # do auth'd-msgs processing before any convert-to-attachment etc
           debug("Message authenticates")
-          box = authenticated_wrapper(re.sub(r'=\?(.*?)\?(.*?)\?(.*?)\?=',header_to_u8,msg.get("Subject","")),getFirstPart(msg).lstrip())
+          box = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject","")),getFirstPart(msg).lstrip())
         if not box==None:
          # globalise charsets BEFORE the filtering rules
          # (especially if they've been developed based on
@@ -569,13 +569,14 @@ def do_copyself_to_copyself():
             imap.store(msgID, '+FLAGS', '\\Deleted')
         check_ok(imap.expunge())
 
+header_charset_regex = r'=\?(.*?)\?(.*?)\?(.*?)\?='
 def header_to_u8(match):
     charset = match.group(1).lower()
     if charset in ['gb2312','gbk']: charset='gb18030'
     encoding = match.group(2)
     text = match.group(3)
     try:
-        if encoding=='Q': text = quopri.decodestring(text)
+        if encoding=='Q': text = quopri.decodestring(text,header=True)
         else: text = base64.decodestring(text)
         text = text.decode(charset)
     except:
@@ -628,7 +629,7 @@ def globalise_charsets(message):
     for line in ["From","To","Cc","Subject","Reply-To"]:
         if not line in message: continue
         l = message[line]
-        l2 = re.sub(r'=\?(.*?)\?(.*?)\?(.*?)\?=',globalise_header_charset,l).replace('\n',' ').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
+        l2 = re.sub(header_charset_regex,globalise_header_charset,l).replace('\n',' ').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
         if l==l2: continue
         # debug("Setting "+line+" to "+repr(l2))
         del message[line]
