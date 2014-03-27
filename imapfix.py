@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.234 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.235 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -157,6 +157,13 @@ exit_if_imapfix_config_py_changes = False # if True, does
 # what it says, on the assumption that a wrapper script
 # will restart it (TODO: make it restart by itself?)
 
+failed_address_to_subject = True # try to rewrite delivery
+# failure reports so that failed addresses are included in
+# the Subject line and are therefore visible from a table
+# of subjects without having to go in to the message.
+# Not all delivery failure reports can be adjusted in this
+# way; it depends on how the bouncing relay formats them.
+
 # Command-line options
 # --------------------
 
@@ -296,6 +303,15 @@ def yield_all_messages():
         if not typ=='OK': continue
         yield msgID, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
 
+def rewrite_deliveryfail(msg):
+    if not failed_address_to_subject: return
+    subj = msg.get("Subject","")
+    if not subj.lower().startswith("mail delivery") or not msg.get("From","").lower().startswith("mail delivery"): return
+    fr = msg.get("X-Failed-Recipients","")
+    if not fr: return
+    del msg['Subject'] ; msg['Subject']=fr+' '+subj
+    return True
+
 def process_imap_inbox():
     make_sure_logged_in()
     check_ok(imap.select()) # the inbox
@@ -316,6 +332,7 @@ def process_imap_inbox():
          # (especially if they've been developed based on
          # post-charset-conversion saved messages)
          changed = globalise_charsets(msg)
+         changed = rewrite_deliveryfail(msg) or changed
          if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
          if changed: message = myAsString(msg)
          if box==False:
