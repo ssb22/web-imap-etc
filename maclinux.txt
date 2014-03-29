@@ -12,7 +12,7 @@
 
 # If you want to compare this code to old versions, the old
 # versions are being kept on SourceForge's E-GuideDog SVN repository
-# http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
+# http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 # although some early ones are missing.
 
 if test -d /Volumes && test "$(uname -s)" == Darwin; then
