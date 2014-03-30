@@ -1,5 +1,5 @@
 
-# webcheck.py v1.03 (c) 2014 Silas S. Brown.  License: GPL
+# webcheck.py v1.04 (c) 2014 Silas S. Brown.  License: GPL
 # See website for description and usage instructions
 
 # CHANGES
@@ -71,7 +71,7 @@ def htmlStrings(html):
     try:
         parser.feed(html) ; parser.close()
         return parser.text(), ""
-    except: return html, "\n- problem extracting strings from HTML at line %d offset %d\n%s" % parser.getpos()+(traceback.format_exc(),) # returning html might still work for 'was that text still there' queries; error message is displayed only if it doesn't
+    except: return html, "\n- problem extracting strings from HTML at line %d offset %d\n%s" % (parser.getpos()+(traceback.format_exc(),)) # returning html might still work for 'was that text still there' queries; error message is displayed only if it doesn't
 
 def main():
 
@@ -110,6 +110,7 @@ def worker_thread(*args):
               if minDays and previous_timestamps[(url,'lastFetch')]+minDays >= dayNo(): continue
           previous_timestamps[(url,'lastFetch')] = dayNo() # (keep it even if minDays==0, because that might be changed by later edits of webcheck.list)
           time.sleep(max(0,last_fetch_finished+delay-time.time()))
+          if isatty(sys.stderr): sys.stderr.write('.')
           u,content = tryRead(url,opener)
           last_fetch_finished = time.time()
           if content==None: continue # not modified
