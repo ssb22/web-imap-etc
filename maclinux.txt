@@ -84,7 +84,7 @@ alias do-i-need-more-ram="if test $((vm_stat|grep '^Page[io]'|sed -e 's/.*://' -
 # just make an 'update-functions' cmd for use when wanted?
 DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 python -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" \"$@\" ; } ; export -f "+Command'$'\n\n''print "\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:])' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
 DefineApps /Applications /usr/local/Cellar/emacs
-if declare -F xcode >/dev/null; then DefineApps "$(declare|grep -i /Xcode.app|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
+if declare -F xcode >/dev/null; then DefineApps "$(declare|grep -i '^ *open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
 unset DefineApps
 
 # One slight annoyance is if you use some Macs that
@@ -131,7 +131,7 @@ alias gnome-open=open
 # inetd then you might need to increase the connections/min
 # allowed in inetd.conf, e.g. "ftp stream tcp nowait.32767"
 if declare -F macfusion >/dev/null; then
-  export MF_Path=$(declare|grep -i /Macfusion.app|sed -e 's/[^"]*"//' -e 's/".*//')
+  export MF_Path="$(declare|grep -i '^ *open .*/Macfusion.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')"
   export sshfs_Path="$MF_Path/Contents/PlugIns/sshfs.mfplugin/Contents/Resources/sshfs-static"
   export curlftpfs_Path="$MF_Path/Contents/PlugIns/ftpfs.mfplugin/Contents/Resources/curlftpfs_static_mg"
   if ! which -s curlftpfs &&
