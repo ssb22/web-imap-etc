@@ -131,19 +131,22 @@ alias gnome-open=open
 # inetd then you might need to increase the connections/min
 # allowed in inetd.conf, e.g. "ftp stream tcp nowait.32767"
 if declare -F macfusion >/dev/null; then
-  export MF_Path="$(declare|grep -i '^ *open .*/Macfusion.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')"
+  export MF_Path="$(declare|grep -i '^ *open .*/Macfusion.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')" #' # (comment for some versions of Emacs syntax highlighting)
   export sshfs_Path="$MF_Path/Contents/PlugIns/sshfs.mfplugin/Contents/Resources/sshfs-static"
   export curlftpfs_Path="$MF_Path/Contents/PlugIns/ftpfs.mfplugin/Contents/Resources/curlftpfs_static_mg"
+  unset MF_Path
   if ! which -s curlftpfs &&
     test -e "$curlftpfs_Path"; then
       curlftpfs () { "$curlftpfs_Path" -o uid="$(id -u)" "$@" ; }
       ftpfs () { curlftpfs "$@" ; } # might as well
       export -f curlftpfs ftpfs
+  else unset curlftpfs_Path
   fi
   if ! which -s sshfs &&
     test -e "$sshfs_Path"; then
       sshfs () { "$sshfs_Path" "$@" ; }
       export -f sshfs
+  else unset sshfs_Path
   fi
 fi
 
@@ -154,7 +157,7 @@ if declare -F chmox >/dev/null && ! which -s kchmviewer; then
   # Intel binaries are included in chmox 0.4+
 fi
 
-if alias adobe-reader >/dev/null && ! which -s acroread; then
+if alias adobe-reader 2>/dev/null >/dev/null && ! which -s acroread; then
   acroread () { open -W -a "$(alias adobe-reader|sed -e 's/[^"]*"//' -e 's/".*//')" "$@" ; } # must define it this way, not just by calling adobe-reader within the function, because our aliases might not be available in a subshell
   export -f acroread
 fi
