@@ -110,7 +110,7 @@ def worker_thread(*args):
               if minDays and previous_timestamps[(url,'lastFetch')]+minDays >= dayNo(): continue
           previous_timestamps[(url,'lastFetch')] = dayNo() # (keep it even if minDays==0, because that might be changed by later edits of webcheck.list)
           time.sleep(max(0,last_fetch_finished+delay-time.time()))
-          if isatty(sys.stderr): sys.stderr.write('.')
+          if sys.stderr.isatty(): sys.stderr.write('.')
           u,content = tryRead(url,opener)
           last_fetch_finished = time.time()
           if content==None: continue # not modified
