@@ -851,8 +851,13 @@ def other_running():
         m = re.match(lineFormat,p)
         if not m: continue
         user,pid,command = m.groups()
-        if not imapfix_name in command: continue # it's not an imapfix process
-        if command[command.rindex(imapfix_name)+len(imapfix_name):].lstrip().startswith('--'): continue # it's an imapfix process with options - ignore
+        start = command.find(sys.argv[0])
+        if start<0: continue # it's not an imapfix process
+        if command[start+len(sys.argv[0]):].strip(): continue # ignore imapfix process with options (or a shell command like 'imapfix;something-else')
+        if start:
+            before_arg0 = command[:start].strip()
+            if ' ' in before_arg0 or ';' in before_arg0 or '&' in before_arg0: continue # some kind of shell command that ends up running imapfix
+        # if get this far, it's *probably* an imapfix process (but not guaranteed - I did say exit_if_other_running wasn't perfect
         if pid==str(os.getpid()): thisPIDuser = user
         else: otherPIDusers.add(user)
     return thisPIDuser in otherPIDusers
