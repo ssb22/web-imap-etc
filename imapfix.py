@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.236 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.237 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -164,10 +164,31 @@ failed_address_to_subject = True # try to rewrite delivery
 # Not all delivery failure reports can be adjusted in this
 # way; it depends on how the bouncing relay formats them.
 
+exit_if_other_running = True # when run without options,
+# try to detect if another no-options imapfix is running
+# as the same user, and exit if so.  Not guaranteed (for
+# example, it can't protect against instances being run on
+# different machines of a cluster), but might help to
+# reduce the build-up of processes if there is a runaway
+# situation with whatever you're using to start them.
+# Multiple imapfix instances are sort-of OK but may lead
+# to messages being processed in duplicate and/or load the
+# IMAP server too much; on the other hand lock files etc
+# can have the problem of 'stale' locks.  At least a limit
+# of 1 process per server in the cluster is better than no
+# limit at all.  On the other hand you might want to set
+# this to False if you run different instances of imapfix
+# with different configuration files as the same user and
+# don't want to rename (or symlink) imapfix so that these
+# look different in the process table.
+# (exit_if_other_running needs the Unix 'ps' command.)
+
 # Command-line options
 # --------------------
 
 # Run with no options = process mail as normal
+
+# Run with --once = as if poll_interval=False
 
 # Run with --quicksearch (search string) to search both
 # archive_path and the server (all folders), but "quick"
@@ -273,6 +294,11 @@ def myAsString(msg):
         message = a.replace("\n","\r\n")+"\r\n\r\n"+b
     return message
 
+imapfix_name = sys.argv[0]
+if os.sep in imapfix_name: imapfix_name=imapfix_name[imapfix_name.rindex(os.sep)+1:]
+if not imapfix_name: imapfix_name = "imapfix.py"
+# used both in From line and by other_running()
+
 callAuth_time = None
 def authenticated_wrapper(subject,firstPart):
     global callAuth_time
@@ -286,7 +312,7 @@ def authenticated_wrapper(subject,firstPart):
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
         o = StringIO() ; traceback.print_exc(None,o)
-        save_to(filtered_inbox,"From: imapfix.py\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(time.time()),o.getvalue()))
+        save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(time.time()),o.getvalue()))
         r=False
     if type(r)==int:
         callAuth_time = time.time() + r ; return None
@@ -343,7 +369,7 @@ def process_imap_inbox():
             except:
                 if not catch_extraRules_errors: raise
                 o = StringIO() ; traceback.print_exc(None,o)
-                save_to(filtered_inbox,"From: imapfix.py\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(time.time()),o.getvalue()))
+                save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(time.time()),o.getvalue()))
                 box = filtered_inbox
             if box==False: box = spamprobe_rules(message)
         if box:
@@ -381,9 +407,9 @@ def authenticates(msg):
       elif smtps_auth in rx: return True
       if not m.groups()[0].endswith(trusted_domain): break # next-older hop is not on our net - stop trusting, no matter what is claimed in further Received headers
 
-def imapfixNote(): return "From: imapfix.py\r\nSubject: Folder "+repr(filtered_inbox)+" has new mail\r\nDate: "+email.utils.formatdate(time.time())+"\r\n\r\n \n" # make sure there's at least one space in the message, for some clients that don't like empty body
+def imapfixNote(): return "From: "+imapfix_name+"\r\nSubject: Folder "+repr(filtered_inbox)+" has new mail\r\nDate: "+email.utils.formatdate(time.time())+"\r\n\r\n \n" # make sure there's at least one space in the message, for some clients that don't like empty body
 # (and don't put a date in the Subject line: the message's date is usually displayed anyway, and screen space might be in short supply)
-def isImapfixNote(msg): return "From: imapfix.py" in msg and ("Subject: Folder "+repr(filtered_inbox)+" has new mail") in msg
+def isImapfixNote(msg): return ("From: "+imapfix_name) in msg and ("Subject: Folder "+repr(filtered_inbox)+" has new mail") in msg
 
 def archive(foldername, mboxpath, age, spamprobe_action):
     if age:
@@ -733,7 +759,7 @@ def do_note(subject,ctype="text/plain",maybe=0):
     if not body:
         if maybe: return
         body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
-    save_to(filtered_inbox,"From: imapfix.py\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+body+"\n")
+    save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+body+"\n")
 
 def multinote(filelist):
     for f in filelist:
@@ -755,7 +781,7 @@ def do_multinote(body):
     subject,body = (body+"\n").split("\n",1)
     box = authenticated_wrapper(subject,body)
     if box==False: box=filtered_inbox
-    if not box==None: save_to(box,"From: imapfix.py\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+body+"\n")
+    if not box==None: save_to(box,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+body+"\n")
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
 if quiet==2: quiet = not isatty(sys.stdout)
@@ -815,6 +841,22 @@ def make_sure_logged_out():
         imap.logout()
         imap = saveImap = None
 
+def other_running():
+    import commands
+    ps = commands.getoutput("ps auxwww").split('\n')
+    numCols = len(ps[0].split())
+    lineFormat = r"^(.*[^\s])\s+([0-9]+)"+r"\s+[^\s]+"*(numCols-3)+r"\s+([^\s].*)$" # this assumes the PID will be the first numeric thing that comes after whitespace (which should cope with usernames that have whitespace in them as long as they don't have whitespace followed by number)
+    thisPIDuser = "" ; otherPIDusers = set()
+    for p in ps:
+        m = re.match(lineFormat,p)
+        if not m: continue
+        user,pid,command = m.groups()
+        if not imapfix_name in command: continue # it's not an imapfix process
+        if command[command.rindex(imapfix_name)+len(imapfix_name):].lstrip().startswith('--'): continue # it's an imapfix process with options - ignore
+        if pid==str(os.getpid()): thisPIDuser = user
+        else: otherPIDusers.add(user)
+    return thisPIDuser in otherPIDusers
+
 if __name__ == "__main__":
   if '--archive' in sys.argv: do_archive()
   elif '--quicksearch' in sys.argv: do_quicksearch(' '.join(sys.argv[sys.argv.index('--quicksearch')+1:]))
@@ -823,4 +865,7 @@ if __name__ == "__main__":
   elif '--maybenote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--maybenote')+1:]),maybe=1)
   elif '--htmlnote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--htmlnote')+1:]),"text/html")
   elif '--multinote' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote')+1:])
+  elif '--once' in sys.argv:
+      poll_interval = False ; mainloop()
+  elif exit_if_other_running and other_running(): sys.stderr.write("Another "+imapfix_name+" already running - exitting\n(Use "+imapfix_name+" --once if you want to force a run now)\n")
   else: mainloop()
