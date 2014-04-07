@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.237 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.238 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -54,13 +54,14 @@ def extra_rules(message_as_string): return False
 # message, or False = no decision
 catch_extraRules_errors = True
 
-def handle_authenticated_message(subject,firstPart):
+def handle_authenticated_message(subject,firstPart,attach):
     return False
 # - you can override this to any function you want, which
 # does anything you want in response to messages that are
 # SSL-authenticated as coming from yourself (see below).
 # Returns the name of a folder, or None to delete the
 # message, or False = undecided (normal rules will apply).
+# If folder name starts with *, mail will be marked 'seen'.
 # Or returns an integer, which is equivalent to None but
 # also specifies the minimum number of seconds before it
 # can be called again (for example if the command results
@@ -69,6 +70,7 @@ def handle_authenticated_message(subject,firstPart):
 # firstPart is a UTF-8 copy of the first part of the body
 # (which will typically contain plain text even if you
 # were using an HTML mailer); subject is also UTF-8 coded.
+# attach is a dictionary of filename:contents.
 trusted_domain = None # or e.g. ".example.org" specifying
 # the domain of "our" network whose Received headers we
 # can trust for SMTPS authentication (below)
@@ -300,15 +302,14 @@ if not imapfix_name: imapfix_name = "imapfix.py"
 # used both in From line and by other_running()
 
 callAuth_time = None
-def authenticated_wrapper(subject,firstPart):
+def authenticated_wrapper(subject,firstPart,attach={}):
     global callAuth_time
     if callAuth_time:
         toSleep = max(0,callAuth_time-time.time())
         if toSleep: debug("Sleeping for another %d seconds before calling handle_authenticated_message again" % toSleep)
         time.sleep(toSleep)
         callAuth_time = None
-    try:
-        r=handle_authenticated_message(subject,firstPart)
+    try: r=handle_authenticated_message(subject,firstPart,attach)
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
         o = StringIO() ; traceback.print_exc(None,o)
@@ -348,11 +349,13 @@ def process_imap_inbox():
                 imap.store(imapMsgid, '+FLAGS', '\\Deleted')
             imapMsgid = msgID ; continue
         msg = email.message_from_string(message)
-        box = False
+        box = False ; seenFlag=""
         if authenticates(msg):
           # do auth'd-msgs processing before any convert-to-attachment etc
           debug("Message authenticates")
-          box = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject","")),getFirstPart(msg).lstrip())
+          box = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject","")),getFirstPart(msg).lstrip(),get_attachments(msg))
+          if box and box[0]=='*':
+              box=box[1:] ; seenFlag="\\Seen"
         if not box==None:
          # globalise charsets BEFORE the filtering rules
          # (especially if they've been developed based on
@@ -374,7 +377,7 @@ def process_imap_inbox():
             if box==False: box = spamprobe_rules(message)
         if box:
             debug("Saving message to "+box)
-            save_to(box, message)
+            save_to(box, message, seenFlag)
             if box==filtered_inbox: newMail = True
         else: debug("Deleting message")
         imap.store(msgID, '+FLAGS', '\\Deleted')
@@ -466,6 +469,19 @@ def archive(foldername, mboxpath, age, spamprobe_action):
             os.remove(mboxpath)
     # don't do this until got here without error:
     check_ok(imap.expunge())
+
+def get_attachments(msg):
+    if msg.is_multipart():
+        d = {}
+        for i in msg.get_payload():
+            d.update(get_attachments(i))
+        return d
+    try: fname = msg.get_filename()
+    except: fname="illegal-filename"
+    if not fname: return {}
+    data = msg.get_payload(None,True)
+    if data: return {fname:data}
+    else: return {}
 
 def save_attachments_separately(msg):
     if msg.is_multipart():
