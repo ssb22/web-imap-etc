@@ -1,5 +1,5 @@
 
-# webcheck.py v1.04 (c) 2014 Silas S. Brown.  License: GPL
+# webcheck.py v1.05 (c) 2014 Silas S. Brown.  License: GPL
 # See website for description and usage instructions
 
 # CHANGES
@@ -59,7 +59,7 @@ class HTMLStrings(HTMLParser.HTMLParser):
         if tag in "p br div h1 h2 h3 h4 h5 h6 tr td table".split(): self.ensure(' ') # space rather than newline because we might want to watch for a string that goes across headings etc
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag,attrs)
-    def unescape(attr): return attr # as we don't use attrs above, no point trying to unescape them and possibly falling over if something's malformed
+    def unescape(self,attr): return attr # as we don't use attrs above, no point trying to unescape them and possibly falling over if something's malformed
     def handle_charref(self,ref):
         if ref.startswith('x'): self.handle_data(unichr(int(ref[1:],16)).encode('utf-8'))
         else: self.handle_data(unichr(int(ref)).encode('utf-8'))
