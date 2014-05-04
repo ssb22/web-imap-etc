@@ -209,6 +209,9 @@ alias spotlight-enable="sudo launchctl load -w /System/Library/LaunchDaemons/com
 
 updatedb () { sudo /usr/libexec/locate.updatedb ; }
 export -f updatedb
+# note that updatedb does not look in any user directories
+# that are chmod'd to 700 (user only) - be sure to chmod
+# a+rx any dirs you want it to scan
 
 # Here's a function to install arbitrary commands to run at desktop login
 # Notes: (1) PATH might be incomplete, (2) this maclinux won't have been executed (unless you source it in the script),
