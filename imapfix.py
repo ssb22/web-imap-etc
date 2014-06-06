@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.238 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.239 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -184,6 +184,15 @@ exit_if_other_running = True # when run without options,
 # don't want to rename (or symlink) imapfix so that these
 # look different in the process table.
 # (exit_if_other_running needs the Unix 'ps' command.)
+
+alarm_delay = 0 # with some Unix networked filesystems it is
+# possible for imapfix or one of its subprocesses to get
+# "stuck" - if this happens, set alarm_delay to a number of
+# seconds (preferably thousands) after which to terminate the
+# process using the Unix "alarm clock" mechanism.  The clock
+# will be reset every half that number of seconds if imapfix
+# is still functioning.  Note that a long-running filter etc
+# could also cause imapfix to become "stuck" this long.
 
 # Command-line options
 # --------------------
@@ -702,6 +711,14 @@ def globalise_charsets(message):
 def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.QP,'utf-8') # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
 def email_u8_default(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
 
+setAlarmAt = 0
+def checkAlarmDelay():
+    global setAlarmAt
+    if time.time() > setAlarmAt:
+        import signal
+        signal.setitimer(signal.ITIMER_REAL,alarm_delay)
+        setAlarmAt = time.time() + alarm_delay/2
+
 def mainloop():
   newDay = oldDay = time.localtime()[:3] # for midnight
   done_spamprobe_cleanup = False
@@ -709,6 +726,7 @@ def mainloop():
   if exit_if_imapfix_config_py_changes:
     mtime = os.stat("imapfix_config.py").st_mtime
   while True:
+    if alarm_delay: checkAlarmDelay()
     if maildirs_to_imap: do_maildirs_to_imap()
     if maildir_to_copyself: do_maildir_to_copyself()
     if copyself_alt_folder: do_copyself_to_copyself()
