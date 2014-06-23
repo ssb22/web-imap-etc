@@ -1,5 +1,5 @@
 
-# webcheck.py v1.05 (c) 2014 Silas S. Brown.  License: GPL
+# webcheck.py v1.1 (c) 2014 Silas S. Brown.  License: GPL
 # See website for description and usage instructions
 
 # CHANGES
@@ -12,6 +12,7 @@
 
 max_threads = 10
 delay = 2 # seconds
+keep_etags = False # if True, will also keep any ETag headers as well as Last-Modified
 
 import htmlentitydefs, traceback, HTMLParser, urllib2, urlparse, time, pickle, gzip, StringIO, re, Queue, sys
 if max_threads > 1: import thread
@@ -31,8 +32,10 @@ def read_input():
     elif freqCmd.startswith("days"): days=int(freqCmd.split()[1])
     else: freqCmd = None
     if freqCmd: continue
-    
-    url, text = line.split(None,1)
+
+    lSplit = line.split(None,1)
+    if len(lSplit)==1: url, text = lSplit[0],"" # RSS only
+    else: url, text = lSplit
     mainDomain = '.'.join(urlparse.urlparse(url).netloc.rsplit('.',2)[-2:])
     if not mainDomain in ret:
         ret[mainDomain] = {}
@@ -84,7 +87,7 @@ def main():
     try: previous_timestamps = pickle.Unpickler(open(".webcheck-last","rb")).load()
     except: previous_timestamps = {}
     old_previous_timestamps = previous_timestamps.copy()
-    
+
     for i in xrange(1,max_threads):
         if jobs.empty(): break # enough are going already
         thread.start_new_thread(worker_thread,())
@@ -100,7 +103,7 @@ def worker_thread(*args):
         try: job = jobs.get(False)
         except: return # no more jobs left
         if opener==None:
-            opener = urllib2.build_opener()
+            opener = urllib2.build_opener(urllib2.HTTPCookieProcessor()) # HTTPCookieProcessor needed for some redirects
             opener.addheaders = [('User-agent',
                                   'Mozilla/5.0'), # TODO: ?
                          ('Accept-Encoding', 'gzip')]
@@ -118,26 +121,35 @@ def worker_thread(*args):
           if u:
               lm = u.info().getheader("Last-Modified",None)
               if lm: previous_timestamps[(url,'lastMod')] = lm
+              if keep_etags:
+                e = u.info().getheader("ETag",None)
+                if e: previous_timestamps[(url,'ETag')] = e
           textContent = None
           for _,t in daysTextList:
-              errmsg = ""
               if t.startswith('>'):
-                  check(t[1:],content,"Source of "+url,errmsg)
-                  continue
-              elif textContent==None:
+                  check(t[1:],content,"Source of "+url,"")
+              elif not t or t.startswith('#'):
+                  rssCheck(url,content,t.replace('#','',1).strip())
+              else:
+                if textContent==None:
                   textContent,errmsg=htmlStrings(content)
-              check(t,textContent,url,errmsg)
+                else: errmsg = ""
+                check(t,textContent,url,errmsg)
         jobs.task_done()
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 
 def tryRead(url,opener):
+    need2pop = []
     if (url,'lastMod') in previous_timestamps:
         opener.addheaders.append(("If-Modified-Since",previous_timestamps[(url,'lastMod')]))
-        ret = tryRead0(url,opener)
-        opener.addheaders.pop()
-        return ret
-    else: return tryRead0(url,opener)
+        need2pop.append(True)
+    if keep_etags and (url,'ETag') in previous_timestamps:
+        opener.addheaders.append(("If-None-Match",previous_timestamps[(url,'lastMod')]))
+        need2pop.append(True)
+    ret = tryRead0(url,opener)
+    for h in need2pop: opener.addheaders.pop()
+    return ret
 
 def tryRead0(url,opener):
     u = None
@@ -149,7 +161,7 @@ def tryRead0(url,opener):
         return None,tryGzip(e.fp.read()) # as might want to monitor some phrase on a 404 page
     except: # try it with a fresh opener and no headers
         try:
-            u = urllib2.build_opener().open(url)
+            u = urllib2.build_opener(urllib2.HTTPCookieProcessor()).open(url)
             return u,tryGzip(u.read())
         except urllib2.HTTPError, e: return u,tryGzip(e.fp.read())
         except:
@@ -164,15 +176,55 @@ def check(text,content,url,errmsg):
     if ' #' in text: text,comment = text.split(' #',1) # TODO: document this (comments must be preceded by a space, otherwise interpreted as part of the text as this is sometimes needed in codes)
     else: comment = ""
     comment = comment.strip()
-    if comment: comment="\n  ("+comment+")"
+    if comment:
+      if comment.startswith('(') or comment.endswith(')'): pass
+      else: comment = '('+comment+')'
+      comment="\n  "+comment
     text = text.strip()
-    if not text: return # TODO: print error?
+    assert text # or should have gone to rssCheck instead
     if text.startswith("!"):
         if len(text)==1: return # TODO: print error?
         if myFind(text[1:],content):
             sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
     elif not myFind(text,content):
         sys.stdout.write(url+" no longer contains "+text+comment+errmsg+"\n")
+
+def rssCheck(url,content,comment):
+  from xml.parsers import expat
+  parser = expat.ParserCreate()
+  items = [[[],[],[]]] ; curElem = [None]
+  def StartElementHandler(name,attrs):
+    if name in ['item','entry']: items.append([[],[],[]])
+    if name=='title': curElem[0]=0
+    elif name=='link': curElem[0]=1
+    elif name in ['description','summary']: curElem[0]=2
+    else: curElem[0]=None
+    if name=='link' and 'href' in attrs:
+      items[-1][curElem[0]].append(attrs['href']+' ')
+  def CharacterDataHandler(data):
+    data=data.strip()
+    if data and not curElem[0]==None:
+      items[-1][curElem[0]].append(data)
+  parser.StartElementHandler = StartElementHandler
+  parser.CharacterDataHandler = CharacterDataHandler
+  try: parser.Parse(content,1)
+  except expat.error: pass # TODO: print error?
+  newItems = [] ; pKeep = set()
+  for title,link,txt in items:
+    def f(t): return "".join(t).strip()
+    title,link,txt=f(title),f(link),f(txt)
+    if not title: continue # valid entry must have title
+    k = (url,'seenItem',hash((title,link,txt))) # TODO: option to keep the whole thing in case someone has the space and is concerned about the small probability of hash collisions?
+    pKeep.add(k)
+    if k in previous_timestamps: continue
+    previous_timestamps[k] = True
+    if txt: txt += '\n'
+    newItems.append(title+'\n'+txt+link)
+  for k in previous_timestamps.keys():
+    if k[:2]==(url,'seenItem') and not k in pKeep:
+      del previous_timestamps[k] # dropped from the feed
+  if comment: comment=" ("+comment+")"
+  if newItems: sys.stdout.write(str(len(newItems))+" new RSS/Atom items in "+url+comment+' :\n'+'\n---\n'.join(newItems).encode('utf-8')+'\n\n')
 
 def myFind(text,content):
   if text.startswith("*"): return re.search(text[1:],content)
