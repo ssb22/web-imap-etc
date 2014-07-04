@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.239 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.24 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -627,7 +627,7 @@ def header_to_u8(match):
     encoding = match.group(2)
     text = match.group(3)
     try:
-        if encoding=='Q': text = quopri.decodestring(text,header=True)
+        if encoding.upper()=='Q': text = quopri.decodestring(text,header=True)
         else: text = base64.decodestring(text)
         text = text.decode(charset)
     except:
