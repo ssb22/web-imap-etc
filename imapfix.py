@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.24 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.25 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -735,11 +735,11 @@ def mainloop():
         if time.time() > secondary_imap_due and secondary_imap_hostname:
             process_secondary_imap()
             secondary_imap_due = time.time() + secondary_imap_delay
+    if logout_before_sleep: make_sure_logged_out()
+    if not poll_interval: break
     if not done_spamprobe_cleanup:
         spamprobe_cleanup()
         done_spamprobe_cleanup = True
-    if logout_before_sleep: make_sure_logged_out()
-    if not poll_interval: break
     debug("Sleeping for "+str(poll_interval)+" seconds")
     time.sleep(poll_interval) # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
     newDay = time.localtime()[:3]
