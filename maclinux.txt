@@ -264,5 +264,5 @@ fi # end of "we're on a Mac" block
 # between the XML markup).  catdocx_utf8 outputs UTF-8;
 # catdocx_cp1252 outputs "Windows 1252" as used on old
 # Psion PDAs etc.
-catdocx_utf8 () { while [ ! "a$1" == "a" ]; do unzip -Cp "$1" word/[dfe]*[ts].xml; shift; done|perl -p -e 's/<w:p[^>]*>/\n/g;s/<[^>]*>/ /g;s/  */ /g;s/&lt;/</g'|grep -v '^ *$' ; } # (want to unzip document.xml, endnotes.xml and footnotes.xml but not emit warnings if missing and not match fontTable etc, hence the awkward file specification; perl rather than sed so as to avoid BSD sed / gsed differences re \n in replacement etc)
+catdocx_utf8 () { while [ ! "a$1" == "a" ]; do unzip -Cp "$1" word/[dfe]*[ts].xml; shift; done|perl -p -e 's/<w:p(\s[^>]*)?>/\n/g;s/<[^>]*>//g;s/  */ /g;s/&lt;/</g'|grep -v '^ *$' ; } # (want to unzip document.xml, endnotes.xml and footnotes.xml but not emit warnings if missing and not match fontTable etc, hence the awkward file specification; perl rather than sed so as to avoid BSD sed / gsed differences re \n in replacement etc)
 catdocx_cp1252 () { catdocx_utf8 "$@" | iconv -c -f UTF8 -t CP1252//TRANSLIT ; } # --unicode-subst="[U+%04X]" instead of -c would be nice, but it's not available on all versions of iconv
