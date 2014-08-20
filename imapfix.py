@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.25 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.251 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -804,10 +804,10 @@ def multinote(filelist):
             debug("Ignoring non-file non-directory "+f)
             continue
         if not f.endswith('~'):
-            do_multinote(open(f).read())
+            do_multinote(open(f).read(),os.stat(f).st_mtime)
         os.remove(f)
     
-def do_multinote(body):
+def do_multinote(body,theDate):
     body = re.sub("\r\n?","\n",body.strip())
     if not body:
         debug("Not creating message from blank file")
@@ -815,7 +815,7 @@ def do_multinote(body):
     subject,body = (body+"\n").split("\n",1)
     box = authenticated_wrapper(subject,body)
     if box==False: box=filtered_inbox
-    if not box==None: save_to(box,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+body+"\n")
+    if not box==None: save_to(box,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+body+"\n")
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
 if quiet==2: quiet = not isatty(sys.stdout)
