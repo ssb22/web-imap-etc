@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.251 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.26 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -93,8 +93,11 @@ smtps_auth = None # or e.g. " with esmtpsa (LOGIN:me)"
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
 
-poll_interval = 4*60 # TODO: use imaplib2 and IDLE ?
-# Note: set poll_interval=False if you want just one run.
+poll_interval = 4*60
+# Note: set poll_interval=False if you want just one run,
+# or poll_interval="idle" to use imap's IDLE command (this
+# requires the imaplib2 module).
+
 logout_before_sleep = False # suggest set to True if using
 # a long poll_interval, or if filtered_inbox=None
 
@@ -247,10 +250,15 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 
 from imapfix_config import *
+if poll_interval=="idle":
+    import imaplib2 as imaplib
+    assert not logout_before_sleep, "Can't logout_before_sleep when poll_interval==\"idle\""
+else:
+    import imaplib
 
 if filtered_inbox==None: spamprobe_command = None
 
-import imaplib,email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback
+import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback
 from cStringIO import StringIO
 
 if compression=="bz2":
@@ -468,7 +476,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         globalise_charsets(msg) # in case wasn't done on receive (this also makes sure UTF-8 is quopri if it would be shorter, which can make archives easier to search)
         if archived_attachments_path:
             save_attachments_separately(msg)
-        mbox.add(msg) # TODO: .set_flags A=answered R=read ?  (or doesn't it matter so much for old-message archiving; flags aren't always right anyway as you might have answered something using another method)
+        mbox.add(msg) # TODO: .set_flags A=answered R=read ?  (or doesn't it matter so much for old-message archiving; flags aren't always right anyway as you might have answered some using another method)
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if mbox:
         mbox.close()
@@ -725,7 +733,8 @@ def mainloop():
   secondary_imap_due = 0
   if exit_if_imapfix_config_py_changes:
     mtime = os.stat("imapfix_config.py").st_mtime
-  while True:
+  try:
+   while True:
     if alarm_delay: checkAlarmDelay()
     if maildirs_to_imap: do_maildirs_to_imap()
     if maildir_to_copyself: do_maildir_to_copyself()
@@ -740,14 +749,20 @@ def mainloop():
     if not done_spamprobe_cleanup:
         spamprobe_cleanup()
         done_spamprobe_cleanup = True
-    debug("Sleeping for "+str(poll_interval)+" seconds")
-    time.sleep(poll_interval) # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
+    if poll_interval=="idle":
+        debug("Waiting for IMAP event") ; imap.idle()
+        # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
+    else:
+        debug("Sleeping for "+str(poll_interval)+" seconds")
+        time.sleep(poll_interval)
+         # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
     newDay = time.localtime()[:3]
     if not oldDay==newDay:
       oldDay=newDay
       if midnight_command: os.system(midnight_command)
       done_spamprobe_cleanup = False
     if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime): break
+  finally: make_sure_logged_out()
 
 def near_equal(time1,time2):
     # allow small difference due to filesystem quirks
@@ -793,7 +808,8 @@ def do_note(subject,ctype="text/plain",maybe=0):
     if not body:
         if maybe: return
         body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
-    save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+body+"\n")
+    save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
+def from_mangle(body): return re.sub('(?<![^\n])From ','>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
 
 def multinote(filelist):
     for f in filelist:
@@ -804,6 +820,7 @@ def multinote(filelist):
             debug("Ignoring non-file non-directory "+f)
             continue
         if not f.endswith('~'):
+            debug(f)
             do_multinote(open(f).read(),os.stat(f).st_mtime)
         os.remove(f)
     
@@ -815,7 +832,7 @@ def do_multinote(body,theDate):
     subject,body = (body+"\n").split("\n",1)
     box = authenticated_wrapper(subject,body)
     if box==False: box=filtered_inbox
-    if not box==None: save_to(box,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+body+"\n")
+    if not box==None: save_to(box,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
 if quiet==2: quiet = not isatty(sys.stdout)
@@ -861,6 +878,7 @@ imap = None
 def make_sure_logged_in():
     global imap, saveImap
     while imap==None:
+        debug("Logging in")
         try:
             imap = saveImap = imaplib.IMAP4_SSL(hostname)
             check_ok(imap.login(username,password))
@@ -872,6 +890,7 @@ def make_sure_logged_in():
 def make_sure_logged_out():
     global imap, saveImap
     if not imap==None:
+        debug("Logging out")
         imap.logout()
         imap = saveImap = None
 
@@ -908,3 +927,4 @@ if __name__ == "__main__":
       poll_interval = False ; mainloop()
   elif exit_if_other_running and other_running(): sys.stderr.write("Another "+imapfix_name+" already running - exitting\n(Use "+imapfix_name+" --once if you want to force a run now)\n")
   else: mainloop()
+  make_sure_logged_out()
