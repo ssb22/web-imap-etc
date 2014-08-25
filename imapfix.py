@@ -820,8 +820,7 @@ def multinote(filelist):
             debug("Ignoring non-file non-directory "+f)
             continue
         if not f.endswith('~'):
-            debug(f)
-            do_multinote(open(f).read(),os.stat(f).st_mtime)
+            do_multinote(open(f).read(),os.stat(f).st_mtime) ; debug("Uploaded "+f)
         os.remove(f)
     
 def do_multinote(body,theDate):
@@ -847,6 +846,7 @@ def do_delete(foldername):
     check_ok(imap.delete(foldername))
 
 def do_quicksearch(s):
+    global quiet ; quiet = True # don't need "Logging in" etc
     for foldername in yield_folders():
         typ, data = imap.search(None, 'TEXT', '"'+s.replace("\\","\\\\").replace('"',r'\"')+'"')
         if not typ=='OK': raise Exception(typ)
