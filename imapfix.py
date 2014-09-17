@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.28 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.3 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -62,11 +62,6 @@ def handle_authenticated_message(subject,firstPart,attach):
 # Returns the name of a folder, or None to delete the
 # message, or False = undecided (normal rules will apply).
 # If folder name starts with *, mail will be marked 'seen'.
-# Or returns an integer, which is equivalent to None but
-# also specifies the minimum number of seconds before it
-# can be called again (for example if the command results
-# in sending mail to others and you don't want to do this
-# too quickly if lots of commands have become batched up).
 # firstPart is a UTF-8 copy of the first part of the body
 # (which will typically contain plain text even if you
 # were using an HTML mailer); subject is also UTF-8 coded.
@@ -99,8 +94,9 @@ smtp_fromAddr = "example@example.org"
 smtp_host = "localhost"
 smtp_user = ""
 smtp_password = ""
-# (This is not currently used by anything except
-# user-supplied handle_authenticated_message functions)
+smtp_delay = 60 # seconds between each message
+# (These smtp_ settings are not currently used by anything
+# except user-supplied handle_authenticated_message functions)
 
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
@@ -331,23 +327,14 @@ if os.sep in imapfix_name: imapfix_name=imapfix_name[imapfix_name.rindex(os.sep)
 if not imapfix_name: imapfix_name = "imapfix.py"
 # used both in From line and by other_running()
 
-callAuth_time = None
 def authenticated_wrapper(subject,firstPart,attach={}):
-    global callAuth_time
-    if callAuth_time:
-        toSleep = max(0,callAuth_time-time.time())
-        if toSleep: debug("Sleeping for another %d seconds before calling handle_authenticated_message again" % toSleep)
-        time.sleep(toSleep)
-        callAuth_time = None
     try: r=handle_authenticated_message(subject,firstPart,attach)
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
         o = StringIO() ; traceback.print_exc(None,o)
         save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(time.time()),o.getvalue()))
         r=False
-    if type(r)==int:
-        callAuth_time = time.time() + r ; return None
-    else: return r
+    return r
 
 def yield_all_messages():
     typ, data = imap.search(None, 'ALL')
@@ -929,7 +916,14 @@ def other_running():
         else: otherPIDusers.add(user)
     return thisPIDuser in otherPIDusers
 
+callSMTP_time = None
 def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="plain",charset="utf-8"):
+    global callSMTP_time
+    if callSMTP_time:
+        toSleep = max(0,callSMTP_time-time.time())
+        if toSleep: debug("Sleeping for another %d seconds before reconnecting to SMTP" % toSleep)
+        time.sleep(toSleep)
+    debug("SMTP to "+repr(to))
     msg = email.mime.text.MIMEText(txt,ttype,charset)
     if attachment_filenames:
         from email.mime.multipart import MIMEMultipart
@@ -954,6 +948,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
     ret = s.sendmail(smtp_fromAddr,to,msg.as_string())
     assert len(ret)==0, "Some (but not all) recipients were refused: "+repr(ret)
     s.quit()
+    if smtp_delay: callSMTP_time = time.time()+smtp_delay
     if copyself:
         if copyself_delete_attachments:
             delete_attachments(msg)
