@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.26 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.28 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -89,6 +89,18 @@ smtps_auth = None # or e.g. " with esmtpsa (LOGIN:me)"
 # might be useful for using --multinote with the real inbox).
 # You should therefore ensure that your local network ALWAYS
 # adds at least one Received header to incoming mail.
+
+# If handle_authenticated_message needs to send other mail
+# via SMTP, it can call
+# send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True)
+# if the following SMTP options are set:
+smtp_fromHeader = "Example Name <example@example.org>"
+smtp_fromAddr = "example@example.org"
+smtp_host = "localhost"
+smtp_user = ""
+smtp_password = ""
+# (This is not currently used by anything except
+# user-supplied handle_authenticated_message functions)
 
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
@@ -233,7 +245,8 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # from the one that does your mail processing, you may
 # want to define handle_authenticated_message to
 # return "" which will result in the messages being placed
-# in the real inbox for processing by the other machine.)
+# in the real inbox for processing by the other machine.
+# Alternatively you can use --multinote-inbox for the same effect.)
 
 # All note options assume that any non-ASCII characters in
 # the input will be encoded as UTF-8.
@@ -294,9 +307,9 @@ def spamprobe_cleanup():
 
 def process_header_rules(header):
   for box,matchList in header_rules:
-    for headerLine in header.split("\r\n"):
+    for headerLine in header.split("\n"):
       for m in matchList:
-        i=re.finditer(m,headerLine)
+        i=re.finditer(m,headerLine.rstrip())
         try: i.next()
         except StopIteration: continue
         if box and box[0]=='*': box=box[1:] # just save it without indication
@@ -811,25 +824,26 @@ def do_note(subject,ctype="text/plain",maybe=0):
     save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 def from_mangle(body): return re.sub('(?<![^\n])From ','>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
 
-def multinote(filelist):
+def multinote(filelist,to_real_inbox):
     for f in filelist:
         if os.path.isdir(f):
-            multinote([(f+os.sep+g) for g in os.listdir(f)])
+            multinote([(f+os.sep+g) for g in os.listdir(f)],to_real_inbox)
             continue
         if not os.path.isfile(f):
             debug("Ignoring non-file non-directory "+f)
             continue
         if not f.endswith('~'):
-            do_multinote(open(f).read(),os.stat(f).st_mtime) ; debug("Uploaded "+f)
+            do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox) ; debug("Uploaded "+f)
         os.remove(f)
     
-def do_multinote(body,theDate):
+def do_multinote(body,theDate,to_real_inbox):
     body = re.sub("\r\n?","\n",body.strip())
     if not body:
         debug("Not creating message from blank file")
         return
     subject,body = (body+"\n").split("\n",1)
-    box = authenticated_wrapper(subject,body)
+    if to_real_inbox: box = ""
+    else: box = authenticated_wrapper(subject,body)
     if box==False: box=filtered_inbox
     if not box==None: save_to(box,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 
@@ -915,6 +929,38 @@ def other_running():
         else: otherPIDusers.add(user)
     return thisPIDuser in otherPIDusers
 
+def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="plain",charset="utf-8"):
+    msg = email.mime.text.MIMEText(txt,ttype,charset)
+    if attachment_filenames:
+        from email.mime.multipart import MIMEMultipart
+        msg2 = msg
+        msg = MIMEMultipart()
+        msg.attach(msg2)
+    msg['Subject'] = utf8_to_header(subject_u8)
+    msg['From'] = smtp_fromHeader
+    msg['To'] = to
+    msg['Date'] = email.utils.formatdate(time.time())
+    for f in attachment_filenames:
+        subMsg = MIMEBase('application', 'octet-stream') # TODO: more specific types?
+        subMsg.set_payload(open(f,'rb').read())
+        from email import encoders
+        encoders.encode_base64(subMsg)
+        if os.sep in f: f=f[f.rindex(os.sep):]
+        subMsg.add_header('Content-Disposition', 'attachment', filename=f)
+        msg.attach(subMsg)
+    import smtplib
+    s = smtplib.SMTP_SSL(smtp_host)
+    if smtp_user: s.login(smtp_user, smtp_password)
+    ret = s.sendmail(smtp_fromAddr,to,msg.as_string())
+    assert len(ret)==0, "Some (but not all) recipients were refused: "+repr(ret)
+    s.quit()
+    if copyself:
+        if copyself_delete_attachments:
+            delete_attachments(msg)
+        save_to(copyself_folder_name,myAsString(msg),"",email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])))
+import imapfix_config
+imapfix_config.send_mail = send_mail
+
 if __name__ == "__main__":
   if '--archive' in sys.argv: do_archive()
   elif '--quicksearch' in sys.argv: do_quicksearch(' '.join(sys.argv[sys.argv.index('--quicksearch')+1:]))
@@ -922,7 +968,8 @@ if __name__ == "__main__":
   elif '--note' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]))
   elif '--maybenote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--maybenote')+1:]),maybe=1)
   elif '--htmlnote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--htmlnote')+1:]),"text/html")
-  elif '--multinote' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote')+1:])
+  elif '--multinote' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote')+1:],False)
+  elif '--multinote-inbox' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote-inbox')+1:],True)
   elif '--once' in sys.argv:
       poll_interval = False ; mainloop()
   elif exit_if_other_running and other_running(): sys.stderr.write("Another "+imapfix_name+" already running - exitting\n(Use "+imapfix_name+" --once if you want to force a run now)\n")
