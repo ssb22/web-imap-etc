@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.3 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.301 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -435,7 +435,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
     if age:
       if spamprobe_action: extra = ", spamprobe="+spamprobe_action
       else: extra = ""
-      debug("Archiving from "+foldername+" to "+mboxpath+extra+"...")
+      toDbg="Archiving from "+foldername+" to "+mboxpath+extra+"..."
       suf = "" ; sc = 0
       while os.path.exists(mboxpath+suf+compression_ext):
         sc += 1 ; suf = "."+str(sc)
@@ -448,9 +448,9 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         sc -= 1
       mbox = mailbox.mbox(mboxpath) # will compress below
     else:
-      debug("Processing "+foldername+"...")
+      toDbg = "Processing "+foldername+"..."
       mbox = None
-    make_sure_logged_in()
+    make_sure_logged_in() ; debug(toDbg)
     typ, data = imap.select(foldername)
     if not typ=='OK': return # couldn't select that folder
     for msgID,message in yield_all_messages():
@@ -515,7 +515,7 @@ def save_attachments_separately(msg):
     if len(fext) > attachment_filename_maxlen:
         fname = fname[:attachment_filename_maxlen]
     else:
-        fname = fname[:-len(fext)]
+        if fext: fname = fname[:-len(fext)]
         fname = fname[:attachment_filename_maxlen-len(fext)] + fext
     data = msg.get_payload(None,True)
     if not data: return
@@ -952,7 +952,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
     if copyself:
         if copyself_delete_attachments:
             delete_attachments(msg)
-        save_to(copyself_folder_name,myAsString(msg),"",email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])))
+        save_to(copyself_folder_name,myAsString(msg),"\\Seen",email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])))
 import imapfix_config
 imapfix_config.send_mail = send_mail
 
