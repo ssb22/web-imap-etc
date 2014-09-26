@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.301 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.302 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -650,7 +650,7 @@ def utf8_to_header(u8):
     if u8.startswith('=?') or re.search(r"[^ -~]",u8): return "=?UTF-8?B?"+base64.encodestring(u8).replace("\n","")+"?="
     else: return u8 # ASCII and no encoding needed
 
-import email.mime.multipart,email.mime.message,email.mime.text,email.charset
+import email.mime.multipart,email.mime.message,email.mime.text,email.charset,email.mime.base
 def turn_into_attachment(message):
     m2 = email.mime.multipart.MIMEMultipart()
     for k,v in message.items():
@@ -842,8 +842,8 @@ def do_delete(foldername):
     if not foldername:
         print "No folder name specified"
         return
-    print "Deleting folder "+repr(foldername)
     make_sure_logged_in()
+    print "Deleting folder "+repr(foldername)
     check_ok(imap.delete(foldername))
 
 def do_quicksearch(s):
@@ -935,7 +935,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
     msg['To'] = to
     msg['Date'] = email.utils.formatdate(time.time())
     for f in attachment_filenames:
-        subMsg = MIMEBase('application', 'octet-stream') # TODO: more specific types?
+        subMsg = email.mime.base.MIMEBase('application', 'octet-stream') # TODO: more specific types?
         subMsg.set_payload(open(f,'rb').read())
         from email import encoders
         encoders.encode_base64(subMsg)
