@@ -932,7 +932,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
         msg.attach(msg2)
     msg['Subject'] = utf8_to_header(subject_u8)
     msg['From'] = smtp_fromHeader
-    msg['To'] = to
+    msg['To'] = to # TODO: utf8_to_header the name part of it (+ what if it's a list?)
     msg['Date'] = email.utils.formatdate(time.time())
     for f in attachment_filenames:
         subMsg = email.mime.base.MIMEBase('application', 'octet-stream') # TODO: more specific types?
