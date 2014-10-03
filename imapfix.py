@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.302 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.303 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -924,7 +924,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
         if toSleep: debug("Sleeping for another %d seconds before reconnecting to SMTP" % toSleep)
         time.sleep(toSleep)
     debug("SMTP to "+repr(to))
-    msg = email.mime.text.MIMEText(txt,ttype,charset)
+    msg = email.mime.text.MIMEText(re.sub('\r*\n','\r\n',txt),ttype,charset) # RFC 2822 says MUST use CRLF; some mail clients get confused by just \n (e.g. some versions of MPro on RISC OS when replying with quote)
     if attachment_filenames:
         from email.mime.multipart import MIMEMultipart
         msg2 = msg
