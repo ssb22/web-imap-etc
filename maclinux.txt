@@ -234,11 +234,17 @@ alias install-login-command=_install_login_command
 
 # Here's a function to make RAMdisks.  1st param = dir
 # (e.g. /tmp/maclinux-RAMdisk, must not already exist),
-# 2nd param = num of 512-byte blocks (e.g. 1024 for a 512k
+# 2nd param = num of 512-byte blocks (min. 1024 for a 512k
 # disk; unfortunately can't auto-expand like /dev/shm)
 _make_ramdisk () { mkdir "$1" && mount -t hfs "$(echo "$(newfs_hfs $(hdid -nomount "ram://$2"))"|sed -e 's,[^/]*/,/,' -e 's/ .*//' -e 's,/rdisk,/disk,')" "$1" ; }
 # (10.5+ can also do e.g. diskutil erasevolume HFS+ "maclinux-RAMdisk" $(hdiutil attach -nomount ram://1024) for /Volumes/maclinux-RAMdisk)
 alias make-ramdisk=_make_ramdisk
+
+# NOTE: for making HFS+ disk images that will interoperate
+# with Linux, it's really best to do this IN LINUX (use dd
+# and then use mkfs.hfs from hfsprogs), rather than on the
+# Mac.  That way it's less likely you'll end up with a dmg
+# that the Linux kernel refuses to mount for some reason.
 
 # Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
 if test "a$SSH_CLIENT" == a; then
