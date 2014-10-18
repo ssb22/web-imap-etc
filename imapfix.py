@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.303 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.304 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -224,6 +224,7 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # (taken from standard input) directly into filtered_inbox
 # - useful from scripts etc (you can get the note without
 # having to wait for it to go through SMTP and polling).
+# (If filtered_inbox is None, --note uses real inbox)
 # Run with --htmlnote to do the same but send as HTML.
 # Run with --maybenote to do --note only if standard input
 # has text (no mail left if your script printed nothing).
@@ -552,7 +553,7 @@ def save_to(mailbox, message_as_string,
             flags="", received_time = None):
     "Saves message to a mailbox on the saveImap connection, creating the mailbox if necessary"
     make_sure_logged_in()
-    if not mailbox in already_created:
+    if mailbox and not mailbox in already_created:
         saveImap.create(mailbox) # error if exists OK
         already_created.add(mailbox)
     if not received_time: received_time = time.time()
@@ -643,11 +644,18 @@ def header_to_u8(match):
         return match.group()
     return text.encode('utf-8')
 def globalise_header_charset(match):
-    if match.group(1).lower()=="utf-8":
-        return match.group() # no changes needed
+    #if match.group(1).lower()=="utf-8":
+    #    return match.group() # no changes needed
+    # - actually, do it anyway, because some UTF8 headers might be
+    # quopri-encoded when they're only ASCII, etc, and "normalising"
+    # these might help the writing of filtering rules
     return utf8_to_header(header_to_u8(match))
 def utf8_to_header(u8):
-    if u8.startswith('=?') or re.search(r"[^ -~]",u8): return "=?UTF-8?B?"+base64.encodestring(u8).replace("\n","")+"?="
+    if u8.startswith('=?') or re.search(r"[^ -~]",u8):
+        ret = "B?"+base64.encodestring(u8).replace("\n","")
+        qp = "Q?"+quopri.encodestring(u8).replace("\n","") # TODO: do we need to set header=True here? (to encode spaces to _) or  maybe it's better not to?
+        if len(qp) <= len(ret): ret = qp
+        return "=?UTF-8?"+ret+"?="
     else: return u8 # ASCII and no encoding needed
 
 import email.mime.multipart,email.mime.message,email.mime.text,email.charset,email.mime.base
@@ -803,15 +811,19 @@ def yield_folders():
 def do_note(subject,ctype="text/plain",maybe=0):
     subject = subject.strip()
     if not subject: subject = "Note to self (via imapfix)"
-    if isatty(sys.stdout): print "Type the note, then EOF"
+    if isatty(sys.stdin):
+        sys.stderr.write("Type the note, then EOF\n")
     body = sys.stdin.read()
     if not body:
         if maybe: return
         body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
-    save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
+    if filtered_inbox==None: saveTo = ""
+    else: saveTo = filtered_inbox
+    save_to(saveTo,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(time.time())+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 def from_mangle(body): return re.sub('(?<![^\n])From ','>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
 
 def multinote(filelist,to_real_inbox):
+    if not filtered_inbox: to_real_inbox = True
     for f in filelist:
         if os.path.isdir(f):
             multinote([(f+os.sep+g) for g in os.listdir(f)],to_real_inbox)
