@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.304 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.305 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -154,6 +154,12 @@ archive_rules = [
 compression = "bz2" # or "gz" or None
 archived_attachments_path = "archived-attachments" # or None
 attachment_filename_maxlen = 30
+
+forced_names = {} # you can set this to a dictionary
+# mapping email address to From name, and whatever other
+# From name is used will be replaced by the one specified;
+# this is for when one of your contacts has their "From"
+# name set to something confusing like their ISP's name
 
 # Set secondary_imap_hostname if you also want to check
 # some other IMAP server and treat its messages as being
@@ -320,7 +326,7 @@ def myAsString(msg):
         # oops, broken library?
         message=message.replace("\n\n","\r\n\r\n",1)
         a,b = message.split("\r\n\r\n")
-        message = a.replace("\n","\r\n")+"\r\n\r\n"+b
+        message = re.sub('\r*\n','\r\n',a)+"\r\n\r\n"+b
     return message
 
 imapfix_name = sys.argv[0]
@@ -357,6 +363,20 @@ def rewrite_deliveryfail(msg):
     del msg['Subject'] ; msg['Subject']=fr+' '+subj
     return True
 
+for k in forced_names.keys():
+    if not k==k.lower():
+        forced_names[k.lower()]=forced_names[k]
+        del forced_names[k]
+def forced_from(msg):
+    def f(fr):
+        if fr.lower() in forced_names:
+            msg["From"] = forced_names[fr.lower()] + ' <'+fr.lower()+'>'
+            return True
+    fr = msg.get("From","").strip()
+    if f(fr): return True
+    if fr.endswith('>') and '<' in fr and f(fr[fr.rindex('<')+1:-1]): return True
+    # TODO: any other formats to check?
+
 def process_imap_inbox():
     make_sure_logged_in()
     check_ok(imap.select()) # the inbox
@@ -380,6 +400,7 @@ def process_imap_inbox():
          # post-charset-conversion saved messages)
          changed = globalise_charsets(msg)
          changed = rewrite_deliveryfail(msg) or changed
+         changed = forced_from(msg) or changed
          if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
          if changed: message = myAsString(msg)
          if box==False:
@@ -649,7 +670,9 @@ def globalise_header_charset(match):
     # - actually, do it anyway, because some UTF8 headers might be
     # quopri-encoded when they're only ASCII, etc, and "normalising"
     # these might help the writing of filtering rules
-    return utf8_to_header(header_to_u8(match))
+    hu8 = header_to_u8(match)
+    if hu8 == match: return hu8 # something went wrong; at least don't double-encode it
+    return utf8_to_header(hu8)
 def utf8_to_header(u8):
     if u8.startswith('=?') or re.search(r"[^ -~]",u8):
         ret = "B?"+base64.encodestring(u8).replace("\n","")
