@@ -95,7 +95,7 @@ def main():
     
     if previous_timestamps == old_previous_timestamps: return # no point saving if no changes
     try: pickle.Pickler(open(".webcheck-last","wb")).dump(previous_timestamps)
-    except: pass # ignore if can't write etc
+    except: sys.stdout.write("Problem writing .webcheck-last (progress was NOT saved):\n"+traceback.format_exc()+"\n")
 
 def worker_thread(*args):
     opener = None
