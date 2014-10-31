@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.305 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.306 (c) 2013-14 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -676,7 +676,7 @@ def globalise_header_charset(match):
 def utf8_to_header(u8):
     if u8.startswith('=?') or re.search(r"[^ -~]",u8):
         ret = "B?"+base64.encodestring(u8).replace("\n","")
-        qp = "Q?"+quopri.encodestring(u8).replace("\n","") # TODO: do we need to set header=True here? (to encode spaces to _) or  maybe it's better not to?
+        qp = "Q?"+quopri.encodestring(u8,header=True).replace("=\n","") # must have header=True for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present)
         if len(qp) <= len(ret): ret = qp
         return "=?UTF-8?"+ret+"?="
     else: return u8 # ASCII and no encoding needed
