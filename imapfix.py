@@ -676,7 +676,7 @@ def globalise_header_charset(match):
 def utf8_to_header(u8):
     if u8.startswith('=?') or re.search(r"[^ -~]",u8):
         ret = "B?"+base64.encodestring(u8).replace("\n","")
-        qp = "Q?"+re.sub("=?\r?\n","",quopri.encodestring(u8,header=True)) # must have header=True for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present)
+        qp = "Q?"+re.sub("=?\r?\n","",quopri.encodestring(u8,header=True).replace('?','=3F')) # must have header=True and ? substitution for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present or a ? is present)
         if len(qp) <= len(ret): ret = qp
         return "=?UTF-8?"+ret+"?="
     else: return u8 # ASCII and no encoding needed

@@ -1,6 +1,6 @@
 
 # webcheck.py v1.1 (c) 2014 Silas S. Brown.  License: GPL
-# See website for description and usage instructions
+# See webcheck.html for description and usage instructions
 
 # CHANGES
 # -------
