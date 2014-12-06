@@ -1,5 +1,5 @@
 
-# webcheck.py v1.1 (c) 2014 Silas S. Brown.  License: GPL
+# webcheck.py v1.11 (c) 2014 Silas S. Brown.  License: GPL
 # See webcheck.html for description and usage instructions
 
 # CHANGES
@@ -19,7 +19,7 @@ if max_threads > 1: import thread
 
 def read_input():
   ret = {} # domain -> { url -> [(days,text)] }
-  days = 0
+  days = 0 ; extraHeaders = []
   for line in open("webcheck.list").read().replace("\r","\n").split("\n"):
     line = line.strip()
     if not line or line[0]=='#': continue
@@ -33,10 +33,14 @@ def read_input():
     else: freqCmd = None
     if freqCmd: continue
 
+    if ':' in line and not line.split(':',1)[1].startswith('//'):
+        extraHeaders.append(line) ; continue
+
     lSplit = line.split(None,1)
     if len(lSplit)==1: url, text = lSplit[0],"" # RSS only
     else: url, text = lSplit
     mainDomain = '.'.join(urlparse.urlparse(url).netloc.rsplit('.',2)[-2:])
+    if extraHeaders: url += '\n'+'\n'.join(extraHeaders)
     if not mainDomain in ret:
         ret[mainDomain] = {}
     if not url in ret[mainDomain]:
@@ -105,17 +109,21 @@ def worker_thread(*args):
         if opener==None:
             opener = urllib2.build_opener(urllib2.HTTPCookieProcessor()) # HTTPCookieProcessor needed for some redirects
             opener.addheaders = [('User-agent',
-                                  'Mozilla/5.0'), # TODO: ?
+                                  'Mozilla/5.0 or Lynx or whatever you like (actually Webcheck)'), # TODO: ? (just Mozilla/5.0 is not always acceptable to all servers)
                          ('Accept-Encoding', 'gzip')]
         last_fetch_finished = 0 # or time.time()-delay
         for url,daysTextList in sorted(job.items()): # sorted will group http and https together
+          if '\n' in url:
+              url = url.split('\n')
+              extraHeaders = url[1:] ; url = url[0]
+          else: extraHeaders = []
           if (url,'lastFetch') in previous_timestamps:
               minDays = min(d for d,_ in daysTextList)
               if minDays and previous_timestamps[(url,'lastFetch')]+minDays >= dayNo(): continue
           previous_timestamps[(url,'lastFetch')] = dayNo() # (keep it even if minDays==0, because that might be changed by later edits of webcheck.list)
           time.sleep(max(0,last_fetch_finished+delay-time.time()))
           if sys.stderr.isatty(): sys.stderr.write('.')
-          u,content = tryRead(url,opener)
+          u,content = tryRead(url,opener,extraHeaders)
           last_fetch_finished = time.time()
           if content==None: continue # not modified
           if u:
@@ -139,22 +147,23 @@ def worker_thread(*args):
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 
-def tryRead(url,opener):
-    need2pop = []
+def tryRead(url,opener,extraHeaders):
+    for h in extraHeaders: opener.addheaders.append(tuple(x.strip() for x in h.split(':',1)))
+    need2pop = len(extraHeaders)
     if (url,'lastMod') in previous_timestamps:
         opener.addheaders.append(("If-Modified-Since",previous_timestamps[(url,'lastMod')]))
-        need2pop.append(True)
+        need2pop += 1
     if keep_etags and (url,'ETag') in previous_timestamps:
         opener.addheaders.append(("If-None-Match",previous_timestamps[(url,'lastMod')]))
-        need2pop.append(True)
+        need2pop += 1
     ret = tryRead0(url,opener)
-    for h in need2pop: opener.addheaders.pop()
+    for h in xrange(need2pop): opener.addheaders.pop()
     return ret
 
 def tryRead0(url,opener):
     u = None
     try:
-        u = opener.open(url).read()
+        u = opener.open(url)
         return u,tryGzip(u.read())
     except urllib2.HTTPError, e:
         if e.code==304: return None,None # not modified
@@ -188,6 +197,7 @@ def check(text,content,url,errmsg):
             sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
     elif not myFind(text,content):
         sys.stdout.write(url+" no longer contains "+text+comment+errmsg+"\n")
+        if '??show?' in comment: sys.stdout.write(content+'\n') # TODO: document this (for debugging cases where the text shown in Lynx is not the text shown to Webcheck, and Webcheck says "no longer contains" when it still does)
 
 def rssCheck(url,content,comment):
   from xml.parsers import expat
