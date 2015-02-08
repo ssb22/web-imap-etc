@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.306 (c) 2013-14 Silas S. Brown.  License: GPL
+# ImapFix v1.307 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -587,9 +587,11 @@ def rename_folder(folder):
     elif folder.lower()=="spam": return spam_folder
     else: return folder
 
+def listdir(d): return sorted(os.listdir(d))
+
 def do_maildirs_to_imap():
     mailbox.Maildir.colon = maildir_colon
-    for d in os.listdir(maildirs_to_imap):
+    for d in listdir(maildirs_to_imap):
         d2 = maildirs_to_imap+os.sep+d
         if not os.path.exists(d2+os.sep+"cur"):
             continue # not a maildir
@@ -603,7 +605,7 @@ def do_maildirs_to_imap():
             save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg),t)
             del m[k]
         newcurtmp = ["new","cur","tmp"]
-        if not any(os.listdir(d2+os.sep+ntc) for ntc in newcurtmp): # folder is now empty: remove it
+        if not any(listdir(d2+os.sep+ntc) for ntc in newcurtmp): # folder is now empty: remove it
             for nct in newcurtmp: os.rmdir(d2+os.sep+nct)
             os.rmdir(d2)
 
@@ -676,7 +678,7 @@ def globalise_header_charset(match):
 def utf8_to_header(u8):
     if u8.startswith('=?') or re.search(r"[^ -~]",u8):
         ret = "B?"+base64.encodestring(u8).replace("\n","")
-        qp = "Q?"+re.sub("=?\r?\n","",quopri.encodestring(u8,header=True).replace('?','=3F')) # must have header=True and ? substitution for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present or a ? is present)
+        qp = "Q?"+re.sub("=?\n","",quopri.encodestring(u8,header=True)) # must have header=True for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present)
         if len(qp) <= len(ret): ret = qp
         return "=?UTF-8?"+ret+"?="
     else: return u8 # ASCII and no encoding needed
@@ -849,7 +851,7 @@ def multinote(filelist,to_real_inbox):
     if not filtered_inbox: to_real_inbox = True
     for f in filelist:
         if os.path.isdir(f):
-            multinote([(f+os.sep+g) for g in os.listdir(f)],to_real_inbox)
+            multinote([(f+os.sep+g) for g in listdir(f)],to_real_inbox)
             continue
         if not os.path.isfile(f):
             debug("Ignoring non-file non-directory "+f)
@@ -894,7 +896,7 @@ def do_quicksearch(s):
             for m in matching_lines:
                 try_print(foldername,m.strip())
     if not archive_path: return
-    for f in os.listdir(archive_path):
+    for f in listdir(archive_path):
         f = archive_path+os.sep+f
         if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'r')
         else: f2 = open(f) # ?? (shouldn't happen, as all the files we put there should end with compression_ext, but just in case; TODO other forms of compression?)
