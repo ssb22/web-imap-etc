@@ -1,5 +1,5 @@
 
-# webcheck.py v1.12 (c) 2014 Silas S. Brown.  License: GPL
+# webcheck.py v1.13 (c) 2014-15 Silas S. Brown.  License: GPL
 # See webcheck.html for description and usage instructions
 
 # CHANGES
@@ -242,6 +242,9 @@ def rssCheck(url,content,comment):
 
 def myFind(text,content):
   if text.startswith("*"): return re.search(text[1:],content)
-  else: return text in content
-
+  elif text in content: return True
+  t2 = normalisePunc(text)
+  if not t2==text: return t2 in normalisePunc(content)
+def normalisePunc(t): return t.replace(u"\u2019".encode('utf-8'),"'") # for apostrophes (TODO: other?)
+  
 if __name__=="__main__": main()
