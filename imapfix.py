@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.307 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.308 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -391,7 +391,7 @@ def process_imap_inbox():
         if authenticates(msg):
           # do auth'd-msgs processing before any convert-to-attachment etc
           debug("Message authenticates")
-          box = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject","")),getFirstPart(msg).lstrip(),get_attachments(msg))
+          box = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject",""),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
           if box and box[0]=='*':
               box=box[1:] ; seenFlag="\\Seen"
         if not box==None:
@@ -721,7 +721,7 @@ def globalise_charsets(message):
     for line in ["From","To","Cc","Subject","Reply-To"]:
         if not line in message: continue
         l = message[line]
-        l2 = re.sub(header_charset_regex,globalise_header_charset,l).replace('\n',' ').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
+        l2 = re.sub(header_charset_regex,globalise_header_charset,l,flags=re.DOTALL).replace('\n',' ').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
         if l==l2: continue
         # debug("Setting "+line+" to "+repr(l2))
         del message[line]
