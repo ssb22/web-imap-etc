@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.308 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.309 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -481,20 +481,20 @@ def archive(foldername, mboxpath, age, spamprobe_action):
             run_spamprobe(spamprobe_action, message)
         if not age: continue
         msg = email.message_from_string(message)
+        if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
+        else: t = time.time() # undated message ??
+        if t >= time.time() - age: continue
         if not message.startswith("From "): # needed for Unix mbox, otherwise mbox lib fills it in with MAILER-DAEMON
             f = []
             if 'From' in msg:
                 fr = msg['From']
                 if '<' in fr and '>' in fr[fr.index('<'):]:
-                    fr = fr[fr.index('<'):fr.rindex('>')]
+                    fr = fr[fr.index('<')+1:fr.rindex('>')]
+                if not fr: fr = 'unknown'
                 f.append(fr)
-                if 'Date' in msg: f.append(msg['Date'])
-                if fr:
-                  message="From "+' '.join(f)+"\r\n"+message
-                  msg = email.message_from_string(message)
-        if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
-        else: t = time.time() # undated message ??
-        if t >= time.time() - age: continue
+                f.append(time.asctime(time.gmtime(t))) # must be THIS format for at least some versions of mutt to parse the message
+                message="From "+' '.join(f)+"\r\n"+message
+                msg = email.message_from_string(message)
         globalise_charsets(msg) # in case wasn't done on receive (this also makes sure UTF-8 is quopri if it would be shorter, which can make archives easier to search)
         if archived_attachments_path:
             save_attachments_separately(msg)
@@ -508,6 +508,27 @@ def archive(foldername, mboxpath, age, spamprobe_action):
             os.remove(mboxpath)
     # don't do this until got here without error:
     check_ok(imap.expunge())
+
+def fix_archives_written_by_imapfix_v1_308_and_earlier():
+    for f in listdir(archive_path):
+        f = archive_path+os.sep+f
+        if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'r')
+        else: f2 = open(f)
+        r = [] ; changed = False
+        for l in f2:
+          if l.startswith("From "):
+            l2 = l.replace('<','')
+            try: t = email.utils.mktime_tz(email.utils.parsedate_tz(' '.join(l2.split()[-6:])))
+            except: t = None
+            if t:
+                l2 = ' '.join(l2.split()[:-6])+' '+time.asctime(time.gmtime(t))+'\r\n'
+                r.append(l2) ; changed = True ; continue
+          r.append(l)
+        if changed:
+          print "Fixing",f
+          if f.endswith(compression_ext): open_compressed(f[:-len(compression_ext)],'wb').write(''.join(r))
+          else: open(f,'wb').write(''.join(r))
+        else: print "No need to fix",f
 
 def get_attachments(msg):
     if msg.is_multipart():
@@ -1005,5 +1026,6 @@ if __name__ == "__main__":
   elif '--once' in sys.argv:
       poll_interval = False ; mainloop()
   elif exit_if_other_running and other_running(): sys.stderr.write("Another "+imapfix_name+" already running - exitting\n(Use "+imapfix_name+" --once if you want to force a run now)\n")
+  elif '--fix-archives' in sys.argv: fix_archives_written_by_imapfix_v1_308_and_earlier() # TODO: document?
   else: mainloop()
   make_sure_logged_out()
