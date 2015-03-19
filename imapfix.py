@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.309 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.31 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -33,6 +33,12 @@ max_size_of_first_part = 48*1024
 # not fetch attachments but doesn't necessarily know to not
 # fetch more than a certain amount of text (especially if
 # it's only HTML).
+
+image_size = None # or e.g. image_size = (320,240)
+# - adds scaled-down versions of any image attachment that
+# exceeds this size, for previewing on low bandwidth
+# (this option requires the PIL library).  The scaled-down
+# versions are added only if the file is actually smaller.
 
 header_rules = [
     ("folder-name-1",
@@ -285,6 +291,8 @@ elif compression=="gz":
     compression_ext = ".gz"
 else: compression_ext = ""
 
+if image_size: from PIL import Image
+
 def debug(msg):
     if not quiet: print msg
     
@@ -399,6 +407,7 @@ def process_imap_inbox():
          # (especially if they've been developed based on
          # post-charset-conversion saved messages)
          changed = globalise_charsets(msg)
+         if image_size: changed = add_previews(msg) or changed
          changed = rewrite_deliveryfail(msg) or changed
          changed = forced_from(msg) or changed
          if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
@@ -509,7 +518,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
     # don't do this until got here without error:
     check_ok(imap.expunge())
 
-def fix_archives_written_by_imapfix_v1_308_and_earlier():
+def fix_archives_written_by_imapfix_v1_308():
     for f in listdir(archive_path):
         f = archive_path+os.sep+f
         if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'r')
@@ -704,7 +713,7 @@ def utf8_to_header(u8):
         return "=?UTF-8?"+ret+"?="
     else: return u8 # ASCII and no encoding needed
 
-import email.mime.multipart,email.mime.message,email.mime.text,email.charset,email.mime.base
+import email.mime.multipart,email.mime.message,email.mime.text,email.mime.image,email.charset,email.mime.base
 def turn_into_attachment(message):
     m2 = email.mime.multipart.MIMEMultipart()
     for k,v in message.items():
@@ -772,6 +781,31 @@ def globalise_charsets(message):
     return True # charset changed
 def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.QP,'utf-8') # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
 def email_u8_default(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
+
+def add_previews(message,parent=None,accum=None):
+    changed = False
+    if message.is_multipart():
+        if parent: p0 = parent
+        else:
+            p0 = message ; accum = []
+        for i in message.get_payload():
+            if add_previews(i,p0,accum): changed = True
+        if not parent:
+            for i in accum: message.attach(i)
+        return changed
+    if not 'Content-Type' in message or message["Content-Type"].startswith("text/"): return False
+    payload = message.get_payload(decode=True)
+    try: img=Image.open(StringIO(payload))
+    except: return False # not an image, or corrupt
+    img.thumbnail(image_size,Image.ANTIALIAS)
+    s1 = StringIO();img.save(s1,'JPEG');s1=s1.getvalue()
+    s2 = StringIO();img.save(s2,'PNG'); s2=s2.getvalue()
+    if len(s2) > len(s1): s,ext = s1,"jpg"
+    else: s,ext = s2,"png"
+    if len(s) > len(payload): return # we failed to actually compress the image
+    accum.append(email.mime.image.MIMEImage(s))
+    accum[-1]['Content-Disposition']='attachment; filename=imapfix-preview'+str(len(accum))+'.'+ext # needed for some clients to show it
+    return True
 
 setAlarmAt = 0
 def checkAlarmDelay():
@@ -1026,6 +1060,6 @@ if __name__ == "__main__":
   elif '--once' in sys.argv:
       poll_interval = False ; mainloop()
   elif exit_if_other_running and other_running(): sys.stderr.write("Another "+imapfix_name+" already running - exitting\n(Use "+imapfix_name+" --once if you want to force a run now)\n")
-  elif '--fix-archives' in sys.argv: fix_archives_written_by_imapfix_v1_308_and_earlier() # TODO: document?
+  elif '--fix-archives' in sys.argv: fix_archives_written_by_imapfix_v1_308() # TODO: document this? (use if mutt can't read archives written by v1.308, and some earlier versions, TODO: check which version was the first to have the 'writes a malformed envelope-From' problem)
   else: mainloop()
   make_sure_logged_out()
