@@ -1031,7 +1031,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
         subMsg.set_payload(open(f,'rb').read())
         from email import encoders
         encoders.encode_base64(subMsg)
-        if os.sep in f: f=f[f.rindex(os.sep):]
+        if os.sep in f: f=f[f.rindex(os.sep)+1:]
         subMsg.add_header('Content-Disposition', 'attachment', filename=f)
         msg.attach(subMsg)
     import smtplib
