@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.31 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.311 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -798,9 +798,15 @@ def add_previews(message,parent=None,accum=None):
     try: img=Image.open(StringIO(payload))
     except: return False # not an image, or corrupt
     img.thumbnail(image_size,Image.ANTIALIAS)
-    s1 = StringIO();img.save(s1,'JPEG');s1=s1.getvalue()
-    s2 = StringIO();img.save(s2,'PNG'); s2=s2.getvalue()
-    if len(s2) > len(s1): s,ext = s1,"jpg"
+    try:
+      s1 = StringIO();img.save(s1,'JPEG');s1=s1.getvalue()
+    except: s1 = None
+    try:
+      s2 = StringIO();img.save(s2,'PNG'); s2=s2.getvalue()
+    except: s2 = None
+    if s1==None and s2==None: return False
+    elif s1==None: s,ext = s2,"png"
+    elif s2==None or len(s2) > len(s1): s,ext = s1,"jpg"
     else: s,ext = s2,"png"
     if len(s) > len(payload): return # we failed to actually compress the image
     accum.append(email.mime.image.MIMEImage(s))
