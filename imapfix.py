@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.311 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.312 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -386,7 +386,10 @@ def forced_from(msg):
     # TODO: any other formats to check?
 
 def process_imap_inbox():
-    make_sure_logged_in()
+  make_sure_logged_in()
+  doneSomething = True
+  while doneSomething:
+    doneSomething = False # if we do something on 1st loop, we'll loop again before handing control back to the delay or IMAP-event wait.  This is to catch the case where new mail comes in WHILE we are processing the last batch of mail (e.g. another imapfix is running with --multinote and some of the processing calls send_mail() with a callSMTP_time delay: we don't want the rest of the notes to be delayed 29 minutes for the next IMAP-wait to time out)
     check_ok(imap.select()) # the inbox
     imapMsgid = None ; newMail = False
     for msgID,message in yield_all_messages():
@@ -394,6 +397,7 @@ def process_imap_inbox():
             if imapMsgid: # somehow ended up with 2, delete one
                 imap.store(imapMsgid, '+FLAGS', '\\Deleted')
             imapMsgid = msgID ; continue
+        doneSomething = True
         msg = email.message_from_string(message)
         box = False ; seenFlag=""
         if authenticates(msg):
@@ -438,7 +442,7 @@ def process_imap_inbox():
         # un-"seen" it (in case the IMAP server treats our fetching it as "seen"); TODO what if the client really read it but didn't delete?
         imap.store(imapMsgid, '-FLAGS', '\\Seen')
     check_ok(imap.expunge())
-    if (not quiet) and imap==saveImap: debug("Quota "+repr(imap.getquotaroot(filtered_inbox)[1])) # RFC 2087 "All mailboxes that share the same named quota root share the resource limits of the quota root" - so if the IMAP server has been set up in a typical way with just one limit, this command should print the current and max values for that shared limit.  (STORAGE = size in Kb, MESSAGE = number)
+  if (not quiet) and imap==saveImap: debug("Quota "+repr(imap.getquotaroot(filtered_inbox)[1])) # RFC 2087 "All mailboxes that share the same named quota root share the resource limits of the quota root" - so if the IMAP server has been set up in a typical way with just one limit, this command should print the current and max values for that shared limit.  (STORAGE = size in Kb, MESSAGE = number)
 
 def authenticates(msg):
     if not trusted_domain or not smtps_auth: return
