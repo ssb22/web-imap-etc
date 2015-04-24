@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.312 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.313 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -813,7 +813,9 @@ def add_previews(message,parent=None,accum=None):
     elif s2==None or len(s2) > len(s1): s,ext = s1,"jpg"
     else: s,ext = s2,"png"
     if len(s) > len(payload): return # we failed to actually compress the image
-    accum.append(email.mime.image.MIMEImage(s))
+    if ext=="png": mimetype = "image/png"
+    else: mimetype = "image/jpeg"
+    accum.append(email.mime.image.MIMEImage(s,_subtype=mimetype)) # _subtype defaults to auto-detect but it can fail
     accum[-1]['Content-Disposition']='attachment; filename=imapfix-preview'+str(len(accum))+'.'+ext # needed for some clients to show it
     return True
 
