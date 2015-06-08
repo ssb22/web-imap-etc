@@ -195,11 +195,11 @@ def check(text,content,url,errmsg):
       comment="\n  "+comment
     text = text.strip()
     assert text # or should have gone to rssCheck instead
-    if text.startswith("!"):
+    if text.startswith("!"): # 'not', so alert if DOES contain
         if len(text)==1: return # TODO: print error?
         if myFind(text[1:],content):
             sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
-    elif not myFind(text,content):
+    elif not myFind(text,content): # alert if DOESN'T contain
         sys.stdout.write(url+" no longer contains "+text+comment+errmsg+"\n")
         if '??show?' in comment: sys.stdout.write(content+'\n') # TODO: document this (for debugging cases where the text shown in Lynx is not the text shown to Webcheck, and Webcheck says "no longer contains" when it still does)
 
@@ -245,6 +245,6 @@ def myFind(text,content):
   elif text in content: return True
   t2 = normalisePunc(text)
   if not t2==text: return t2 in normalisePunc(content)
-def normalisePunc(t): return t.replace(u"\u2019".encode('utf-8'),"'") # for apostrophes (TODO: other?)
+def normalisePunc(t): return re.sub(r"(\s)\s+",r"\1",t.replace(u"\u2019".encode('utf-8'),"'")) # for apostrophes, + collapse (but don't ignore) whitespace (TODO: other?)
   
 if __name__=="__main__": main()
