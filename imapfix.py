@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.313 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.314 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -411,6 +411,7 @@ def process_imap_inbox():
          # (especially if they've been developed based on
          # post-charset-conversion saved messages)
          changed = globalise_charsets(msg)
+         changed = remove_blank_inline_parts(msg) or changed
          if image_size: changed = add_previews(msg) or changed
          changed = rewrite_deliveryfail(msg) or changed
          changed = forced_from(msg) or changed
@@ -555,6 +556,17 @@ def get_attachments(msg):
     data = msg.get_payload(None,True)
     if data: return {fname:data}
     else: return {}
+
+def remove_blank_inline_parts(msg):
+    # some mailers send HTML-only messages with completely blank text/plain alternatives.  In this case it's best to remove the blank alternative so that a client told to prefer text can display the HTML.  TODO: document that we do this?
+    if not msg.is_multipart(): return
+    ll = msg.get_payload()
+    i = 0 ; changed = False
+    while i < len(ll):
+        if (not 'Content-Type' in ll[i] or ll[i]["Content-Type"].startswith("text/")) and not ll[i].get_payload(decode=True).strip() and len(ll)>1:
+            del ll[i] ; changed = True
+        else: i += 1
+    return changed
 
 def save_attachments_separately(msg):
     if msg.is_multipart():
