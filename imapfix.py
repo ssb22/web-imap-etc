@@ -569,10 +569,8 @@ def remove_blank_inline_parts(msg):
     return changed
 
 def save_attachments_separately(msg):
-    if msg.is_multipart():
-        for i in msg.get_payload():
-            save_attachments_separately(i)
-        return
+    walk_msg(msg,save_attachment_separately)
+def save_attachment_separately(msg):
     try: fname = msg.get_filename()
     except: fname="illegal-filename-A"
     if not fname: return
@@ -600,10 +598,9 @@ def save_attachments_separately(msg):
     open_compressed(f2+suffix,'wb').write(data)
 
 def delete_attachments(msg):
-    if msg.is_multipart():
-        for i in msg.get_payload():
-            delete_attachments(i)
-    elif msg.get_filename(): msg.set_payload("")
+    walk_msg(msg,delete_attachment)
+def delete_attachment(msg):
+    if msg.get_filename(): msg.set_payload("")
 
 def open_compressed(fname,mode):
     if compression=="bz2":
@@ -798,17 +795,20 @@ def globalise_charsets(message):
 def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.QP,'utf-8') # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
 def email_u8_default(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
 
-def add_previews(message,parent=None,accum=None):
-    changed = False
+def walk_msg(message,partFunc,*args):
     if message.is_multipart():
-        if parent: p0 = parent
-        else:
-            p0 = message ; accum = []
+        changed = False
         for i in message.get_payload():
-            if add_previews(i,p0,accum): changed = True
-        if not parent:
-            for i in accum: message.attach(i)
+          changed = walk_msg(i,partFunc,*args) or changed
         return changed
+    else: return partFunc(message,*args)
+
+def add_previews(message):
+    accum = []
+    walk_msg(message,add_preview,accum)
+    for i in accum: message.attach(i)
+    return not len(accum)==0
+def add_preview(message,accum):
     if not 'Content-Type' in message or message["Content-Type"].startswith("text/"): return False
     payload = message.get_payload(decode=True)
     try: img=Image.open(StringIO(payload))
