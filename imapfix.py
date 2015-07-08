@@ -831,6 +831,7 @@ def add_preview(message,accum):
     if ext=="png": subtype = "png"
     else: subtype = "jpeg"
     i = email.mime.image.MIMEImage(s,_subtype=subtype) # _subtype defaults to auto-detect but it can fail
+    if not i['Content-Type'].lower().startswith('image/'): i['Content-Type']='image/'+i['Content-Type'] # depends on version of PIL?
     i['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.'+ext # needed for some clients to show it
     to_attach.append(i) ; accum[0] += 1
     return True
