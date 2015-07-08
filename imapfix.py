@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.314 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.315 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -110,7 +110,8 @@ spam_folder = "spam"
 poll_interval = 4*60
 # Note: set poll_interval=False if you want just one run,
 # or poll_interval="idle" to use imap's IDLE command (this
-# requires the imaplib2 module).
+# requires the imaplib2 module; you can add to sys.path from
+# imapfix_config.py if you have it in your home directory).
 
 logout_before_sleep = False # suggest set to True if using
 # a long poll_interval, or if filtered_inbox=None
@@ -798,17 +799,19 @@ def email_u8_default(): email.charset.add_charset('utf-8',email.charset.SHORTEST
 def walk_msg(message,partFunc,*args):
     if message.is_multipart():
         changed = False
+        global to_attach ; o,to_attach = to_attach,[] # for add_preview: it needs to add previews to the container immediately above, not necessarily the top-level container (as we might have a multipart/related within a multipart/alternative or something)
         for i in message.get_payload():
           changed = walk_msg(i,partFunc,*args) or changed
-        return changed
+        for i in to_attach: message.attach(i)
+        to_attach = o ; return changed
     else: return partFunc(message,*args)
 
 def add_previews(message):
-    accum = []
-    walk_msg(message,add_preview,accum)
-    for i in accum: message.attach(i)
-    return not len(accum)==0
+    global to_attach ; to_attach = None
+    accum = [1]
+    return walk_msg(message,add_preview,accum)
 def add_preview(message,accum):
+    if to_attach == None: return False # TODO? (message sent with a single image and nothing else)
     if not 'Content-Type' in message or message["Content-Type"].startswith("text/"): return False
     payload = message.get_payload(decode=True)
     try: img=Image.open(StringIO(payload))
@@ -825,10 +828,11 @@ def add_preview(message,accum):
     elif s2==None or len(s2) > len(s1): s,ext = s1,"jpg"
     else: s,ext = s2,"png"
     if len(s) > len(payload): return # we failed to actually compress the image
-    if ext=="png": mimetype = "image/png"
-    else: mimetype = "image/jpeg"
-    accum.append(email.mime.image.MIMEImage(s,_subtype=mimetype)) # _subtype defaults to auto-detect but it can fail
-    accum[-1]['Content-Disposition']='attachment; filename=imapfix-preview'+str(len(accum))+'.'+ext # needed for some clients to show it
+    if ext=="png": subtype = "png"
+    else: subtype = "jpeg"
+    i = email.mime.image.MIMEImage(s,_subtype=subtype) # _subtype defaults to auto-detect but it can fail
+    i['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.'+ext # needed for some clients to show it
+    to_attach.append(i) ; accum[0] += 1
     return True
 
 setAlarmAt = 0
