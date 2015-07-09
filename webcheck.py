@@ -179,8 +179,18 @@ def worker_thread(*args):
         jobs.task_done()
 
 def run_webdriver(actionList):
-    from selenium import webdriver
+    try: from selenium import webdriver
+    except:
+        print "webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)"
+        return ""
     browser = webdriver.PhantomJS()
+    r = ""
+    try: r = run_webdriver_inner(actionList,browser)
+    except: print traceback.format_exc()
+    browser.quit()
+    return r
+
+def run_webdriver_inner(actionList,browser):
     browser.set_window_size(1024, 768)
     browser.implicitly_wait(30)
     def findElem(spec):
@@ -217,7 +227,6 @@ def run_webdriver(actionList):
         if sys.stderr.isatty(): sys.stderr.write(':') # webdriver's '.'
         time.sleep(delay)
     snippets.append(browser.page_source.encode('utf-8'))
-    browser.quit()
     return '\n'.join(snippets)
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
