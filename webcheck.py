@@ -1,5 +1,5 @@
 
-# webcheck.py v1.13 (c) 2014-15 Silas S. Brown.  License: GPL
+# webcheck.py v1.2 (c) 2014-15 Silas S. Brown.  License: GPL
 # See webcheck.html for description and usage instructions
 
 # CHANGES
@@ -20,6 +20,7 @@ if max_threads > 1: import thread
 def read_input():
   ret = {} # domain -> { url -> [(days,text)] }
   days = 0 ; extraHeaders = []
+  url = mainDomain = None
   for line in open("webcheck.list").read().replace("\r","\n").split("\n"):
     line = line.strip()
     if not line or line[0]=='#': continue
@@ -33,20 +34,42 @@ def read_input():
     else: freqCmd = None
     if freqCmd: continue
 
-    if ':' in line and not line.split(':',1)[1].startswith('//'):
-        extraHeaders.append(line) ; continue
-
-    lSplit = line.split(None,1)
-    if len(lSplit)==1: url, text = lSplit[0],"" # RSS only
-    else: url, text = lSplit
-    mainDomain = '.'.join(urlparse.urlparse(url).netloc.rsplit('.',2)[-2:])
-    if extraHeaders: url += '\n'+'\n'.join(extraHeaders)
+    if line.startswith('also:') and url:
+      text = line[5:].strip()
+      # and leave url and mainDomain as-is (same as above line)
+    elif ':' in line and not line.split(':',1)[1].startswith('//'):
+      extraHeaders.append(line) ; continue
+    elif line.startswith('{') and '}' in line: # webdriver
+      actions = line[1:line.index('}')].split()
+      balanceBrackets(actions)
+      text = line[line.index('}')+1:].strip()
+      mainDomain = '.'.join(urlparse.urlparse(actions[0]).netloc.rsplit('.',2)[-2:]) # assumes 1st action is a URL
+      url = "wd://"+chr(0).join(actions)
+    else: # not webdriver
+      lSplit = line.split(None,1)
+      if len(lSplit)==1: url, text = lSplit[0],"" # RSS only
+      else: url, text = lSplit
+      mainDomain = '.'.join(urlparse.urlparse(url).netloc.rsplit('.',2)[-2:])
+      if extraHeaders: url += '\n'+'\n'.join(extraHeaders)
     if not mainDomain in ret:
         ret[mainDomain] = {}
     if not url in ret[mainDomain]:
         ret[mainDomain][url] = []
     ret[mainDomain][url].append((days,text))
   return ret
+
+def balanceBrackets(wordList):
+    "For webdriver instructions: merge adjacent items of wordList so each item has balanced square brackets (currently checks only start and end of each word; if revising this, be careful about use on URLs).  Also checks quotes (TODO: make sure that doesn't interfere with brackets)."
+    bracketLevel = 0 ; i = 0
+    while i < len(wordList)-1:
+        blOld = bracketLevel
+        if wordList[i][0] in '["': bracketLevel += 1
+        if wordList[i][-1] in ']"': bracketLevel -= 1
+        if bracketLevel > 0:
+            wordList [i] += " "+wordList[i+1]
+            del wordList[i+1] ; bracketLevel = blOld
+        else:
+            i += 1 ; bracketLevel = 0
 
 class HTMLStrings(HTMLParser.HTMLParser):
     def __init__(self):
@@ -101,16 +124,17 @@ def main():
     try: pickle.Pickler(open(".webcheck-last","wb")).dump(previous_timestamps)
     except: sys.stdout.write("Problem writing .webcheck-last (progress was NOT saved):\n"+traceback.format_exc()+"\n")
 
+def default_opener():
+    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor()) # HTTPCookieProcessor needed for some redirects
+    opener.addheaders = [('User-agent', 'Mozilla/5.0 or Lynx or whatever you like (actually Webcheck)'), # TODO: ? (just Mozilla/5.0 is not always acceptable to all servers)
+                         ('Accept-Encoding', 'gzip')]
+    return opener
+
 def worker_thread(*args):
     opener = None
     while True:
         try: job = jobs.get(False)
         except: return # no more jobs left
-        if opener==None:
-            opener = urllib2.build_opener(urllib2.HTTPCookieProcessor()) # HTTPCookieProcessor needed for some redirects
-            opener.addheaders = [('User-agent',
-                                  'Mozilla/5.0 or Lynx or whatever you like (actually Webcheck)'), # TODO: ? (just Mozilla/5.0 is not always acceptable to all servers)
-                         ('Accept-Encoding', 'gzip')]
         last_fetch_finished = 0 # or time.time()-delay
         for url,daysTextList in sorted(job.items()): # sorted will group http and https together
           if '\n' in url:
@@ -126,7 +150,12 @@ def worker_thread(*args):
           if url.startswith("dns://"):
               u,content = None, ' '.join(sorted(set('('+x[-1][0]+')' for x in socket.getaddrinfo(url[6:],1)))) # TODO this 'sorted' is lexicographical not numeric; it should be OK for most simple cases though (keeping things in a defined order so can check 2 or 3 IPs on same line if the numbers are consecutive and hold same number of digits).  Might be better if parse and numeric sort
               textContent = content
+          elif url.startswith("wd://"):
+              u,content = None, run_webdriver(url[5:].split(chr(0)))
+              textContent = None # parse 'content' if needed
+              url = url[5:].split(chr(0),1)[0] # for display
           else:
+              if opener==None: opener = default_opener()
               u,content = tryRead(url,opener,extraHeaders)
               textContent = None
           last_fetch_finished = time.time()
@@ -141,13 +170,55 @@ def worker_thread(*args):
               if t.startswith('>'):
                   check(t[1:],content,"Source of "+url,"")
               elif not t or t.startswith('#'):
-                  rssCheck(url,content,t.replace('#','',1).strip())
+                  parseRSS(url,content,t.replace('#','',1).strip())
               else:
                 if textContent==None:
                   textContent,errmsg=htmlStrings(content)
                 else: errmsg = ""
                 check(t,textContent,url,errmsg)
         jobs.task_done()
+
+def run_webdriver(actionList):
+    from selenium import webdriver
+    browser = webdriver.PhantomJS()
+    browser.set_window_size(1024, 768)
+    browser.implicitly_wait(30)
+    def findElem(spec):
+        if spec.startswith('#'):
+            return browser.find_element_by_id(spec[1:])
+        # TODO: other patterns?
+        else: return browser.find_element_by_link_text(spec)
+    snippets = []
+    for a in actionList:
+        if a.startswith('http'): browser.get(a)
+        elif a.startswith('"') and a.endswith('"'):
+            # wait for "string" to appear in the source
+            tries = 30
+            while tries and not a[1:-1] in browser.page_source:
+              time.sleep(delay) ; tries -= 1
+            if sys.stderr.isatty() and not a[1:-1] in browser.page_source:
+                sys.stderr.write("webdriver timeout while waiting for \"%s\"\n" % (a[1:-1],))
+                # sys.stderr.write("Current source:\n"+browser.page_source+"\n\n") # this can produce a LOT of output
+        elif a.startswith('[') and a.endswith(']'): # click
+            findElem(a[1:-1]).click()
+        elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
+            start = a[1:a.rindex('/')]
+            delayAfter = int(a[a.rindex('/')+1:])
+            l = re.findall(' [iI][dD] *="('+re.escape(start)+'[^"]*)',browser.page_source) + re.findall(' [iI][dD] *=('+re.escape(start)+'[^"> ]*)',browser.page_source)
+            for m in l:
+              browser.find_element_by_id(m).click()
+              if sys.stderr.isatty(): sys.stderr.write('*') # webdriver's '.' for click-multiple
+              time.sleep(delayAfter)
+              snippets.append(browser.page_source.encode('utf-8'))
+        elif '=' in a: # set a form control
+            spec, val = a.split('=',1)
+            findElem(spec).send_keys(val)
+        else: sys.stderr.write("Ignoring webdriver unknown action "+repr(a)+'\n')
+        if sys.stderr.isatty(): sys.stderr.write(':') # webdriver's '.'
+        time.sleep(delay)
+    snippets.append(browser.page_source.encode('utf-8'))
+    browser.quit()
+    return '\n'.join(snippets)
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 
@@ -188,14 +259,15 @@ def tryGzip(t):
 def check(text,content,url,errmsg):
     if ' #' in text: text,comment = text.split(' #',1) # TODO: document this (comments must be preceded by a space, otherwise interpreted as part of the text as this is sometimes needed in codes)
     else: comment = ""
-    comment = comment.strip()
+    orig_comment = comment = comment.strip()
     if comment:
       if comment.startswith('(') or comment.endswith(')'): pass
       else: comment = '('+comment+')'
       comment="\n  "+comment
     text = text.strip()
-    assert text # or should have gone to rssCheck instead
-    if text.startswith("!"): # 'not', so alert if DOES contain
+    assert text # or should have gone to parseRSS instead
+    if text.startswith('{') and text.endswith('}') and '...' in text: extract(url,content,text[1:-1].split('...'),orig_comment)
+    elif text.startswith("!"): # 'not', so alert if DOES contain
         if len(text)==1: return # TODO: print error?
         if myFind(text[1:],content):
             sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
@@ -203,7 +275,7 @@ def check(text,content,url,errmsg):
         sys.stdout.write(url+" no longer contains "+text+comment+errmsg+"\n")
         if '??show?' in comment: sys.stdout.write(content+'\n') # TODO: document this (for debugging cases where the text shown in Lynx is not the text shown to Webcheck, and Webcheck says "no longer contains" when it still does)
 
-def rssCheck(url,content,comment):
+def parseRSS(url,content,comment):
   from xml.parsers import expat
   parser = expat.ParserCreate()
   items = [[[],[],[]]] ; curElem = [None]
@@ -223,6 +295,8 @@ def rssCheck(url,content,comment):
   parser.CharacterDataHandler = CharacterDataHandler
   try: parser.Parse(content,1)
   except expat.error: pass # TODO: print error?
+  handleRSS(url,items,comment)
+def handleRSS(url,items,comment,itemType="RSS/Atom"):
   newItems = [] ; pKeep = set()
   for title,link,txt in items:
     def f(t): return "".join(t).strip()
@@ -238,7 +312,21 @@ def rssCheck(url,content,comment):
     if k[:2]==(url,'seenItem') and not k in pKeep:
       del previous_timestamps[k] # dropped from the feed
   if comment: comment=" ("+comment+")"
-  if newItems: sys.stdout.write(str(len(newItems))+" new RSS/Atom items in "+url+comment+' :\n'+'\n---\n'.join(newItems).encode('utf-8')+'\n\n')
+  if newItems: sys.stdout.write(str(len(newItems))+" new "+itemType+" items in "+url+comment+' :\n'+'\n---\n'.join(newItems).encode('utf-8')+'\n\n')
+
+def extract(url,content,startEndMarkers,comment):
+  assert len(startEndMarkers)==2, "Should have exactly one '...' between the braces when extracting items"
+  start,end = startEndMarkers
+  i=0 ; items = []
+  while True:
+    i = content.find(start,i)
+    if i==-1: break
+    j = content.find(end,i+len(start))
+    if j==-1: break
+    items.append(('Auto-extracted text:','',content[i+len(start):j].decode('utf-8'))) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
+    i = j+len(end)
+  # if not items: print "No items in",repr(content)
+  handleRSS(url,items,comment,"extracted")
 
 def myFind(text,content):
   if text.startswith("*"): return re.search(text[1:],content)
