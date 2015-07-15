@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.315 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.316 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -799,7 +799,10 @@ def email_u8_default(): email.charset.add_charset('utf-8',email.charset.SHORTEST
 def walk_msg(message,partFunc,*args):
     if message.is_multipart():
         changed = False
-        global to_attach ; o,to_attach = to_attach,[] # for add_preview: it needs to add previews to the container immediately above, not necessarily the top-level container (as we might have a multipart/related within a multipart/alternative or something)
+        global to_attach # for add_preview: it needs to add previews to the container immediately above, not necessarily the top-level container (as we might have a multipart/related within a multipart/alternative or something)
+        try: to_attach
+        except: to_attach = None # not called from add_preview
+        o,to_attach = to_attach,[]
         for i in message.get_payload():
           changed = walk_msg(i,partFunc,*args) or changed
         for i in to_attach: message.attach(i)
