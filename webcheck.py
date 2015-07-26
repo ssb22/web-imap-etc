@@ -1,5 +1,5 @@
 
-# webcheck.py v1.2 (c) 2014-15 Silas S. Brown.  License: GPL
+# webcheck.py v1.21 (c) 2014-15 Silas S. Brown.  License: GPL
 # See webcheck.html for description and usage instructions
 
 # CHANGES
@@ -64,6 +64,7 @@ def balanceBrackets(wordList):
     while i < len(wordList)-1:
         blOld = bracketLevel
         if wordList[i][0] in '["': bracketLevel += 1
+        elif not bracketLevel and '->"' in wordList[i] and not wordList[i].endswith('->"'): bracketLevel += 1
         if wordList[i][-1] in ']"': bracketLevel -= 1
         if bracketLevel > 0:
             wordList [i] += " "+wordList[i+1]
@@ -179,6 +180,7 @@ def worker_thread(*args):
         jobs.task_done()
 
 def run_webdriver(actionList):
+    global webdriver # so run_webdriver_inner has it
     try: from selenium import webdriver
     except:
         print "webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)"
@@ -220,7 +222,19 @@ def run_webdriver_inner(actionList,browser):
               if sys.stderr.isatty(): sys.stderr.write('*') # webdriver's '.' for click-multiple
               time.sleep(delayAfter)
               snippets.append(browser.page_source.encode('utf-8'))
-        elif '=' in a: # set a form control
+        elif '->' in a: # set a selection box
+            spec, val = a.split('->',1)
+            e = webdriver.support.ui.Select(findElem(spec))
+            if val.startswith('"') and val.endswith('"'): val=val[1:-1]
+            if val: e.select_by_visible_text(val)
+            else: e.deselect_all()
+        elif a.endswith('*0'): # clear a checkbox
+            e = findElem(a[:-2])
+            if e.is_selected(): e.click()
+        elif a.endswith('*1'): # check a checkbox
+            e = findElem(a[:-2])
+            if not e.is_selected(): e.click()
+        elif '=' in a: # put text in an input box
             spec, val = a.split('=',1)
             findElem(spec).send_keys(val)
         else: sys.stderr.write("Ignoring webdriver unknown action "+repr(a)+'\n')
@@ -321,7 +335,7 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     if k[:2]==(url,'seenItem') and not k in pKeep:
       del previous_timestamps[k] # dropped from the feed
   if comment: comment=" ("+comment+")"
-  if newItems: sys.stdout.write(str(len(newItems))+" new "+itemType+" items in "+url+comment+' :\n'+'\n---\n'.join(newItems).encode('utf-8')+'\n\n')
+  if newItems: sys.stdout.write(str(len(newItems))+" new "+itemType+" items in "+url+comment+' :\n'+'\n---\n'.join(n.strip() for n in newItems).encode('utf-8')+'\n\n')
 
 def extract(url,content,startEndMarkers,comment):
   assert len(startEndMarkers)==2, "Should have exactly one '...' between the braces when extracting items"
