@@ -1,5 +1,5 @@
 
-# webcheck.py v1.21 (c) 2014-15 Silas S. Brown.  License: GPL
+# webcheck.py v1.22 (c) 2014-15 Silas S. Brown.  License: GPL
 # See webcheck.html for description and usage instructions
 
 # CHANGES
@@ -149,7 +149,8 @@ def worker_thread(*args):
           time.sleep(max(0,last_fetch_finished+delay-time.time()))
           if sys.stderr.isatty(): sys.stderr.write('.')
           if url.startswith("dns://"):
-              u,content = None, ' '.join(sorted(set('('+x[-1][0]+')' for x in socket.getaddrinfo(url[6:],1)))) # TODO this 'sorted' is lexicographical not numeric; it should be OK for most simple cases though (keeping things in a defined order so can check 2 or 3 IPs on same line if the numbers are consecutive and hold same number of digits).  Might be better if parse and numeric sort
+              try: u,content = None, ' '.join(sorted(set('('+x[-1][0]+')' for x in socket.getaddrinfo(url[6:],1)))) # TODO this 'sorted' is lexicographical not numeric; it should be OK for most simple cases though (keeping things in a defined order so can check 2 or 3 IPs on same line if the numbers are consecutive and hold same number of digits).  Might be better if parse and numeric sort
+              except: u,content=None,"DNS lookup failed"
               textContent = content
           elif url.startswith("wd://"):
               u,content = None, run_webdriver(url[5:].split(chr(0)))
