@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.316 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.317 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -39,6 +39,9 @@ image_size = None # or e.g. image_size = (320,240)
 # exceeds this size, for previewing on low bandwidth
 # (this option requires the PIL library).  The scaled-down
 # versions are added only if the file is actually smaller.
+# This option also tries to ensure that all images are set to
+# an image/ rather than application/ Content-Type, which
+# helps some mailers.
 
 header_rules = [
     ("folder-name-1",
@@ -292,7 +295,9 @@ elif compression=="gz":
     compression_ext = ".gz"
 else: compression_ext = ""
 
-if image_size: from PIL import Image
+if image_size:
+    from PIL import Image
+    import imghdr
 
 def debug(msg):
     if not quiet: print msg
@@ -819,6 +824,14 @@ def add_preview(message,accum):
     payload = message.get_payload(decode=True)
     try: img=Image.open(StringIO(payload))
     except: return False # not an image, or corrupt
+    changed = False
+    if message["Content-Type"].startswith("application/"):
+        try: what = imghdr.what(None,payload)
+        except: what = None
+        if what:
+            del message["Content-Type"]
+            message["Content-Type"]="image/"+what
+            changed = True
     img.thumbnail(image_size,Image.ANTIALIAS)
     try:
       s1 = StringIO();img.save(s1,'JPEG');s1=s1.getvalue()
@@ -826,11 +839,11 @@ def add_preview(message,accum):
     try:
       s2 = StringIO();img.save(s2,'PNG'); s2=s2.getvalue()
     except: s2 = None
-    if s1==None and s2==None: return False
+    if s1==None and s2==None: return changed
     elif s1==None: s,ext = s2,"png"
     elif s2==None or len(s2) > len(s1): s,ext = s1,"jpg"
     else: s,ext = s2,"png"
-    if len(s) > len(payload): return # we failed to actually compress the image
+    if len(s) > len(payload): return changed # we failed to actually compress the image
     if ext=="png": subtype = "png"
     else: subtype = "jpeg"
     i = email.mime.image.MIMEImage(s,_subtype=subtype) # _subtype defaults to auto-detect but it can fail
