@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.317 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.318 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -329,8 +329,9 @@ def process_header_rules(header):
         i=re.finditer(m,headerLine.rstrip())
         try: i.next()
         except StopIteration: continue
-        if box and box[0]=='*': box=box[1:] # just save it without indication
-        elif box: open(newmail_directory+os.sep+box,'a')
+        if box:
+            if box[0]=='*': box=box[1:] # just save it without indication
+            elif newmail_directory: open(newmail_directory+os.sep+box,'a')
         return rename_folder(box)
   return False
 
