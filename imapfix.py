@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.318 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.32 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -170,6 +170,18 @@ forced_names = {} # you can set this to a dictionary
 # From name is used will be replaced by the one specified;
 # this is for when one of your contacts has their "From"
 # name set to something confusing like their ISP's name
+
+important_regexps = [
+    # List here any regular expressions that will result in
+    # the "Importance" flag of a message being set.  If the
+    # list is empty then Importance is unchanged.
+    # The default rule here marks as 'important' any message
+    # that seems to include a phone number, as an aid to
+    # quickly finding these when processing email on a phone
+    # (if you'd rather call than type and would therefore
+    # like to find messages that contain phone numbers)
+    r"0(?:\s*[0-9]){10}",
+    ]
 
 # Set secondary_imap_hostname if you also want to check
 # some other IMAP server and treat its messages as being
@@ -392,6 +404,27 @@ def forced_from(msg):
     if fr.endswith('>') and '<' in fr and f(fr[fr.rindex('<')+1:-1]): return True
     # TODO: any other formats to check?
 
+def body_text(msg):
+    "Returns a representation of the message's body text (all parts), for rules"
+    if msg.is_multipart(): return "\n".join(body_text(p) for p in msg.get_payload())
+    if not msg.get_content_type().startswith("text/"): return ""
+    return msg.get_payload(decode=True).strip()
+
+def rewrite_importance(msg):
+    if not important_regexps: return
+    changed = False
+    for h in ['Priority', # e.g. Urgent
+              'X-Priority', # 1 is highest
+              'X-MSMail-Priority', # e.g. High
+              'Importance']: # e.g. High; clients that recognise the previous 3 tend to recognise this one as well, and other clients recognise only this one, so we'll clear all but set only this one
+        if h in msg:
+            del msg[h] ; changed = True
+    bTxt = body_text(msg)
+    for r in important_regexps:
+        if re.search(r,bTxt):
+            msg['Importance'] = 'High'; changed=True; break
+    return changed
+
 def process_imap_inbox():
   make_sure_logged_in()
   doneSomething = True
@@ -422,6 +455,7 @@ def process_imap_inbox():
          if image_size: changed = add_previews(msg) or changed
          changed = rewrite_deliveryfail(msg) or changed
          changed = forced_from(msg) or changed
+         changed = rewrite_importance(msg) or changed
          if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
          if changed: message = myAsString(msg)
          if box==False:
