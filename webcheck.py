@@ -186,7 +186,10 @@ def run_webdriver(actionList):
     except:
         print "webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)"
         return ""
-    browser = webdriver.PhantomJS()
+    try: browser = webdriver.PhantomJS()
+    except:
+      print "webcheck misconfigured: can't create webdriver.PhantomJS (is another running? selenium installed OK?)"
+      return ""
     r = ""
     try: r = run_webdriver_inner(actionList,browser)
     except: print traceback.format_exc()
