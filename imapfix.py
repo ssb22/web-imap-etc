@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.32 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.33 (c) 2013-15 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -204,6 +204,14 @@ failed_address_to_subject = True # try to rewrite delivery
 # of subjects without having to go in to the message.
 # Not all delivery failure reports can be adjusted in this
 # way; it depends on how the bouncing relay formats them.
+
+imap_8bit = False # set to True if your IMAP server & clients
+# will accept raw 8-bit UTF-8 strings in message bodies (but
+# this is not universal, so make sure it re-encodes as MIME
+# when forwarding messages to others).  Raw UTF-8 messages
+# (if supported) save a little bandwidth and allow characters
+# to be more readily displayed in Mutt's "Edit Message" etc.
+archive_8bit = False # similar if you want --archive as 8bit
 
 exit_if_other_running = True # when run without options,
 # try to detect if another no-options imapfix is running
@@ -450,7 +458,7 @@ def process_imap_inbox():
          # globalise charsets BEFORE the filtering rules
          # (especially if they've been developed based on
          # post-charset-conversion saved messages)
-         changed = globalise_charsets(msg)
+         changed = globalise_charsets(msg,imap_8bit)
          changed = remove_blank_inline_parts(msg) or changed
          if image_size: changed = add_previews(msg) or changed
          changed = rewrite_deliveryfail(msg) or changed
@@ -550,7 +558,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
                 f.append(time.asctime(time.gmtime(t))) # must be THIS format for at least some versions of mutt to parse the message
                 message="From "+' '.join(f)+"\r\n"+message
                 msg = email.message_from_string(message)
-        globalise_charsets(msg) # in case wasn't done on receive (this also makes sure UTF-8 is quopri if it would be shorter, which can make archives easier to search)
+        globalise_charsets(msg,archive_8bit) # in case wasn't done on receive (this also makes sure UTF-8 is quopri if it would be shorter, which can make archives easier to search)
         if archived_attachments_path:
             save_attachments_separately(msg)
         mbox.add(msg) # TODO: .set_flags A=answered R=read ?  (or doesn't it matter so much for old-message archiving; flags aren't always right anyway as you might have answered some using another method)
@@ -558,7 +566,12 @@ def archive(foldername, mboxpath, age, spamprobe_action):
     if mbox:
         mbox.close()
         if not os.stat(mboxpath).st_size: os.remove(mboxpath) # ended up with an empty file - delete it
-        elif compression:
+        else:
+          if archive_8bit:
+            d1 = open(mboxpath,'rb').read()
+            d2 = quopri_to_u8_8bitOnly(d1)
+            if not d2==d1: open(mboxpath,'wb').write(d2)
+          if compression:
             open_compressed(mboxpath,'wb').write(open(mboxpath,'rb').read()) # will write a .bz2 etc
             os.remove(mboxpath)
     # don't do this until got here without error:
@@ -662,6 +675,7 @@ def save_to(mailbox, message_as_string,
         saveImap.create(mailbox) # error if exists OK
         already_created.add(mailbox)
     if not received_time: received_time = time.time()
+    if imap_8bit: message_as_string = quopri_to_u8_8bitOnly(message_as_string)
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(received_time), message_as_string))
 
 def rename_folder(folder):
@@ -683,7 +697,7 @@ def do_maildirs_to_imap():
         debug("Moving messages from maildir "+d+" to imap "+to)
         m = mailbox.Maildir(d2,None)
         for k,msg in m.items():
-            globalise_charsets(msg)
+            globalise_charsets(msg,imap_8bit)
             if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
             else: t = None # undated message ??
             save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg),t)
@@ -703,7 +717,7 @@ def do_maildir_to_copyself():
         if not said:
             debug("Moving messages from "+maildir_to_copyself+" to imap "+copyself_folder_name)
             said = True
-        globalise_charsets(msg)
+        globalise_charsets(msg,imap_8bit)
         if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
         else: t = None # undated message ??
         if copyself_delete_attachments:
@@ -727,7 +741,7 @@ def do_copyself_to_copyself():
                 debug("Moving messages from "+folder+" to "+copyself_folder_name)
                 said = True
             msg = email.message_from_string(message)
-            globalise_charsets(msg)
+            globalise_charsets(msg,imap_8bit)
             if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
             else: t = None # undated message ??
             if copyself_delete_attachments:
@@ -794,7 +808,7 @@ def getFirstPart(message):
     if cs in ['gb2312','gbk']: cs = 'gb18030'
     return pl.decode(cs).encode('utf-8')
 
-def globalise_charsets(message):
+def globalise_charsets(message,will_use_8bit=False):
     """'Globalises' the character sets of all parts of
         email.message.Message object 'message'.
         Only us-ascii and utf-8 charsets are 'global'.
@@ -813,7 +827,7 @@ def globalise_charsets(message):
         changed = True
     if message.is_multipart():
         for i in message.get_payload():
-            if globalise_charsets(i): changed = True
+            if globalise_charsets(i,will_use_8bit): changed = True
         return changed
     m = message.get_content_charset(None)
     if m in [None,'us-ascii','utf-8'] and (not 'Content-Transfer-Encoding' in message or message['Content-Transfer-Encoding']=='quoted-printable'): return changed # no further conversion required
@@ -828,13 +842,19 @@ def globalise_charsets(message):
         isQP = (message['Content-Transfer-Encoding']=='quoted-printable')
         del message['Content-Transfer-Encoding']
     else: isQP = False
-    if isQP or len(quopri.encodestring(p)) <= len(base64.encodestring(p)): email_u8_quopri()
-    else: email_u8_default()
+    if not isQP:
+        b64len = base64.encodestring(p)
+        pp = quopri.encodestring(p)
+        isQP = (len(pp) <= b64len or (will_use_8bit and len(quopri_to_u8_8bitOnly(pp)) <= b64len)) # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
+    if isQP: email_u8_quopri()
+    else: email_u8_b64()
     message.set_payload(p,'utf-8')
-    email_u8_default() # just in case
+    if isQP: email_u8_quopri()
+    else: email_u8_b64() # again, just in case
     return True # charset changed
-def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.QP,'utf-8') # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
-def email_u8_default(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
+def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.QP,'utf-8')
+def email_u8_b64(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
+def quopri_to_u8_8bitOnly(s): return re.sub(r"(=(([C][2-9A-F]|[D][0-9A-F])|E0=[AB][0-9A-F]|(E[1-9A-CEF]|F0=[9AB][0-9A-F]|F4=8[0-F])=[89AB][0-9A-F]|ED=[89][0-9A-F]|F[1-3]=[89AB][0-9A-F]=[89AB][0-9A-F])=[89AB][0-9A-F])+",lambda m:quopri.decodestring(m.group()),s) # decodes only 8-bit utf-8 characters from the quoted-printable string, leaving alone any 7-bit characters that are encoded as quoted-printable ("^From" etc)
 
 def walk_msg(message,partFunc,*args):
     if message.is_multipart():
