@@ -822,6 +822,7 @@ def globalise_charsets(message,will_use_8bit=False):
         l2 = re.sub(header_charset_regex,globalise_header_charset,l,flags=re.DOTALL).replace('\n',' ').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
         if l==l2: continue
         # debug("Setting "+line+" to "+repr(l2))
+        # message["X-Imapfix-Old-"+line] = message[line] # trying to debug "XXX"s in messages from Coremail Webmail (mailtech.cn) -> seems that happened before imapfix got it
         del message[line]
         message[line] = l2
         changed = True
