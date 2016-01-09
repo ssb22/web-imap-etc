@@ -785,7 +785,7 @@ import email.mime.multipart,email.mime.message,email.mime.text,email.mime.image,
 def turn_into_attachment(message):
     m2 = email.mime.multipart.MIMEMultipart()
     for k,v in message.items():
-        if not k.lower() in ['content-length','content-type','content-transfer-encoding','lines']: m2[k]=v
+        if not k.lower() in ['content-length','content-type','content-transfer-encoding','lines','mime-version']: m2[k]=v
     m2.attach(email.mime.text.MIMEText("Large message converted to attachment")) # by imapfix, but best not mention this as it might bias the filters?
     m2.attach(email.mime.message.MIMEMessage(message))
     return m2
