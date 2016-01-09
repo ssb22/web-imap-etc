@@ -1,5 +1,5 @@
 
-# webcheck.py v1.22 (c) 2014-15 Silas S. Brown.  License: GPL
+# webcheck.py v1.23 (c) 2014-16 Silas S. Brown.  License: GPL
 # See webcheck.html for description and usage instructions
 
 # CHANGES
@@ -334,6 +334,7 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     if k in previous_timestamps: continue
     previous_timestamps[k] = True
     if txt: txt += '\n'
+    txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is
     newItems.append(title+'\n'+txt+link)
   for k in previous_timestamps.keys():
     if k[:2]==(url,'seenItem') and not k in pKeep:
