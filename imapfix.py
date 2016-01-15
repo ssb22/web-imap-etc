@@ -26,7 +26,8 @@ newmail_directory = None
 # result in a file being created in that local directory
 # with the same name as the folder
 
-max_size_of_first_part = 48*1024
+max_size_of_first_part = None
+# e.g. max_size_of_first_part = 48*1024
 # any messages whose first part is longer than this will be
 # converted into attachments.  This is for sync'ing in
 # bandwidth-limited situations using a device that knows to
