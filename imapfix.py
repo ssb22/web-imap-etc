@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.33 (c) 2013-15 Silas S. Brown.  License: GPL
+# ImapFix v1.34 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -256,6 +256,11 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # it would have to download all messages from the server)
 
 # Run with --delete (folder name) to delete a folder
+# --delete-secondary to do it on secondary_imap_hostname
+
+# Run with --copy (folder name) to copy a folder onto secondary_imap_hostname
+# (updating any that already exists of that name: may delete
+# messages on secondary_imap_hostname that aren't on the primary)
 
 # Run with --note (subject) to put a note to yourself
 # (taken from standard input) directly into filtered_inbox
@@ -281,6 +286,8 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # return "" which will result in the messages being placed
 # in the real inbox for processing by the other machine.
 # Alternatively you can use --multinote-inbox for the same effect.)
+# Use --multinote-fname (files) to use each file's filename
+# instead of its first line as the subject, or --multinote-inbox-fname.
 
 # All note options assume that any non-ASCII characters in
 # the input will be encoded as UTF-8.
@@ -1006,25 +1013,29 @@ def do_note(subject,ctype="text/plain",maybe=0):
     save_to(saveTo,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 def from_mangle(body): return re.sub('(?<![^\n])From ','>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
 
-def multinote(filelist,to_real_inbox):
+def multinote(filelist,to_real_inbox,use_filename=False):
     if not filtered_inbox: to_real_inbox = True
     for f in filelist:
         if os.path.isdir(f):
-            multinote([(f+os.sep+g) for g in listdir(f)],to_real_inbox)
+            multinote([(f+os.sep+g) for g in listdir(f)],to_real_inbox,use_filename)
             continue
         if not os.path.isfile(f):
             debug("Ignoring non-file non-directory "+f)
             continue
         if not f.endswith('~'):
-            do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox) ; debug("Uploaded "+f)
+            if use_filename:
+                subj = f
+                if os.sep in subj: subj=subj[subj.rindex(os.sep)+1:]
+            else: subj = None
+            do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj) ; debug("Uploaded "+f)
         os.remove(f)
     
-def do_multinote(body,theDate,to_real_inbox):
+def do_multinote(body,theDate,to_real_inbox,subject):
     body = re.sub("\r\n?","\n",body.strip())
-    if not body:
+    if not body and not subject:
         debug("Not creating message from blank file")
         return
-    subject,body = (body+"\n").split("\n",1)
+    if not subject: subject,body = (body+"\n").split("\n",1)
     if to_real_inbox: box = ""
     else: box = authenticated_wrapper(subject,body)
     if box==False: box=filtered_inbox
@@ -1041,6 +1052,48 @@ def do_delete(foldername):
     make_sure_logged_in()
     print "Deleting folder "+repr(foldername)
     check_ok(imap.delete(foldername))
+
+def do_copy(foldername):
+    foldername = foldername.strip()
+    if not foldername:
+        print "No folder name specified"
+        return
+    make_sure_logged_in()
+    check_ok(imap.select(foldername))
+    global saveImap
+    try:
+        saveImap = imaplib.IMAP4_SSL(secondary_imap_hostname)
+        check_ok(saveImap.login(secondary_imap_username,secondary_imap_password))
+    except:
+        debug("Could not log in to secondary IMAP")
+        return
+    # Work out which messages need to be deleted:
+    do_not_delete = set() ; do_not_copy = set()
+    for msgID,message in yield_all_messages():
+        do_not_delete.add(message)
+    saveImap.create(foldername) # error if exists OK
+    check_ok(saveImap.select(foldername))
+    typ, data = saveImap.search(None, 'ALL')
+    if not typ=='OK': raise Exception(typ)
+    tot=rm=0
+    for msgID in data[0].split():
+        typ, data = imap.fetch(msgID, '(RFC822)')
+        if not typ=='OK': continue
+        tot += 1
+        if data[0][1] in do_not_delete:
+            do_not_copy.add(data[0][1]) # already there
+        else:
+            saveImap.store(msgID, '+FLAGS', '\\Deleted')
+            rm += 1
+    debug("%d of %d old messages removed from secondary" % (rm,tot))
+    # Copy in the new messages:
+    tot = cp = 0
+    for msgID,message in yield_all_messages():
+        tot += 1
+        if not message in do_not_copy:
+            save_to(foldername,message) ; cp += 1
+    debug("%d of %d messages added to secondary" % (cp,tot))
+    check_ok(saveImap.expunge())
 
 def do_quicksearch(s):
     global quiet ; quiet = True # don't need "Logging in" etc
@@ -1156,11 +1209,17 @@ if __name__ == "__main__":
   if '--archive' in sys.argv: do_archive()
   elif '--quicksearch' in sys.argv: do_quicksearch(' '.join(sys.argv[sys.argv.index('--quicksearch')+1:]))
   elif '--delete' in sys.argv: do_delete(' '.join(sys.argv[sys.argv.index('--delete')+1:]))
+  elif '--delete-secondary' in sys.argv:
+      hostname,username,password = secondary_imap_hostname,secondary_imap_username,secondary_imap_password
+      do_delete(' '.join(sys.argv[sys.argv.index('--delete-secondary')+1:]))
+  elif '--copy' in sys.argv: do_copy(' '.join(sys.argv[sys.argv.index('--copy')+1:]))
   elif '--note' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]))
   elif '--maybenote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--maybenote')+1:]),maybe=1)
   elif '--htmlnote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--htmlnote')+1:]),"text/html")
   elif '--multinote' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote')+1:],False)
   elif '--multinote-inbox' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote-inbox')+1:],True)
+  elif '--multinote-fname' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote-fname')+1:],False,True)
+  elif '--multinote-inbox-fname' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote-inbox-fname')+1:],True,True)
   elif '--once' in sys.argv:
       poll_interval = False ; mainloop()
   elif exit_if_other_running and other_running(): sys.stderr.write("Another "+imapfix_name+" already running - exitting\n(Use "+imapfix_name+" --once if you want to force a run now)\n")
