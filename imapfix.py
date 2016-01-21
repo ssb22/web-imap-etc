@@ -1077,7 +1077,7 @@ def do_copy(foldername):
     if not typ=='OK': raise Exception(typ)
     tot=rm=0
     for msgID in data[0].split():
-        typ, data = imap.fetch(msgID, '(RFC822)')
+        typ, data = saveImap.fetch(msgID, '(RFC822)')
         if not typ=='OK': continue
         tot += 1
         if data[0][1] in do_not_delete:
