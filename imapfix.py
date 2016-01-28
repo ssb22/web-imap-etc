@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.34 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.35 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -779,15 +779,14 @@ def globalise_header_charset(match):
     # quopri-encoded when they're only ASCII, etc, and "normalising"
     # these might help the writing of filtering rules
     hu8 = header_to_u8(match)
-    if hu8 == match: return hu8 # something went wrong; at least don't double-encode it
+    if hu8 == match.group(): return hu8 # something went wrong; at least don't double-encode it
     return utf8_to_header(hu8)
 def utf8_to_header(u8):
-    if u8.startswith('=?') or re.search(r"[^ -~]",u8):
-        ret = "B?"+base64.encodestring(u8).replace("\n","")
-        qp = "Q?"+re.sub("=?\n","",quopri.encodestring(u8,header=True)).replace('?','=3F') # must have header=True for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present)
-        if len(qp) <= len(ret): ret = qp
-        return "=?UTF-8?"+ret+"?="
-    else: return u8 # ASCII and no encoding needed
+    if not (u8.startswith('=?') or re.search(r"[^ -~]",u8)): return u8 # ASCII and no encoding needed
+    ret = "B?"+base64.encodestring(u8).replace("\n","")
+    qp = "Q?"+re.sub("=?\n","",quopri.encodestring(u8,header=True)).replace('?','=3F') # must have header=True for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present)
+    if len(qp) <= len(ret): ret = qp
+    return "=?UTF-8?"+ret+"?="
 
 import email.mime.multipart,email.mime.message,email.mime.text,email.mime.image,email.charset,email.mime.base
 def turn_into_attachment(message):
@@ -829,8 +828,8 @@ def globalise_charsets(message,will_use_8bit=False):
         l = message[line]
         l2 = re.sub(header_charset_regex,globalise_header_charset,l,flags=re.DOTALL).replace('\n',' ').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
         if l==l2: continue
-        # debug("Setting "+line+" to "+repr(l2))
-        # message["X-Imapfix-Old-"+line] = message[line] # trying to debug "XXX"s in messages from Coremail Webmail (mailtech.cn) -> seems that happened before imapfix got it
+        # debug("Changing "+line+" from "+l+" to "+l2)
+        # message["X-Imapfix-Old-"+line] = l
         del message[line]
         message[line] = l2
         changed = True
@@ -863,9 +862,18 @@ def globalise_charsets(message,will_use_8bit=False):
     return True # charset changed
 def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.QP,'utf-8')
 def email_u8_b64(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
-def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by default)
+def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by default).  Must ensure any header blocks in s are not touched!  (or imap server may substitute Xs etc)
     if re.search('[\x80-\xff]',s): return s # message already contains 8-bit stuff: we probably shouldn't redo this in case of coincidental UTF-8 quoted-printable in a binary attachment (TODO: what if such an attachment happens to lack any bytes with the high bit set)
-    return re.sub(r"(=(([C][2-9A-F]|[D][0-9A-F])|E0=[AB][0-9A-F]|(E[1-9A-CEF]|F0=[9AB][0-9A-F]|F4=8[0-F])=[89AB][0-9A-F]|ED=[89][0-9A-F]|F[1-3]=[89AB][0-9A-F]=[89AB][0-9A-F])=[89AB][0-9A-F])+",lambda m:quopri.decodestring(m.group()),s) # decodes only 8-bit utf-8 characters from the quoted-printable string, leaving alone any 7-bit characters that are encoded as quoted-printable ("^From" etc)
+    avoid = set()
+    def avoidAdd(m):
+        avoid.add((m.start(),m.end()))
+        return m.group()
+    re.sub(header_charset_regex,avoidAdd,s,flags=re.DOTALL)
+    def maybeDecode(m):
+        for start,end in avoid: # TODO: improve efficiency when dealing with a very large archive with many headers?
+            if start <= m.start() < end: return m.group()
+        return quopri.decodestring(m.group())
+    return re.sub(r"(=(([C][2-9A-F]|[D][0-9A-F])|E0=[AB][0-9A-F]|(E[1-9A-CEF]|F0=[9AB][0-9A-F]|F4=8[0-F])=[89AB][0-9A-F]|ED=[89][0-9A-F]|F[1-3]=[89AB][0-9A-F]=[89AB][0-9A-F])=[89AB][0-9A-F])+",maybeDecode,s) # decodes only 8-bit utf-8 characters from the quoted-printable string, leaving alone any 7-bit characters that are encoded as quoted-printable ("^From" etc)
 
 def walk_msg(message,partFunc,*args):
     if message.is_multipart():
