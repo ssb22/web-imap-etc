@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.35 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.36 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -392,10 +392,11 @@ def yield_all_messages():
     for msgID in data[0].split():
         typ, data = imap.fetch(msgID, '(FLAGS)')
         if not typ=='OK': continue
-        if '\\Deleted' in data[0]: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
+        flags = data[0]
+        if '\\Deleted' in flags: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
         typ, data = imap.fetch(msgID, '(RFC822)')
         if not typ=='OK': continue
-        yield msgID, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
+        yield msgID, flags, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
 
 def rewrite_deliveryfail(msg):
     if not failed_address_to_subject: return
@@ -448,7 +449,7 @@ def process_imap_inbox():
     doneSomething = False # if we do something on 1st loop, we'll loop again before handing control back to the delay or IMAP-event wait.  This is to catch the case where new mail comes in WHILE we are processing the last batch of mail (e.g. another imapfix is running with --multinote and some of the processing calls send_mail() with a callSMTP_time delay: we don't want the rest of the notes to be delayed 29 minutes for the next IMAP-wait to time out)
     check_ok(imap.select()) # the inbox
     imapMsgid = None ; newMail = False
-    for msgID,message in yield_all_messages():
+    for msgID,flags,message in yield_all_messages():
         if leave_note_in_inbox and imap==saveImap and isImapfixNote(message):
             if imapMsgid: # somehow ended up with 2, delete one
                 imap.store(imapMsgid, '+FLAGS', '\\Deleted')
@@ -546,7 +547,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
     make_sure_logged_in() ; debug(toDbg)
     typ, data = imap.select(foldername)
     if not typ=='OK': return # couldn't select that folder
-    for msgID,message in yield_all_messages():
+    for msgID,flags,message in yield_all_messages():
         if spamprobe_action:
             # TODO: combine multiple messages first?
             run_spamprobe(spamprobe_action, message)
@@ -675,14 +676,15 @@ def open_compressed(fname,mode):
     return open(fname,mode)
 
 already_created = set()
-def save_to(mailbox, message_as_string,
-            flags="", received_time = None):
+def save_to(mailbox, message_as_string, flags=""):
     "Saves message to a mailbox on the saveImap connection, creating the mailbox if necessary"
     make_sure_logged_in()
     if mailbox and not mailbox in already_created:
         saveImap.create(mailbox) # error if exists OK
         already_created.add(mailbox)
-    if not received_time: received_time = time.time()
+    msg = email.message_from_string(message_as_string)
+    if 'Date' in msg: received_time = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
+    else: received_time = time.time() # undated message ?
     if imap_8bit: message_as_string = quopri_to_u8_8bitOnly(message_as_string)
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(received_time), message_as_string))
 
@@ -706,9 +708,7 @@ def do_maildirs_to_imap():
         m = mailbox.Maildir(d2,None)
         for k,msg in m.items():
             globalise_charsets(msg,imap_8bit)
-            if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
-            else: t = None # undated message ??
-            save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg),t)
+            save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg))
             del m[k]
         newcurtmp = ["new","cur","tmp"]
         if not any(listdir(d2+os.sep+ntc) for ntc in newcurtmp): # folder is now empty: remove it
@@ -726,11 +726,9 @@ def do_maildir_to_copyself():
             debug("Moving messages from "+maildir_to_copyself+" to imap "+copyself_folder_name)
             said = True
         globalise_charsets(msg,imap_8bit)
-        if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
-        else: t = None # undated message ??
         if copyself_delete_attachments:
             delete_attachments(msg)
-        save_to(copyself_folder_name,myAsString(msg),imap_flags_from_maildir_msg(msg),t)
+        save_to(copyself_folder_name,myAsString(msg),imap_flags_from_maildir_msg(msg))
         del m[k]
 
 def do_copyself_to_copyself():
@@ -744,17 +742,15 @@ def do_copyself_to_copyself():
             debug("Skipping non-selectable folder "+folder)
             continue
         said = False
-        for msgID,message in yield_all_messages():
+        for msgID,flags,message in yield_all_messages():
             if not said: # don't say until we know there's at least some messages in the folder
                 debug("Moving messages from "+folder+" to "+copyself_folder_name)
                 said = True
             msg = email.message_from_string(message)
             globalise_charsets(msg,imap_8bit)
-            if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
-            else: t = None # undated message ??
             if copyself_delete_attachments:
                 delete_attachments(msg)
-            save_to(copyself_folder_name,myAsString(msg),"\\Seen",t)
+            save_to(copyself_folder_name,myAsString(msg),"\\Seen")
             imap.store(msgID, '+FLAGS', '\\Deleted')
         check_ok(imap.expunge())
 
@@ -1077,7 +1073,7 @@ def do_copy(foldername):
         return
     # Work out which messages need to be deleted:
     do_not_delete = set() ; do_not_copy = set()
-    for msgID,message in yield_all_messages():
+    for msgID,flags,message in yield_all_messages():
         do_not_delete.add(message)
     saveImap.create(foldername) # error if exists OK
     check_ok(saveImap.select(foldername))
@@ -1096,10 +1092,14 @@ def do_copy(foldername):
     debug("%d of %d old messages removed from secondary" % (rm,tot))
     # Copy in the new messages:
     tot = cp = 0
-    for msgID,message in yield_all_messages():
+    for msgID,flags,message in yield_all_messages():
         tot += 1
         if not message in do_not_copy:
-            save_to(foldername,message) ; cp += 1
+            flags2 = [] # don't just copy them over, as the secondary IMAP might not understand all the same flags
+            if "\\answered" in flags.lower(): flags2.append("\\Answered")
+            if "\\seen" in flags.lower(): flags2.append("\\Seen")
+            flags = " ".join(flags2)
+            save_to(foldername,message,flags) ; cp += 1
     debug("%d of %d messages added to secondary" % (cp,tot))
     check_ok(saveImap.expunge())
 
@@ -1209,7 +1209,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
     if copyself:
         if copyself_delete_attachments:
             delete_attachments(msg)
-        save_to(copyself_folder_name,myAsString(msg),"\\Seen",email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])))
+        save_to(copyself_folder_name,myAsString(msg),"\\Seen")
 import imapfix_config
 imapfix_config.send_mail = send_mail
 
