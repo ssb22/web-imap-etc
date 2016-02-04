@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.36 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.37 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -387,6 +387,7 @@ def authenticated_wrapper(subject,firstPart,attach={}):
     return r
 
 def yield_all_messages():
+    "Generator giving (message ID, flags, message) for each message in the current folder of 'imap', without setting the 'seen' flag as a side effect."
     typ, data = imap.search(None, 'ALL')
     if not typ=='OK': raise Exception(typ)
     for msgID in data[0].split():
@@ -394,7 +395,9 @@ def yield_all_messages():
         if not typ=='OK': continue
         flags = data[0]
         if '\\Deleted' in flags: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
+        if '(' in flags: flags=flags[flags.rindex('('):flags.index(')')+1] # so it's suitable for imap.store below
         typ, data = imap.fetch(msgID, '(RFC822)')
+        imap.store(msgID, 'FLAGS', flags) # in case the action of fetching the message set the 'seen' flag
         if not typ=='OK': continue
         yield msgID, flags, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
 
