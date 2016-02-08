@@ -397,7 +397,9 @@ def yield_all_messages():
         if '\\Deleted' in flags: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
         if '(' in flags: flags=flags[flags.rindex('('):flags.index(')')+1] # so it's suitable for imap.store below
         typ, data = imap.fetch(msgID, '(RFC822)')
-        imap.store(msgID, 'FLAGS', flags) # in case the action of fetching the message set the 'seen' flag
+        if not "seen" in flags.lower(): # do this in case the action of fetching the message set the 'seen' flag
+            try: imap.store(msgID, 'FLAGS', flags)
+            except: imap.store(msgID, 'FLAGS', "") # gmail can give a \Recent flag but not accept setting it
         if not typ=='OK': continue
         yield msgID, flags, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
 
