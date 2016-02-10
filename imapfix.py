@@ -399,7 +399,7 @@ def yield_all_messages():
         typ, data = imap.fetch(msgID, '(RFC822)')
         if not "seen" in flags.lower(): # do this in case the action of fetching the message set the 'seen' flag
             try: imap.store(msgID, 'FLAGS', flags)
-            except: imap.store(msgID, 'FLAGS', "") # gmail can give a \Recent flag but not accept setting it
+            except: imap.store(msgID, 'FLAGS', "()") # gmail can give a \Recent flag but not accept setting it
         if not typ=='OK': continue
         yield msgID, flags, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
 
