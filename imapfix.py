@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.37 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.38 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -152,6 +152,10 @@ copyself_alt_folder = None # or the name of an IMAP folder
 # comma.  Might be useful if some of your IMAP programs
 # insist on doing their own sent-mail filing to folders of
 # their own choice rather than yours.
+auto_delete_folder = None # or "Trash" if you want everything
+# in it to be automatically deleted periodically; useful if
+# your IMAP client insists on moving messages there when you
+# wanted them deleted permanently; use with caution
 
 archive_path = "oldmail"
 archive_rules = [
@@ -757,7 +761,22 @@ def do_copyself_to_copyself():
                 delete_attachments(msg)
             save_to(copyself_folder_name,myAsString(msg),"\\Seen")
             imap.store(msgID, '+FLAGS', '\\Deleted')
-        check_ok(imap.expunge())
+        if said: check_ok(imap.expunge())
+
+def do_auto_delete():
+    for folder in auto_delete_folder.split(","):
+        make_sure_logged_in()
+        typ, data = imap.select(folder)
+        if not typ=='OK':
+            debug("Skipping non-selectable folder "+folder)
+            continue
+        said = False
+        for msgID,flags,message in yield_all_messages():
+            if not said:
+                debug("Deleting messages from "+folder)
+                said = True
+            imap.store(msgID, '+FLAGS', '\\Deleted')
+        if said: check_ok(imap.expunge())
 
 header_charset_regex = r'=\?(.*?)\?(.*?)\?(.*?)\?='
 def header_to_u8(match):
@@ -947,6 +966,7 @@ def mainloop():
     if maildirs_to_imap: do_maildirs_to_imap()
     if maildir_to_copyself: do_maildir_to_copyself()
     if copyself_alt_folder: do_copyself_to_copyself()
+    if auto_delete_folder: do_auto_delete()
     if filtered_inbox:
         process_imap_inbox()
         if time.time() > secondary_imap_due and secondary_imap_hostname:
