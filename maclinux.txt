@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Silas S. Brown 2012-14 - public domain  (version 1.43)
+# Silas S. Brown 2012-14,2016 - public domain  (version 1.44)
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile,
 # or if you prefer you can keep it in a separate file
@@ -45,6 +45,12 @@ if ! which -s watch; then
   # primitive emulation of the "watch" command
   watch () (while true; do clear; date; echo "$@"; echo; "$@"; sleep 2; done)
   export -f watch
+fi
+
+if ! which -s pidof; then
+  # primitive emulation of the "pidof" command
+  pidof () (ps axwww|fgrep "$@"|fgrep -v "fgrep $@"|sed -e 's/ .*//')
+  export -f pidof
 fi
 
 if ! which -s free; then
