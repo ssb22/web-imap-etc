@@ -1199,13 +1199,13 @@ def other_running():
     return thisPIDuser in otherPIDusers
 
 callSMTP_time = None
-def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="plain",charset="utf-8"):
+def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="plain",charset="utf-8"):
     global callSMTP_time
     if callSMTP_time:
         toSleep = max(0,callSMTP_time-time.time())
         if toSleep: debug("Sleeping for another %d seconds before reconnecting to SMTP" % toSleep)
         time.sleep(toSleep)
-    debug("SMTP to "+repr(to))
+    debug("SMTP to "+repr(to_u8))
     msg = email.mime.text.MIMEText(re.sub('\r*\n','\r\n',txt),ttype,charset) # RFC 2822 says MUST use CRLF; some mail clients get confused by just \n (e.g. some versions of MPro on RISC OS when replying with quote)
     if attachment_filenames:
         from email.mime.multipart import MIMEMultipart
@@ -1214,7 +1214,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
         msg.attach(msg2)
     msg['Subject'] = utf8_to_header(subject_u8)
     msg['From'] = smtp_fromHeader
-    msg['To'] = to # TODO: utf8_to_header the name part of it (+ what if it's a list?)
+    msg['To'] = ' '.join(utf8_to_header(h) for h in to_u8.split()) # just the name part needs utf8_to_header, TODO: parse properly instead of going through every word?  + what if it's a list?
     msg['Date'] = email.utils.formatdate(localtime=True)
     for f in attachment_filenames:
         subMsg = email.mime.base.MIMEBase('application', 'octet-stream') # TODO: more specific types?
@@ -1227,7 +1227,7 @@ def send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="pla
     import smtplib
     s = smtplib.SMTP_SSL(smtp_host)
     if smtp_user: s.login(smtp_user, smtp_password)
-    ret = s.sendmail(smtp_fromAddr,to,msg.as_string())
+    ret = s.sendmail(smtp_fromAddr,to_u8,msg.as_string())
     assert len(ret)==0, "Some (but not all) recipients were refused: "+repr(ret)
     s.quit()
     if smtp_delay: callSMTP_time = time.time()+smtp_delay
