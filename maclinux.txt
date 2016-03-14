@@ -49,7 +49,7 @@ fi
 
 if ! which -s pidof; then
   # primitive emulation of the "pidof" command
-  pidof () (ps axwww|fgrep "$@"|fgrep -v "fgrep $@"|sed -e 's/ .*//')
+  pidof () (ps axwww|fgrep "$@"|fgrep -v "fgrep $@"|sed -e 's/^  *//' -e 's/ .*//')
   export -f pidof
 fi
 
