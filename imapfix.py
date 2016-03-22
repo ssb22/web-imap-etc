@@ -862,9 +862,11 @@ def globalise_charsets(message,will_use_8bit=False):
     if m in ['gb2312','gbk']: m = 'gb18030'
     try: p = message.get_payload(decode=True).decode(m)
     except: return changed # problems decoding this message
-    if message.get_content_type()=="text/html":
+    cType = message.get_content_type()
+    if cType and cType.startswith("text/html"):
         q = '[\'"]' # could use either " or ' quotes
         p = re.sub(r'(?i)<meta\s+http[_-]equiv='+q+r'?content-type'+q+r'?\s+content='+q+'[^\'"]*'+q+r'>','',p) # better remove charset meta tags after we changed the charset (TODO: what if they conflict with the message header anyway?)
+        p = re.sub(r'(?i)<meta\s+content='+q+'[^\'"]*'+q+r'\s+http[_-]equiv='+q+r'?content-type'+q+r'?>','',p) # some authoring tools emit the attributes in THIS order
     p = p.encode('utf-8')
     if 'Content-Transfer-Encoding' in message:
         isQP = (message['Content-Transfer-Encoding']=='quoted-printable')
