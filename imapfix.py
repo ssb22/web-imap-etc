@@ -648,6 +648,7 @@ def save_attachment_separately(msg):
     if not fname: return
     try: fname=fname.encode("us-ascii") # (or utf-8 if the filesystem definitely supports it)
     except: fname="illegal-filename-B"
+    if os.sep in fname: fname = "illegal-filename-C"
     if '.' in fname: fext = fname[fname.rindex('.'):]
     else: fext = ""
     if len(fext) > attachment_filename_maxlen:
