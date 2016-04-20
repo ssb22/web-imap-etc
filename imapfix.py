@@ -562,8 +562,8 @@ def archive(foldername, mboxpath, age, spamprobe_action):
             run_spamprobe(spamprobe_action, message)
         if not age: continue
         msg = email.message_from_string(message)
-        if 'Date' in msg: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
-        else: t = time.time() # undated message ??
+        try: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
+        except: t = time.time() # undated message or invalid date (sometimes happens in spam for example)
         if t >= time.time() - age: continue
         if not message.startswith("From "): # needed for Unix mbox, otherwise mbox lib fills it in with MAILER-DAEMON
             f = []
