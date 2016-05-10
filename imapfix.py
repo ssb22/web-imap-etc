@@ -896,7 +896,7 @@ def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by defau
         for start,end in avoid: # TODO: improve efficiency when dealing with a very large archive with many headers?
             if start <= m.start() < end: return m.group()
         return quopri.decodestring(m.group())
-    return re.sub(r"(=(([C][2-9A-F]|[D][0-9A-F])|E0=[AB][0-9A-F]|(E[1-9A-CEF]|F0=[9AB][0-9A-F]|F4=8[0-F])=[89AB][0-9A-F]|ED=[89][0-9A-F]|F[1-3]=[89AB][0-9A-F]=[89AB][0-9A-F])=[89AB][0-9A-F])+",maybeDecode,s) # decodes only 8-bit utf-8 characters from the quoted-printable string, leaving alone any 7-bit characters that are encoded as quoted-printable ("^From" etc)
+    return re.sub(r"(=(([C][2-9A-F]|[D][0-9A-F])|E0=[AB][0-9A-F]|(E[1-9A-CEF]|F0=[9AB][0-9A-F]|F4=8[0-F])(=\r?\n)?=[89AB][0-9A-F]|ED=[89][0-9A-F]|F[1-3]=[89AB][0-9A-F]=[89AB][0-9A-F])(=\r?\n)?=[89AB][0-9A-F])+",maybeDecode,s) # decodes only 8-bit utf-8 characters from the quoted-printable string, leaving alone any 7-bit characters that are encoded as quoted-printable ("^From" etc)
 
 def walk_msg(message,partFunc,*args):
     if message.is_multipart():
