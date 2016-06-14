@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.38 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.39 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -121,8 +121,25 @@ logout_before_sleep = False # suggest set to True if using
 # a long poll_interval, or if filtered_inbox=None
 
 midnight_command = None
-# or, daily_command = "system command to run at midnight"
+# or, midnight_command = "system command to run at midnight"
 # (useful if you don't have crontab access on the machine)
+
+postponed_foldercheck = False
+# if True, check for folders named YYYY-MM-DD according to
+# the current date, and, if any are found, move their mail
+# into filtered_inbox, updating Date lines (but inserting
+# the original date into the message body in case it's
+# needed for attribution in quoted replies, unless the
+# message is from --note or --multinote below). This is so
+# you can postpone a message for handling later, simply by
+# saving it into a folder named according to the date you
+# want to see it, in YYYY-MM-DD format.  The check is made
+# after midnight for the new date, and on startup for all
+# previous dates (in case imapfix hadn't been run every day).
+# Additionally, messages that are SSL-authenticated as coming
+# from yourself, and whose subject lines start with a date in
+# YYYY-MM-DD format, will be saved into a folder of that name
+# (with the date removed from the subject line to save screen space).
 
 quiet = True # False = print messages (including quota)
 # If you set quiet = 2, will be quiet if and only if the
@@ -382,13 +399,19 @@ if not imapfix_name: imapfix_name = "imapfix.py"
 # used both in From line and by other_running()
 
 def authenticated_wrapper(subject,firstPart,attach={}):
+    if postponed_foldercheck and re.match(isoDate,subject) and subject[:isoDateLen] >= isoToday():
+        newSubj = re.sub("^:","",subject[isoDateLen:]).lstrip() # take the date itself out of the subject line before putting the message in that folder: it could take up valuable screen real-estate in summaries on large-print or mobile devices, and just duplicates information that can be found in the folder name (or in the Date: field after it's put back into filtered_inbox)
+        if not newSubj: # oops, subject contained only the date and nothing else: take from 1st line of text instead
+            newSubj = firstPart.lstrip().split('\n')[0]
+            if len(newSubj) > 60: newSubj = newSubj[:57] + "..." # TODO: configurable abbreviation length?
+        return subject[:isoDateLen], newSubj
     try: r=handle_authenticated_message(subject,firstPart,attach)
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
         o = StringIO() ; traceback.print_exc(None,o)
         save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),o.getvalue()))
         r=False
-    return r
+    return r, None
 
 def yield_all_messages():
     "Generator giving (message ID, flags, message) for each message in the current folder of 'imap', without setting the 'seen' flag as a side effect."
@@ -465,18 +488,22 @@ def process_imap_inbox():
             imapMsgid = msgID ; continue
         doneSomething = True
         msg = email.message_from_string(message)
-        box = False ; seenFlag=""
+        box = changed = False ; seenFlag=""
         if authenticates(msg):
           # do auth'd-msgs processing before any convert-to-attachment etc
           debug("Message authenticates")
-          box = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject",""),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
+          box,newSubj = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject",""),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
+          if newSubj: # for postponed_foldercheck
+            del msg["Subject"]
+            msg["Subject"] = utf8_to_header(newSubj)
+            changed = True
           if box and box[0]=='*':
               box=box[1:] ; seenFlag="\\Seen"
         if not box==None:
          # globalise charsets BEFORE the filtering rules
          # (especially if they've been developed based on
          # post-charset-conversion saved messages)
-         changed = globalise_charsets(msg,imap_8bit)
+         changed = globalise_charsets(msg,imap_8bit) or changed
          changed = remove_blank_inline_parts(msg) or changed
          if image_size: changed = add_previews(msg) or changed
          changed = rewrite_deliveryfail(msg) or changed
@@ -693,10 +720,10 @@ def save_to(mailbox, message_as_string, flags=""):
         saveImap.create(mailbox) # error if exists OK
         already_created.add(mailbox)
     msg = email.message_from_string(message_as_string)
-    if 'Date' in msg: received_time = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
-    else: received_time = time.time() # undated message ?
+    if 'Date' in msg: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
+    else: imap_timestamp = time.time() # undated message ? (TODO: could parse Received lines)
     if imap_8bit: message_as_string = quopri_to_u8_8bitOnly(message_as_string)
-    check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(received_time), message_as_string))
+    check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(imap_timestamp), message_as_string))
 
 def rename_folder(folder):
     if not isinstance(folder,str): return folder
@@ -803,7 +830,7 @@ def globalise_header_charset(match):
     if hu8 == match.group(): return hu8 # something went wrong; at least don't double-encode it
     return utf8_to_header(hu8)
 def utf8_to_header(u8):
-    if not (u8.startswith('=?') or re.search(r"[^ -~]",u8)): return u8 # ASCII and no encoding needed
+    if not ('=?' in u8 or re.search(r"[^ -~]",u8)): return u8 # ASCII and no encoding needed
     ret = "B?"+base64.encodestring(u8).replace("\n","")
     qp = "Q?"+re.sub("=?\n","",quopri.encodestring(u8,header=True)).replace('?','=3F') # must have header=True for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present)
     if len(qp) <= len(ret): ret = qp
@@ -836,13 +863,16 @@ def getFirstPart(message):
     if cs in ['gb2312','gbk']: cs = 'gb18030'
     return pl.decode(cs).encode('utf-8')
 
-def globalise_charsets(message,will_use_8bit=False):
+def globalise_charsets(message,will_use_8bit=False,force_change=False):
     """'Globalises' the character sets of all parts of
         email.message.Message object 'message'.
         Only us-ascii and utf-8 charsets are 'global'.
         Also tries to use quoted-printable rather than
         base64 if doing so won't increase the length.
-        Returns True if any changes were made."""
+        Returns True if any changes were made.
+        (Use force_change if you need to ensure encoding
+        options are set correctly in case you want to do
+        set_payload yourself to change the text.)"""
     changed = False
     for line in ["From","To","Cc","Subject","Reply-To"]:
         if not line in message: continue
@@ -856,13 +886,13 @@ def globalise_charsets(message,will_use_8bit=False):
         changed = True
     if message.is_multipart():
         for i in message.get_payload():
-            if globalise_charsets(i,will_use_8bit): changed = True
+            if globalise_charsets(i,will_use_8bit,force_change): changed = True
         return changed
     cType = message.get_content_type()
     is_html = cType and cType.startswith("text/html")
     not_base64 = not 'Content-Transfer-Encoding' in message or message['Content-Transfer-Encoding']=='quoted-printable'
     m = message.get_content_charset(None)
-    if m in [None,'us-ascii','utf-8'] and not_base64 and not is_html: return changed # no further conversion required
+    if not force_change and m in [None,'us-ascii','utf-8'] and not_base64 and not is_html: return changed # no further conversion required
     if m in ['gb2312','gbk']: m = 'gb18030'
     try:
         p0 = message.get_payload(decode=True)
@@ -873,7 +903,7 @@ def globalise_charsets(message,will_use_8bit=False):
         p = re.sub(r'(?i)<meta\s+http[_-]equiv='+q+r'?content-type'+q+r'?\s+content='+q+'[^\'"]*'+q+r'>','',p) # better remove charset meta tags after we changed the charset (TODO: what if they conflict with the message header anyway?)
         p = re.sub(r'(?i)<meta\s+content='+q+'[^\'"]*'+q+r'\s+http[_-]equiv='+q+r'?content-type'+q+r'?>','',p) # some authoring tools emit the attributes in THIS order
     p = p.encode('utf-8')
-    if p==p0 and not_base64: return changed # didn't fix meta tags or change charset so don't need to re-encode
+    if not force_change and p==p0 and not_base64: return changed # didn't fix meta tags or change charset so don't need to re-encode
     if 'Content-Transfer-Encoding' in message:
         isQP = (message['Content-Transfer-Encoding']=='quoted-printable')
         del message['Content-Transfer-Encoding']
@@ -954,6 +984,54 @@ def add_preview(message,accum):
     to_attach.append(i) ; accum[0] += 1
     return True
 
+def folderList(pattern="*"):
+    make_sure_logged_in()
+    typ,data = imap.list(pattern=pattern)
+    if not typ=='OK': return []
+    return [re.sub('.*"/" ','',i) for i in data]
+
+isoDate = "[1-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]" ; isoDateLen = 10 # TODO: Y10K (also in the lexicographic comparison '<= today')
+def isoToday(): return "%04d-%02d-%02d" % time.localtime()[:3]
+def do_postponed_foldercheck(dayToCheck="today"):
+    today = isoToday()
+    if dayToCheck=="old":
+        for f in folderList():
+            if re.match(isoDate+'$',f) and f <= today:
+                do_postponed_foldercheck(f)
+        return
+    elif dayToCheck=="today": dayToCheck = today
+    f = folderList(dayToCheck)
+    if not len(f)==1: return # no folder of that name
+    folder = f[0] ; imap.select(folder) ; said = False
+    for msgID,flags,message in yield_all_messages():
+        if not said:
+            debug("Moving messages from "+folder+" to "+filtered_inbox)
+            said = True
+        msg = email.message_from_string(message)
+        old_date = msg.get("Date","")
+        if old_date:
+            def addOldDate(message):
+                newPara = ""
+                if 'Content-Type' in message:
+                    if not message["Content-Type"].startswith("text/"): return False
+                    if message["Content-Type"].startswith("text/html"): newPara = "<p>" # TODO: might end up being before the HTML tag; depends which browser you use
+                if 'Content-Disposition' in message and message['Content-Disposition'].startswith('attachment'): return False
+                changed = globalise_charsets(message, imap_8bit) # just in case
+                p = message.get_payload(decode=True)
+                dateIntro = imapfix_name+": original Date: "
+                if p.startswith(dateIntro): return changed
+                if not changed: globalise_charsets(message, imap_8bit, True) # ensure set up for:
+                message.set_payload(dateIntro + old_date + newPara + "\n\n" + p,'utf-8')
+                return True
+            if 'From' in msg and msg['From']==imapfix_name: pass # no need to add old date if it's a --note or --multinote
+            else: walk_msg(msg,addOldDate)
+            del msg['Date']
+        msg['Date'] = email.utils.formatdate(localtime=True)
+        save_to(filtered_inbox,myAsString(msg))
+        imap.store(msgID, '+FLAGS', '\\Deleted')
+    if said: check_ok(imap.expunge())
+    check_ok(imap.select()) ; do_delete(folder)
+
 setAlarmAt = 0
 def checkAlarmDelay():
     global setAlarmAt
@@ -969,6 +1047,7 @@ def mainloop():
   if exit_if_imapfix_config_py_changes:
     mtime = os.stat("imapfix_config.py").st_mtime
   try:
+   if postponed_foldercheck: do_postponed_foldercheck("old")
    while True:
     if alarm_delay: checkAlarmDelay()
     if maildirs_to_imap: do_maildirs_to_imap()
@@ -996,6 +1075,7 @@ def mainloop():
     if not oldDay==newDay:
       oldDay=newDay
       if midnight_command: os.system(midnight_command)
+      if postponed_foldercheck: do_postponed_foldercheck()
       done_spamprobe_cleanup = False
     if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime): break
   finally: make_sure_logged_out()
@@ -1074,7 +1154,9 @@ def do_multinote(body,theDate,to_real_inbox,subject):
         return
     if not subject: subject,body = (body+"\n").split("\n",1)
     if to_real_inbox: box = ""
-    else: box = authenticated_wrapper(subject,body)
+    else:
+        box,newSubj = authenticated_wrapper(subject,body)
+        if newSubj: subject = newSubj
     if box==False: box=filtered_inbox
     if not box==None: save_to(box,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 
@@ -1130,7 +1212,7 @@ def do_copy(foldername):
         if not message in do_not_copy:
             flags2 = [] # don't just copy them over, as the secondary IMAP might not understand all the same flags
             if "\\answered" in flags.lower(): flags2.append("\\Answered")
-            if "\\seen" in flags.lower(): flags2.append("\\Seen")
+            if "\\seen" in flags.lower() and not "old" in flags.lower(): flags2.append("\\Seen")
             flags = " ".join(flags2)
             save_to(foldername,message,flags) ; cp += 1
     debug("%d of %d messages added to secondary" % (cp,tot))
@@ -1263,7 +1345,9 @@ if __name__ == "__main__":
   elif '--multinote-inbox-fname' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote-inbox-fname')+1:],True,True)
   elif '--once' in sys.argv:
       poll_interval = False ; mainloop()
-  elif exit_if_other_running and other_running(): sys.stderr.write("Another "+imapfix_name+" already running - exitting\n(Use "+imapfix_name+" --once if you want to force a run now)\n")
   elif '--fix-archives' in sys.argv: fix_archives_written_by_imapfix_v1_308() # TODO: document this? (use if mutt can't read archives written by v1.308, and some earlier versions, TODO: check which version was the first to have the 'writes a malformed envelope-From' problem)
+  elif len(sys.argv)>1:
+      sys.stderr.write(imapfix_name+": unrecognised command-line argument\n") ; sys.exit(1)
+  elif exit_if_other_running and other_running(): sys.stderr.write("Another "+imapfix_name+" already running - exitting\n(Use "+imapfix_name+" --once if you want to force a run now)\n")
   else: mainloop()
   make_sure_logged_out()
