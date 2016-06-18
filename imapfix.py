@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.39 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.4 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -116,6 +116,9 @@ poll_interval = 4*60
 # or poll_interval="idle" to use imap's IDLE command (this
 # requires the imaplib2 module; you can add to sys.path from
 # imapfix_config.py if you have it in your home directory).
+# imaplib2 writes debug information to the console unless
+# run with python -O; to suppress this, do
+# sed -e s/__debug__/False/g < imaplib2.py > i && mv i imaplib2.py
 
 logout_before_sleep = False # suggest set to True if using
 # a long poll_interval, or if filtered_inbox=None
@@ -140,6 +143,19 @@ postponed_foldercheck = False
 # from yourself, and whose subject lines start with a date in
 # YYYY-MM-DD format, will be saved into a folder of that name
 # (with the date removed from the subject line to save screen space).
+
+postponed_daynames = False
+# If True, similar to postponed_foldercheck above, but checks
+# for lower-case abbreviated month and weekday names
+# (e.g. mon, tue, jan, feb - the current locale is used, so
+# if you want non-English names then set a different locale).
+# This check is performed after midnight, but not on startup
+# because they're not absolute dates.  To avoid
+# false positives, any use of these at the start of
+# self-written Subject lines must be followed by : if
+# anything else is on the line, e.g. mon: things to do today.
+# You can set postponed_foldercheck and postponed_daynames in
+# any combination.
 
 quiet = True # False = print messages (including quota)
 # If you set quiet = 2, will be quiet if and only if the
@@ -209,12 +225,19 @@ important_regexps = [
 # some other IMAP server and treat its messages as being
 # in the inbox of the main server (i.e. copied over and
 # processed as normal).  You can check this less often by
-# setting secondary_imap_delay.  (Will not stay logged in
-# between checks.)
+# setting secondary_imap_delay.  (Will NOT stay logged in
+# between checks.)  It's also possible to set the first
+# three of these options to lists, in order to check
+# multiple secondary IMAP servers or multiple identities.
 secondary_imap_hostname = ""
 secondary_imap_username = "me"
 secondary_imap_password = "xxxxxxxx"
 secondary_imap_delay = 24 * 3600
+
+report_secondary_login_failures = False # if True, put a
+# message in filtered_inbox about any login failures for
+# any of the secondary_imap boxes (default just ignores &
+# tries again next time)
 
 exit_if_imapfix_config_py_changes = False # if True, does
 # what it says, on the assumption that a wrapper script
@@ -278,10 +301,12 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 
 # Run with --delete (folder name) to delete a folder
 # --delete-secondary to do it on secondary_imap_hostname
+# (if there's more than one secondary, the first is used)
 
 # Run with --copy (folder name) to copy a folder onto secondary_imap_hostname
 # (updating any that already exists of that name: may delete
-# messages on secondary_imap_hostname that aren't on the primary)
+# messages on secondary_imap_hostname that aren't on the primary;
+# 1st secondary is used if there's a list of many)
 
 # Run with --note (subject) to put a note to yourself
 # (taken from standard input) directly into filtered_inbox
@@ -330,6 +355,7 @@ if poll_interval=="idle":
     assert not logout_before_sleep, "Can't logout_before_sleep when poll_interval==\"idle\""
 else:
     import imaplib
+assert not secondary_imap_delay=="idle", "'idle' polling not implemented for secondary"
 
 if filtered_inbox==None: spamprobe_command = None
 
@@ -398,13 +424,22 @@ if os.sep in imapfix_name: imapfix_name=imapfix_name[imapfix_name.rindex(os.sep)
 if not imapfix_name: imapfix_name = "imapfix.py"
 # used both in From line and by other_running()
 
+def postponed_match(subject):
+    if postponed_foldercheck:
+        m = re.match(isoDate,subject)
+        if m and m.group() >= isoToday(): return m.end() # TODO: Y10K (lexicographic comparison)
+    if postponed_daynames:
+        m = re.match(weekMonth,subject)
+        if m: return m.end()
+
 def authenticated_wrapper(subject,firstPart,attach={}):
-    if postponed_foldercheck and re.match(isoDate,subject) and subject[:isoDateLen] >= isoToday():
-        newSubj = re.sub("^:","",subject[isoDateLen:]).lstrip() # take the date itself out of the subject line before putting the message in that folder: it could take up valuable screen real-estate in summaries on large-print or mobile devices, and just duplicates information that can be found in the folder name (or in the Date: field after it's put back into filtered_inbox)
+    mLen = postponed_match(subject)
+    if mLen:
+        newSubj = re.sub("^:","",subject[mLen:]).lstrip() # take the date itself out of the subject line before putting the message in that folder: it could take up valuable screen real-estate in summaries on large-print or mobile devices, and just duplicates information that can be found in the folder name (or in the Date: field after it's put back into filtered_inbox)
         if not newSubj: # oops, subject contained only the date and nothing else: take from 1st line of text instead
             newSubj = firstPart.lstrip().split('\n')[0]
             if len(newSubj) > 60: newSubj = newSubj[:57] + "..." # TODO: configurable abbreviation length?
-        return subject[:isoDateLen], newSubj
+        return subject[:mLen], newSubj # don't resolve weekday/month names to a date here, because user might actually rely on the "doesn't check for past days on startup" behaviour to postpone to after a trip or something
     try: r=handle_authenticated_message(subject,firstPart,attach)
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
@@ -523,8 +558,15 @@ def process_imap_inbox():
                 box = filtered_inbox
             if box==False: box = spamprobe_rules(message)
         if box:
-            debug("Saving message to "+box)
-            save_to(box, message, seenFlag)
+            if seenFlag: copyWorked = False # TODO: unless we can get copy_to to set the Seen flag on the copy
+            elif not changed and saveImap == imap:
+                debug("Copying unchanged message to "+box)
+                copyWorked = copy_to(box, msgID)
+                if not copyWorked: debug("... failed; falling back to re-upload")
+            else: copyWorked = False
+            if not copyWorked:
+                debug("Saving message to "+box)
+                save_to(box, message, seenFlag)
             if box==filtered_inbox: newMail = True
         else: debug("Deleting message")
         imap.store(msgID, '+FLAGS', '\\Deleted')
@@ -712,13 +754,27 @@ def open_compressed(fname,mode):
     elif compression: raise Exception("Unrecognised compression type") # essential, as archive() assumes it can delete the original file after calling open_compressed
     return open(fname,mode)
 
+def copy_to(mailbox, message_id):
+    "Try to save an unmodified message to a folder, using the imap COPY command instead of re-uploading the message"
+    assert imap == saveImap, "Can't call copy_to if saveImap != imap"
+    typ, data = imap.fetch(message_id, "(UID)")
+    if not typ=='OK': return False
+    uid = data[0]
+    if '(' in uid:
+        uid=uid[uid.index('(')+1:uid.rindex(')')]
+    if uid.startswith("UID "): uid=uid[4:]
+    maybe_create(mailbox)
+    try: return imap.uid('COPY', uid, mailbox)[0]=='OK'
+    except: return False
+
 already_created = set()
-def save_to(mailbox, message_as_string, flags=""):
-    "Saves message to a mailbox on the saveImap connection, creating the mailbox if necessary"
-    make_sure_logged_in()
+def maybe_create(mailbox):
     if mailbox and not mailbox in already_created:
         saveImap.create(mailbox) # error if exists OK
         already_created.add(mailbox)
+def save_to(mailbox, message_as_string, flags=""):
+    "Saves message to a mailbox on the saveImap connection, creating the mailbox if necessary"
+    make_sure_logged_in() ; maybe_create(mailbox)
     msg = email.message_from_string(message_as_string)
     if 'Date' in msg: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
     else: imap_timestamp = time.time() # undated message ? (TODO: could parse Received lines)
@@ -787,7 +843,7 @@ def do_copyself_to_copyself():
             globalise_charsets(msg,imap_8bit)
             if copyself_delete_attachments:
                 delete_attachments(msg)
-            save_to(copyself_folder_name,myAsString(msg),"\\Seen")
+            save_to(copyself_folder_name,myAsString(msg),"\\Seen") # TODO: or copy_to, if msg hasn't changed and we can get copy_to to set the Seen flag on the copy.  Low priority if copyself_delete_attachments is set, because the current save_to()-based implementation will be dealing with only small messages.
             imap.store(msgID, '+FLAGS', '\\Deleted')
         if said: check_ok(imap.expunge())
 
@@ -990,16 +1046,27 @@ def folderList(pattern="*"):
     if not typ=='OK': return []
     return [re.sub('.*"/" ','',i) for i in data]
 
-isoDate = "[1-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]" ; isoDateLen = 10 # TODO: Y10K (also in the lexicographic comparison '<= today')
+isoDate = "[1-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]"
+if postponed_daynames:
+    # use the current locale's idea of the abbreviated names
+    weekdays = [time.strftime("%a",time.gmtime(time.mktime((2001,1,i,0,0,0,0,0,0)))).lower() for i in range(1,8)]
+    months = [time.strftime("%b",time.gmtime(time.mktime((2001,i,1,0,0,0,0,0,0)))).lower() for i in range(1,13)]
+    weekMonth = "|".join(weekdays+months)+"(?=$|:)"
 def isoToday(): return "%04d-%02d-%02d" % time.localtime()[:3]
 def do_postponed_foldercheck(dayToCheck="today"):
     today = isoToday()
-    if dayToCheck=="old":
+    if dayToCheck=="old": # only if postponed_foldercheck
         for f in folderList():
-            if re.match(isoDate+'$',f) and f <= today:
+            if re.match(isoDate+'$',f) and f <= today: # TODO: Y10K (lexicographic comparison)
                 do_postponed_foldercheck(f)
         return
-    elif dayToCheck=="today": dayToCheck = today
+    elif dayToCheck=="today":
+        if postponed_daynames:
+            do_postponed_foldercheck(time.strftime("%a").lower()) # weekday
+            if time.localtime()[2]==1: # 1st of the month
+                time.strftime("%b").lower() # month
+        if postponed_foldercheck: dayToCheck = today
+        else: return
     f = folderList(dayToCheck)
     if not len(f)==1: return # no folder of that name
     folder = f[0] ; imap.select(folder) ; said = False
@@ -1024,6 +1091,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
                 message.set_payload(dateIntro + old_date + newPara + "\n\n" + p,'utf-8')
                 return True
             if 'From' in msg and msg['From']==imapfix_name: pass # no need to add old date if it's a --note or --multinote
+            elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
             else: walk_msg(msg,addOldDate)
             del msg['Date']
         msg['Date'] = email.utils.formatdate(localtime=True)
@@ -1075,7 +1143,8 @@ def mainloop():
     if not oldDay==newDay:
       oldDay=newDay
       if midnight_command: os.system(midnight_command)
-      if postponed_foldercheck: do_postponed_foldercheck()
+      if postponed_foldercheck or postponed_daynames:
+          do_postponed_foldercheck()
       done_spamprobe_cleanup = False
     if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime): break
   finally: make_sure_logged_out()
@@ -1088,16 +1157,29 @@ def near_equal(time1,time2):
     if time1 > time2: time2,time1 = time1,time2
     return (time2-time1) <= 5
 
+if secondary_imap_hostname:
+    assert type(secondary_imap_hostname) == type(secondary_imap_username) == type(secondary_imap_password) and type(secondary_imap_hostname) in [str,list], "Invalid combination of types in secondary_imap settings"
+    if type(secondary_imap_hostname) == str:
+        secondary_imap_hostname = [secondary_imap_hostname]
+        secondary_imap_username = [secondary_imap_username]
+        secondary_imap_password = [secondary_imap_password]
+    else: assert len(secondary_imap_hostname) == len(secondary_imap_username) == len(secondary_imap_password), "secondary_imap lists have differing lengths"
+
 def process_secondary_imap():
-    global imap
+  global imap
+  for sih,siu,sip in zip(secondary_imap_hostname, secondary_imap_username, secondary_imap_password):
     try:
-        imap = imaplib.IMAP4_SSL(secondary_imap_hostname)
-        check_ok(imap.login(secondary_imap_username,secondary_imap_password))
+        imap = imaplib.IMAP4_SSL(sih)
+        check_ok(imap.login(siu,sip))
     except:
-        debug("Could not log in to secondary IMAP: skipping it this time")
+        msg = "Could not log in as %s to secondary IMAP %s: skipping it this time" % (siu,sih)
+        debug(msg)
+        if report_secondary_login_failures:
+            imap = saveImap # for make_sure_logged_in
+            save_to(filtered_inbox,"From: "+imapfix_name+"\r\nSubject: imapfix_config secondary_imap problem or server down\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),msg))
         imap = None
     if imap: process_imap_inbox()
-    imap = saveImap
+  imap = saveImap
 
 def do_archive():
     try: os.mkdir(archive_path)
@@ -1181,13 +1263,14 @@ def do_copy(foldername):
     check_ok(imap.select(foldername))
     global saveImap
     try:
-        saveImap = imaplib.IMAP4_SSL(secondary_imap_hostname)
-        check_ok(saveImap.login(secondary_imap_username,secondary_imap_password))
+        saveImap = imaplib.IMAP4_SSL(secondary_imap_hostname[0])
+        check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
     except:
         debug("Could not log in to secondary IMAP")
         return
     # Work out which messages need to be deleted:
     do_not_delete = set() ; do_not_copy = set()
+    debug("Checking messages")
     for msgID,flags,message in yield_all_messages():
         do_not_delete.add(message)
     saveImap.create(foldername) # error if exists OK
@@ -1333,7 +1416,7 @@ if __name__ == "__main__":
   elif '--quicksearch' in sys.argv: do_quicksearch(' '.join(sys.argv[sys.argv.index('--quicksearch')+1:]))
   elif '--delete' in sys.argv: do_delete(' '.join(sys.argv[sys.argv.index('--delete')+1:]))
   elif '--delete-secondary' in sys.argv:
-      hostname,username,password = secondary_imap_hostname,secondary_imap_username,secondary_imap_password
+      hostname,username,password = secondary_imap_hostname[0],secondary_imap_username[0],secondary_imap_password[0]
       do_delete(' '.join(sys.argv[sys.argv.index('--delete-secondary')+1:]))
   elif '--copy' in sys.argv: do_copy(' '.join(sys.argv[sys.argv.index('--copy')+1:]))
   elif '--note' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]))
