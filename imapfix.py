@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.4 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.41 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -239,6 +239,22 @@ report_secondary_login_failures = False # if True, put a
 # any of the secondary_imap boxes (default just ignores &
 # tries again next time)
 
+secondary_is_insecure = False # if True, the --copy option
+# will remove all email addresses when copying messages to
+# secondary.  This is for situations where the secondary
+# IMAP server is easier to log in to than the primary, but
+# is less secure.  E.g. your old WM6.5 phone can't do the
+# modern TLS version of IMAPS, and the only other option
+# is a completely unencrypted connection to some throwaway
+# account somewhere.  Using --copy to copy over messages
+# to read on that phone, but with secondary_is_insecure as
+# True, will mean anyone who breaks into that throwaway
+# account can see the messages but won't easily be able to
+# reply to them for scamming purposes.  It will of course
+# mean you can't reply so easily as well, but the idea is
+# that the throwaway account is only for READING messages
+# on the mobile, not for actual replying or management.
+
 exit_if_imapfix_config_py_changes = False # if True, does
 # what it says, on the assumption that a wrapper script
 # will restart it (TODO: make it restart by itself?)
@@ -448,20 +464,26 @@ def authenticated_wrapper(subject,firstPart,attach={}):
         r=False
     return r, None
 
-def yield_all_messages():
-    "Generator giving (message ID, flags, message) for each message in the current folder of 'imap', without setting the 'seen' flag as a side effect."
-    typ, data = imap.search(None, 'ALL')
+def yield_all_messages(searchQuery=None):
+    "Generator giving (message ID, flags, message) for each message in the current folder of 'imap', without setting the 'seen' flag as a side effect.  Optional searchQuery limits to a text search."
+    if searchQuery: typ, data = imap.search(None, 'TEXT', '"'+searchQuery.replace("\\","\\\\").replace('"',r'\"')+'"')
+    else: typ, data = imap.search(None, 'ALL')
     if not typ=='OK': raise Exception(typ)
+    bodyPeek_works = True # will set to False if it doesn't
     for msgID in data[0].split():
         typ, data = imap.fetch(msgID, '(FLAGS)')
         if not typ=='OK': continue
         flags = data[0]
         if '\\Deleted' in flags: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
         if '(' in flags: flags=flags[flags.rindex('('):flags.index(')')+1] # so it's suitable for imap.store below
-        typ, data = imap.fetch(msgID, '(RFC822)')
-        if not "seen" in flags.lower(): # do this in case the action of fetching the message set the 'seen' flag
-            try: imap.store(msgID, 'FLAGS', flags)
-            except: imap.store(msgID, 'FLAGS', "()") # gmail can give a \Recent flag but not accept setting it
+        if bodyPeek_works:
+            typ, data = imap.fetch(msgID, '(BODY.PEEK[])')
+            if not typ=='OK': bodyPeek_works = False
+        if not bodyPeek_works: # fall back to older RFC822:
+            typ, data = imap.fetch(msgID, '(RFC822)')
+            if not "seen" in flags.lower(): # fetching RFC822 will set 'seen' flag, so we'll need to clear it again
+                try: imap.store(msgID, 'FLAGS', flags)
+                except: imap.store(msgID, 'FLAGS', "()") # gmail can give a \Recent flag but not accept setting it
         if not typ=='OK': continue
         yield msgID, flags, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
 
@@ -1254,14 +1276,18 @@ def do_delete(foldername):
     print "Deleting folder "+repr(foldername)
     check_ok(imap.delete(foldername))
 
+def secondary_security(message_as_string):
+    if secondary_is_insecure: return re.sub(r"([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)\.([a-zA-Z]{2,5})","email.removed@email.removed",message_as_string) # TODO: this deals with the header easily, but should also rm from Base64 in body (if quoting)
+    else: return message_as_string
+
 def do_copy(foldername):
     foldername = foldername.strip()
     if not foldername:
         print "No folder name specified"
         return
     make_sure_logged_in()
+    global imap,saveImap
     check_ok(imap.select(foldername))
-    global saveImap
     try:
         saveImap = imaplib.IMAP4_SSL(secondary_imap_hostname[0])
         check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
@@ -1272,26 +1298,25 @@ def do_copy(foldername):
     do_not_delete = set() ; do_not_copy = set()
     debug("Checking messages")
     for msgID,flags,message in yield_all_messages():
-        do_not_delete.add(message)
+        do_not_delete.add(secondary_security(message))
     saveImap.create(foldername) # error if exists OK
     check_ok(saveImap.select(foldername))
-    typ, data = saveImap.search(None, 'ALL')
-    if not typ=='OK': raise Exception(typ)
     tot=rm=0
-    for msgID in data[0].split():
-        typ, data = saveImap.fetch(msgID, '(RFC822)')
-        if not typ=='OK': continue
+    imap,saveImap = saveImap,imap
+    for msgID,flags,message in yield_all_messages():
         tot += 1
-        if data[0][1] in do_not_delete:
-            do_not_copy.add(data[0][1]) # already there
+        if message in do_not_delete:
+            do_not_copy.add(message) # already there
         else:
-            saveImap.store(msgID, '+FLAGS', '\\Deleted')
+            imap.store(msgID, '+FLAGS', '\\Deleted')
             rm += 1
+    imap,saveImap = saveImap,imap
     debug("%d of %d old messages removed from secondary" % (rm,tot))
     # Copy in the new messages:
     tot = cp = 0
     for msgID,flags,message in yield_all_messages():
         tot += 1
+        message = secondary_security(message)
         if not message in do_not_copy:
             flags2 = [] # don't just copy them over, as the secondary IMAP might not understand all the same flags
             if "\\answered" in flags.lower(): flags2.append("\\Answered")
@@ -1304,12 +1329,7 @@ def do_copy(foldername):
 def do_quicksearch(s):
     global quiet ; quiet = True # don't need "Logging in" etc
     for foldername in yield_folders():
-        typ, data = imap.search(None, 'TEXT', '"'+s.replace("\\","\\\\").replace('"',r'\"')+'"')
-        if not typ=='OK': raise Exception(typ)
-        for msgID in data[0].split():
-            typ, data = imap.fetch(msgID, '(RFC822)')
-            if not typ=='OK': continue
-            message = data[0][1]
+        for msgID, flags, message in yield_all_messages(s):
             matching_lines = filter(lambda l:s.lower() in l.lower(), message.split('\n'))
             for m in matching_lines:
                 try_print(foldername,m.strip())
