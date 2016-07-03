@@ -371,6 +371,6 @@ def myFind(text,content):
   elif text in content: return True
   t2 = normalisePunc(text)
   if not t2==text: return t2 in normalisePunc(content)
-def normalisePunc(t): return re.sub(r"(\s)\s+",r"\1",t.replace(u"\u2019".encode('utf-8'),"'")) # for apostrophes, + collapse (but don't ignore) whitespace (TODO: other?)
-  
+def normalisePunc(t): return re.sub(r"(\s)\s+",r"\1",t.replace(u"\u2019".encode('utf-8'),"'").replace(u"\u00A0".encode('utf-8')," ")) # for apostrophes, + collapse (but don't ignore) whitespace and &nbsp; (TODO: other?)
+
 if __name__=="__main__": main()

@@ -240,8 +240,8 @@ report_secondary_login_failures = False # if True, put a
 # tries again next time)
 
 secondary_is_insecure = False # if True, the --copy option
-# will remove all email addresses when copying messages to
-# secondary.  This is for situations where the secondary
+# will remove all email addresses (but not names) when
+# copying to secondary.  This is for when the secondary
 # IMAP server is easier to log in to than the primary, but
 # is less secure.  E.g. your old WM6.5 phone can't do the
 # modern TLS version of IMAPS, and the only other option
