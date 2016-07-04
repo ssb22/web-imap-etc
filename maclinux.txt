@@ -278,3 +278,8 @@ fi # end of "we're on a Mac" block
 # Psion PDAs etc.
 catdocx_utf8 () { while [ ! "a$1" == "a" ]; do unzip -Cp "$1" word/[dfe]*[ts].xml; shift; done|perl -p -e 's/<w:p(\s[^>]*)?>/\n/g;s/<[^>]*>//g;s/  */ /g;s/&lt;/</g;s/&gt;/>/g'|grep -v '^ *$' ; } # (want to unzip document.xml, endnotes.xml and footnotes.xml but not emit warnings if missing and not match fontTable etc, hence the awkward file specification; perl rather than sed so as to avoid BSD sed / gsed differences re \n in replacement etc)
 catdocx_cp1252 () { catdocx_utf8 "$@" | iconv -c -f UTF8 -t CP1252//TRANSLIT ; } # --unicode-subst="[U+%04X]" instead of -c would be nice, but it's not available on all versions of iconv
+
+# Bonus command 2: cat a load of text files into a
+# self-extracting shell script (for email or whatever)
+# (must o/p to a file; i/p cannot incl dirs)
+shellarc () { export Out="$1"; if test -e "$Out" ; then echo "Output file exists; I'd rather not overwrite it" ; return; fi; echo "Writing $Out"; (echo '#!/bin/bash' ; while ! [ "a$2" == a ]; do if echo "$2"|grep / >/dev/null; then echo mkdir -p '"'"$(echo "$2"|sed -e 's,/[^/]*$,,')"'"'; fi; export C=0; while grep EOF$C "$2" >/dev/null; do export C=$[C+1]; done ; echo "cat > \"$2\" <<\"EOF$C\"" ; cat $2 ; echo EOF$C ; shift; done) > "$Out" ; chmod +x "$Out" ; }
