@@ -1277,7 +1277,7 @@ def do_delete(foldername):
     check_ok(imap.delete(foldername))
 
 def secondary_security(message_as_string):
-    if secondary_is_insecure: return re.sub(r"([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)\.([a-zA-Z]{2,5})","email.removed@email.removed",message_as_string) # TODO: this deals with the header easily, but should also rm from Base64 in body (if quoting)
+    if secondary_is_insecure: return re.sub(r"([a-zA-Z0-9_\-\.]+)(=\r?\n[a-zA-Z0-9_\-\.]*)*@((=\r?\n)*[a-zA-Z0-9_\-\.]+)(=\r?\n[a-zA-Z0-9_\-\.]*)*\.([a-zA-Z]{2,5})","email.removed@email.removed",message_as_string) # TODO: this deals with the header easily, and with SOME quoted-printable-in-long-HTML-line situations, but should also rm from Base64 in body (if quoting)
     else: return message_as_string
 
 def do_copy(foldername):
