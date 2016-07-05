@@ -428,10 +428,10 @@ def process_header_rules(header):
 
 def myAsString(msg):
     message = msg.as_string()
-    if not "\r\n\r\n" in message:
+    if not "\r\n\r\n" in message or ("\n\n" in message and message.index("\n\n")<message.index("\r\n\r\n")):
         # oops, broken library?
         message=message.replace("\n\n","\r\n\r\n",1)
-        a,b = message.split("\r\n\r\n")
+        a,b = message.split("\r\n\r\n",1)
         message = re.sub('\r*\n','\r\n',a)+"\r\n\r\n"+b
     return message
 
