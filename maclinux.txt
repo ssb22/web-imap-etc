@@ -256,7 +256,7 @@ alias make-ramdisk=_make_ramdisk
 if test "a$SSH_CLIENT" == a; then
   # simpler prompt for a local Mac (hostname can be a bit long)
   export PS1='mac:\w\$ '
-elif test "$(hostname -s)" == mac; then
+elif test "$(hostname -s)" == mac || test "$(hostname -s)" == unknown; then
   # if hostname has been SET to mac, better make it different
   # to distinguish between a local one and one over SSH
   export PS1='mac.ssh:\w\$ '
