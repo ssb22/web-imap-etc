@@ -970,7 +970,10 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
     is_html = cType and cType.startswith("text/html")
     not_base64 = not 'Content-Transfer-Encoding' in message or message['Content-Transfer-Encoding']=='quoted-printable'
     m = message.get_content_charset(None)
-    if not force_change and m in [None,'us-ascii','utf-8'] and not_base64 and not is_html: return changed # no further conversion required
+    def hasNonAscii():
+      try: return re.search("[^\x00-\x80]",message.get_payload(decode=True).decode(m))
+      except: pass
+    if not force_change and m in [None,'us-ascii','utf-8'] and not_base64 and not is_html and not (will_use_8bit and m=='utf-8' and hasNonAscii()): return changed # no further conversion required
     if m in ['gb2312','gbk']: m = 'gb18030'
     try:
         p0 = message.get_payload(decode=True)

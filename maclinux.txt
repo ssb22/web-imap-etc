@@ -270,6 +270,8 @@ fi # end of "we're on a Mac" block
 # (so you can put all this into a .bashrc that will
 # get sourced from either Mac or Linux machines)
 
+which unix2dos >/dev/null 2>/dev/null || alias unix2dos="perl -i -p -e 's|[\r\n]+|\r\n|g'" # (outside Mac section because might also be useful on Linux if unix2dos is missing and you need to send a .txt file to someone who has only Windows Notepad)
+
 # "Bonus" command (not just Mac but may be useful on some
 # Linux systems) - a simple 'catdocx' (like catdoc if it's
 # installed, but for docx files - just extracts text
