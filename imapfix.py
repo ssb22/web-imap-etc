@@ -968,12 +968,14 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         return changed
     cType = message.get_content_type()
     is_html = cType and cType.startswith("text/html")
-    not_base64 = not 'Content-Transfer-Encoding' in message or message['Content-Transfer-Encoding']=='quoted-printable'
     m = message.get_content_charset(None)
-    def hasNonAscii():
-      try: return re.search("[^\x00-\x80]",message.get_payload(decode=True).decode(m))
-      except: pass
-    if not force_change and m in [None,'us-ascii','utf-8'] and not_base64 and not is_html and not (will_use_8bit and m=='utf-8' and hasNonAscii()): return changed # no further conversion required
+    if not force_change:
+      if 'Content-Transfer-Encoding' in message and not message['Content-Transfer-Encoding']=='quoted-printable': force_change = True # if it's base64, always see if we can change it
+      elif will_use_8bit and m=='utf-8':
+        try:
+          if re.search("[^\x00-\x80]",message.get_payload(decode=True)): force_change = True
+        except: pass # we would full back to return anyway on the 'problems decoding this message' below
+    if not force_change and m in [None,'us-ascii','utf-8'] and not is_html: return changed # no further conversion required
     if m in ['gb2312','gbk']: m = 'gb18030'
     try:
         p0 = message.get_payload(decode=True)
@@ -984,7 +986,7 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         p = re.sub(r'(?i)<meta\s+http[_-]equiv='+q+r'?content-type'+q+r'?\s+content='+q+'[^\'"]*'+q+r'>','',p) # better remove charset meta tags after we changed the charset (TODO: what if they conflict with the message header anyway?)
         p = re.sub(r'(?i)<meta\s+content='+q+'[^\'"]*'+q+r'\s+http[_-]equiv='+q+r'?content-type'+q+r'?>','',p) # some authoring tools emit the attributes in THIS order
     p = p.encode('utf-8')
-    if not force_change and p==p0 and not_base64: return changed # didn't fix meta tags or change charset so don't need to re-encode
+    if not force_change and p==p0: return changed # didn't fix meta tags or change charset so don't need to re-encode
     if 'Content-Transfer-Encoding' in message:
         isQP = (message['Content-Transfer-Encoding']=='quoted-printable')
         del message['Content-Transfer-Encoding']
