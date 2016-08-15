@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.41 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.42 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1071,7 +1071,7 @@ def folderList(pattern="*"):
     make_sure_logged_in()
     typ,data = imap.list(pattern=pattern)
     if not typ=='OK': return []
-    return [re.sub('.*"/" ','',i) for i in data]
+    return [re.sub('.*"/" ','',i) for i in data if i]
 
 isoDate = "[1-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]"
 if postponed_daynames:
