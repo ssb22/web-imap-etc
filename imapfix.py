@@ -1301,17 +1301,18 @@ def do_copy(foldername):
         return
     # Work out which messages need to be deleted:
     do_not_delete = set() ; do_not_copy = set()
-    debug("Checking messages")
+    debug("Checking primary messages")
     for msgID,flags,message in yield_all_messages():
         do_not_delete.add(secondary_security(message))
+    debug("Checking secondary messages")
     saveImap.create(foldername) # error if exists OK
     check_ok(saveImap.select(foldername))
     tot=rm=0
     imap,saveImap = saveImap,imap
     for msgID,flags,message in yield_all_messages():
         tot += 1
-        if message in do_not_delete:
-            do_not_copy.add(message) # already there
+        if message in do_not_delete and not message in do_not_copy:
+            do_not_copy.add(message) # already there (and not a duplicate; latter check added to help clean up damage due to multiple imapfix processes running on a cluster)
         else:
             imap.store(msgID, '+FLAGS', '\\Deleted')
             rm += 1
