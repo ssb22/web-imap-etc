@@ -1140,6 +1140,9 @@ def mainloop():
   done_spamprobe_cleanup = False
   secondary_imap_due = 0
   if exit_if_imapfix_config_py_changes:
+    if True:
+      try: open("imapfix_config.py","a")
+      except: pass
     mtime = os.stat("imapfix_config.py").st_mtime
   try:
    if postponed_foldercheck: do_postponed_foldercheck("old")
