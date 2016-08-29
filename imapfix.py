@@ -258,6 +258,12 @@ secondary_is_insecure = False # if True, the --copy option
 exit_if_imapfix_config_py_changes = False # if True, does
 # what it says, on the assumption that a wrapper script
 # will restart it (TODO: make it restart by itself?)
+# - and if this is set to the special value "stamp", it
+# will additionally try to update the timestamp of the
+# config file before starting, so that any other instance
+# (even on another machine in a cluster) will stop; this
+# can be more reliable than exit_if_other_running below
+# if running on a cluster.
 
 failed_address_to_subject = True # try to rewrite delivery
 # failure reports so that failed addresses are included in
@@ -292,6 +298,9 @@ exit_if_other_running = True # when run without options,
 # don't want to rename (or symlink) imapfix so that these
 # look different in the process table.
 # (exit_if_other_running needs the Unix 'ps' command.)
+# The newer exit_if_imapfix_config_py_changes="stamp"
+# option (above) is likely better if you don't mind
+# changing the timestamp of your imapfix_config.py.
 
 alarm_delay = 0 # with some Unix networked filesystems it is
 # possible for imapfix or one of its subprocesses to get
@@ -1140,7 +1149,7 @@ def mainloop():
   done_spamprobe_cleanup = False
   secondary_imap_due = 0
   if exit_if_imapfix_config_py_changes:
-    if True:
+    if exit_if_imapfix_config_py_changes=="stamp":
       try: open("imapfix_config.py","a")
       except: pass
     mtime = os.stat("imapfix_config.py").st_mtime
