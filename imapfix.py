@@ -512,6 +512,7 @@ for k in forced_names.keys():
 def forced_from(msg):
     def f(fr):
         if fr.lower() in forced_names:
+            del msg['From']
             msg["From"] = forced_names[fr.lower()] + ' <'+fr.lower()+'>'
             return True
     fr = msg.get("From","").strip()
