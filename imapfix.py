@@ -1126,7 +1126,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
                 if p.startswith(dateIntro): return changed
                 if not changed: globalise_charsets(message, imap_8bit, True) # ensure set up for:
                 message.set_payload(dateIntro + old_date + newPara + "\n\n" + p,'utf-8')
-                return True
+                email_u8_quopri() ; return True
             if 'From' in msg and msg['From']==imapfix_name: pass # no need to add old date if it's a --note or --multinote
             elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
             else: walk_msg(msg,addOldDate)

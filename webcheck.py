@@ -285,7 +285,10 @@ def tryRead0(url,opener):
             u = urllib2.build_opener(urllib2.HTTPCookieProcessor()).open(url)
             return u,tryGzip(u.read())
         except urllib2.HTTPError, e: return u,tryGzip(e.fp.read())
-        except:
+        except urllib2.URLError, e: # don't need full traceback for URLError, just the message itself
+            sys.stdout.write("Problem retrieving "+url+"\n"+str(e)+"\n")
+            return None,""
+        except: # full traceback by default
             sys.stdout.write("Problem retrieving "+url+"\n"+traceback.format_exc())
             return None,""
 
