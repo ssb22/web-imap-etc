@@ -1,5 +1,5 @@
 
-# webcheck.py v1.24 (c) 2014-16 Silas S. Brown.
+# webcheck.py v1.25 (c) 2014-16 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -23,8 +23,12 @@
 max_threads = 10
 delay = 2 # seconds
 keep_etags = False # if True, will also keep any ETag headers as well as Last-Modified
+verify_SSL_certificates = False # webcheck's non-Webdriver URLs are for monitoring public services and there's not a lot of point in SSL authentication; failures due to server/client certificate misconfigurations are more trouble than they're worth
 
 import htmlentitydefs, traceback, HTMLParser, urllib2, urlparse, time, pickle, gzip, StringIO, re, Queue, sys, socket
+try: import ssl
+except: # you won't be able to check https:// URLs
+  ssl = 0 ; verify_SSL_certificates = False
 if max_threads > 1: import thread
 
 def read_input():
@@ -136,7 +140,8 @@ def main():
     except: sys.stdout.write("Problem writing .webcheck-last (progress was NOT saved):\n"+traceback.format_exc()+"\n")
 
 def default_opener():
-    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor()) # HTTPCookieProcessor needed for some redirects
+    if sys.version_info >= (2,7,9) and not verify_SSL_certificates: opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())) # HTTPCookieProcessor needed for some redirects
+    else: opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
     opener.addheaders = [('User-agent', 'Mozilla/5.0 or Lynx or whatever you like (actually Webcheck)'), # TODO: ? (just Mozilla/5.0 is not always acceptable to all servers)
                          ('Accept-Encoding', 'gzip')]
     return opener
@@ -168,7 +173,8 @@ def worker_thread(*args):
               url = url[5:].split(chr(0),1)[0] # for display
           elif url.startswith("up://"): # just test if server is up, and no error if not
               try:
-                urllib2.urlopen(url[5:])
+                if sys.version_info >= (2,7,9) and not verify_SSL_certificates: urllib2.urlopen(url[5:],context=ssl._create_unverified_context())
+                else: urllib2.urlopen(url[5:])
                 u,content = None,"yes"
               except: u,content = None,"no"
               textContent = content
@@ -288,7 +294,8 @@ def tryRead0(url,opener):
         return None,tryGzip(e.fp.read()) # as might want to monitor some phrase on a 404 page
     except: # try it with a fresh opener and no headers
         try:
-            u = urllib2.build_opener(urllib2.HTTPCookieProcessor()).open(url)
+            if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())).open(url)
+            else: u = urllib2.build_opener(urllib2.HTTPCookieProcessor()).open(url)
             return u,tryGzip(u.read())
         except urllib2.HTTPError, e: return u,tryGzip(e.fp.read())
         except urllib2.URLError, e: # don't need full traceback for URLError, just the message itself
