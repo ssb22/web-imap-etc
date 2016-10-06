@@ -1,5 +1,5 @@
 
-# webcheck.py v1.23 (c) 2014-16 Silas S. Brown.
+# webcheck.py v1.24 (c) 2014-16 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -158,14 +158,20 @@ def worker_thread(*args):
           previous_timestamps[(url,'lastFetch')] = dayNo() # (keep it even if minDays==0, because that might be changed by later edits of webcheck.list)
           time.sleep(max(0,last_fetch_finished+delay-time.time()))
           if sys.stderr.isatty(): sys.stderr.write('.')
-          if url.startswith("dns://"):
+          if url.startswith("dns://"): # DNS lookup
               try: u,content = None, ' '.join(sorted(set('('+x[-1][0]+')' for x in socket.getaddrinfo(url[6:],1)))) # TODO this 'sorted' is lexicographical not numeric; it should be OK for most simple cases though (keeping things in a defined order so can check 2 or 3 IPs on same line if the numbers are consecutive and hold same number of digits).  Might be better if parse and numeric sort
               except: u,content=None,"DNS lookup failed"
               textContent = content
-          elif url.startswith("wd://"):
+          elif url.startswith("wd://"): # run webdriver
               u,content = None, run_webdriver(url[5:].split(chr(0)))
               textContent = None # parse 'content' if needed
               url = url[5:].split(chr(0),1)[0] # for display
+          elif url.startswith("up://"): # just test if server is up, and no error if not
+              try:
+                urllib2.urlopen(url[5:])
+                u,content = None,"yes"
+              except: u,content = None,"no"
+              textContent = content
           else:
               if opener==None: opener = default_opener()
               u,content = tryRead(url,opener,extraHeaders)
