@@ -385,8 +385,7 @@ def extract(url,content,startEndMarkers,comment):
 def myFind(text,content):
   if text.startswith("*"): return re.search(text[1:],content)
   elif text in content: return True
-  t2 = normalisePunc(text)
-  if not t2==text: return t2 in normalisePunc(content)
+  return normalisePunc(text) in normalisePunc(content)
 def normalisePunc(t): return re.sub(r"(\s)\s+",r"\1",t.replace(u"\u2019".encode('utf-8'),"'").replace(u"\u00A0".encode('utf-8')," ")) # for apostrophes, + collapse (but don't ignore) whitespace and &nbsp; (TODO: other?)
 
 if __name__=="__main__": main()
