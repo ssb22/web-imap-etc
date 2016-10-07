@@ -1151,7 +1151,7 @@ def mainloop():
   secondary_imap_due = 0
   if exit_if_imapfix_config_py_changes:
     if exit_if_imapfix_config_py_changes=="stamp":
-      try: open("imapfix_config.py","a")
+      try: os.utime("imapfix_config.py",None) # open with "a" doesn't always update timestamp
       except: pass
     mtime = os.stat("imapfix_config.py").st_mtime
   try:
