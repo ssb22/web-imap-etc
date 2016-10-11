@@ -408,7 +408,7 @@ def check_ok(r):
     if not typ=='OK': raise Exception(typ+' '+repr(data))
 
 def spamprobe_rules(message):
-  if run_spamprobe("train",message).startswith("SPAM"): return spam_folder # classify + maybe update database
+  if run_spamprobe("train",message).startswith("SPAM"): return spam_folder # "train" = classify + maybe update database if wasn't already confident ("receive" = always update database); TODO: if using "train"/"receive" instead of "score", need a way to quickly recover from the effect of misclassifications before the next archive, e.g. regularly train-spam on the spam-confirmed folder (with spamprobe_cleanup?) (or do we rely on the user to copy messages to a file and run train-spam manually? and sort out false positives too ???)
   else: return filtered_inbox
 
 def run_spamprobe(action,message):
