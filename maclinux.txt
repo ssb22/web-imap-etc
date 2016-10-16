@@ -266,6 +266,7 @@ fi
 
 export BASH_ENV="$__OldBashEnv"
 
+elif ! test "a$COLUMNS" == a && test $COLUMNS -le 50 && wget --version 2>/dev/null|head -1|grep "Wget 1.17" >/dev/null; then alias wget="echo 'Doing wget -q to work around Debian bug #823891';wget -q" # non-Mac, but that bug affects the version of wget shipped with Ubuntu 16.04 LTS so I'm putting this in for the Cambridge MCS remote GNU/Linux machines
 fi # end of "we're on a Mac" block
 # (so you can put all this into a .bashrc that will
 # get sourced from either Mac or Linux machines)
