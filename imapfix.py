@@ -1057,7 +1057,8 @@ def add_preview(message,accum):
             del message["Content-Type"]
             message["Content-Type"]="image/"+what
             changed = True
-    img.thumbnail(image_size,Image.ANTIALIAS)
+    try: img.thumbnail(image_size,Image.ANTIALIAS)
+    except: return changed # probably a JPEG-variant decoder not available
     try:
       s1 = StringIO();img.save(s1,'JPEG');s1=s1.getvalue()
     except: s1 = None
