@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.42 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.43 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1089,20 +1089,20 @@ if postponed_daynames:
     # use the current locale's idea of the abbreviated names
     weekdays = [time.strftime("%a",time.gmtime(time.mktime((2001,1,i,0,0,0,0,0,0)))).lower() for i in range(1,8)]
     months = [time.strftime("%b",time.gmtime(time.mktime((2001,i,1,0,0,0,0,0,0)))).lower() for i in range(1,13)]
-    weekMonth = "|".join(weekdays+months)+"(?=$|:)"
+    weekMonth = "("+"|".join(weekdays+months)+")(?=$|:)"
 def isoToday(): return "%04d-%02d-%02d" % time.localtime()[:3]
 def do_postponed_foldercheck(dayToCheck="today"):
     today = isoToday()
-    if dayToCheck=="old": # only if postponed_foldercheck
+    if dayToCheck=="old": # called only on startup (and only if postponed_foldercheck)
         for f in folderList():
             if re.match(isoDate+'$',f) and f <= today: # TODO: Y10K (lexicographic comparison)
                 do_postponed_foldercheck(f)
         return
-    elif dayToCheck=="today":
+    elif dayToCheck=="today": # called at midnight rollover (if postponed_foldercheck or postponed_daynames)
         if postponed_daynames:
             do_postponed_foldercheck(time.strftime("%a").lower()) # weekday
             if time.localtime()[2]==1: # 1st of the month
-                time.strftime("%b").lower() # month
+                do_postponed_foldercheck(time.strftime("%b").lower()) # month
         if postponed_foldercheck: dayToCheck = today
         else: return
     f = folderList(dayToCheck)
