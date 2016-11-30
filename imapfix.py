@@ -688,7 +688,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         else:
           if archive_8bit:
             d1 = open(mboxpath,'rb').read()
-            d2 = quopri_to_u8_8bitOnly(d1)
+            d2 = quopri_to_u8_8bitOnly(d1) # TODO: the ENTIRE mbox in one operation? what if there's some non-MIME messages in there that just happen to contain URLs with =(hex digits) in them?
             if not d2==d1: open(mboxpath,'wb').write(d2)
           if compression:
             open_compressed(mboxpath,'wb').write(open(mboxpath,'rb').read()) # will write a .bz2 etc
@@ -810,7 +810,7 @@ def save_to(mailbox, message_as_string, flags=""):
     msg = email.message_from_string(message_as_string)
     if 'Date' in msg: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
     else: imap_timestamp = time.time() # undated message ? (TODO: could parse Received lines)
-    if imap_8bit: message_as_string = quopri_to_u8_8bitOnly(message_as_string)
+    if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check that that's in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(imap_timestamp), message_as_string))
 
 def rename_folder(folder):
@@ -1019,7 +1019,7 @@ def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by defau
     def avoidAdd(m):
         avoid.add((m.start(),m.end()))
         return m.group()
-    re.sub(header_charset_regex,avoidAdd,s,flags=re.DOTALL)
+    re.sub(header_charset_regex,avoidAdd,s,flags=re.DOTALL) # don't want to interfere with MIME 'charset' etc in subject lines
     def maybeDecode(m):
         for start,end in avoid: # TODO: improve efficiency when dealing with a very large archive with many headers?
             if start <= m.start() < end: return m.group()
