@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.43 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.44 (c) 2013-16 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -458,6 +458,7 @@ def postponed_match(subject):
         if m: return m.end()
 
 def authenticated_wrapper(subject,firstPart,attach={}):
+    subject = subject.replace('\n',' ').replace('\r','') # in case the original header is corrupt (c.f. globalise_charsets)
     mLen = postponed_match(subject)
     if mLen:
         newSubj = re.sub("^:","",subject[mLen:]).lstrip() # take the date itself out of the subject line before putting the message in that folder: it could take up valuable screen real-estate in summaries on large-print or mobile devices, and just duplicates information that can be found in the folder name (or in the Date: field after it's put back into filtered_inbox)
@@ -1341,6 +1342,7 @@ def do_copy(foldername):
             flags2 = [] # don't just copy them over, as the secondary IMAP might not understand all the same flags
             if "\\answered" in flags.lower(): flags2.append("\\Answered")
             if "\\seen" in flags.lower() and not "old" in flags.lower(): flags2.append("\\Seen")
+            # Not sure if all secondary IMAPs will understand \Flagged (called "star" in some clients e.g. K9 Mail; mutt default keybindings set with w ! and clear with W ! )
             flags = " ".join(flags2)
             save_to(foldername,message,flags) ; cp += 1
     debug("%d of %d messages added to secondary" % (cp,tot))
