@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.44 (c) 2013-16 Silas S. Brown.  License: GPL
+# ImapFix v1.44 (c) 2013-17 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -201,6 +201,7 @@ archive_rules = [
     ]
 compression = "bz2" # or "gz" or None
 archived_attachments_path = "archived-attachments" # or None
+save_attachments_for_confirmed_spam_too = False
 attachment_filename_maxlen = 30
 
 forced_names = {} # you can set this to a dictionary
@@ -679,8 +680,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
                 message="From "+' '.join(f)+"\r\n"+message
                 msg = email.message_from_string(message)
         globalise_charsets(msg,archive_8bit) # in case wasn't done on receive (this also makes sure UTF-8 is quopri if it would be shorter, which can make archives easier to search)
-        if archived_attachments_path:
-            save_attachments_separately(msg)
+        if archived_attachments_path and (save_attachments_for_confirmed_spam_too or not spamprobe_action or not "spam" in spamprobe_action): save_attachments_separately(msg)
         mbox.add(msg) # TODO: .set_flags A=answered R=read ?  (or doesn't it matter so much for old-message archiving; flags aren't always right anyway as you might have answered some using another method)
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if mbox:
@@ -748,11 +748,13 @@ def save_attachment_separately(msg):
     try: fname = msg.get_filename()
     except: fname="illegal-filename-A"
     if not fname: return
+    if fname.startswith("imapfix-preview"): return
     try: fname=fname.encode("us-ascii") # (or utf-8 if the filesystem definitely supports it)
     except: fname="illegal-filename-B"
-    if os.sep in fname: fname = "illegal-filename-C"
+    fname = re.sub(r'\s+',' ',fname)
     if '.' in fname: fext = fname[fname.rindex('.'):]
     else: fext = ""
+    fname = fname.replace(os.sep,'.')
     if len(fext) > attachment_filename_maxlen:
         fname = fname[:attachment_filename_maxlen]
     else:
