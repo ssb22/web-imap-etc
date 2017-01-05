@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.44 (c) 2013-17 Silas S. Brown.  License: GPL
+# ImapFix v1.45 (c) 2013-17 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1060,6 +1060,16 @@ def add_preview(message,accum):
             del message["Content-Type"]
             message["Content-Type"]="image/"+what
             changed = True
+    try:
+      exif=dict(img._getexif().items())
+      if 274 in exif:
+        if exif[274]==3:
+            img=img.rotate(180)
+        elif exif[274]==6:
+            img=img.rotate(270)
+        elif exif[274]==8:
+            img=img.rotate(90)
+    except: pass # no EXIF data, or can't de-rotate
     try: img.thumbnail(image_size,Image.ANTIALIAS)
     except: return changed # probably a JPEG-variant decoder not available
     try:
