@@ -443,6 +443,9 @@ def myAsString(msg):
         message=message.replace("\n\n","\r\n\r\n",1)
         a,b = message.split("\r\n\r\n",1)
         message = re.sub('\r*\n','\r\n',a)+"\r\n\r\n"+b
+    # also fix header folding (RFC 2822 says CRLF can be inserted before whitespace, but some versions of Python libs add whitespace in the middle of a header_charset_regex, breaking it)
+    a,b = message.split("\r\n\r\n",1)
+    message = re.sub(header_charset_regex,lambda x:re.sub("\r?\n? _","_",x.group()),a,flags=re.DOTALL)+"\r\n\r\n"+b
     return message
 
 imapfix_name = sys.argv[0]
