@@ -443,9 +443,9 @@ def myAsString(msg):
         message=message.replace("\n\n","\r\n\r\n",1)
         a,b = message.split("\r\n\r\n",1)
         message = re.sub('\r*\n','\r\n',a)+"\r\n\r\n"+b
-    # also fix header folding (RFC 2822 says CRLF can be inserted before whitespace, but some versions of Python libs add whitespace in the middle of a header_charset_regex, breaking it)
+    # Bug in python2.7/email/header.py: CRLF + whitespace sometimes added by _split_ascii after semicolons or commas, but if this occurs inside quoted-printable strings it'll break the display in some versions of alpine & mutt (RFC 2822 says CRLF + whitespace is interpreted as whitespace, and that's not allowed inside ?=..?= sections)
     a,b = message.split("\r\n\r\n",1)
-    message = re.sub(header_charset_regex,lambda x:re.sub("\r?\n? _","_",x.group()),a,flags=re.DOTALL)+"\r\n\r\n"+b
+    message = re.sub(header_charset_regex,lambda x:re.sub("\r\n ","",x.group()),a,flags=re.DOTALL)+"\r\n\r\n"+b
     return message
 
 imapfix_name = sys.argv[0]
