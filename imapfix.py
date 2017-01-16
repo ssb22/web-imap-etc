@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.45 (c) 2013-17 Silas S. Brown.  License: GPL
+# ImapFix v1.46 (c) 2013-17 Silas S. Brown.  License: GPL
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -203,6 +203,11 @@ compression = "bz2" # or "gz" or None
 archived_attachments_path = "archived-attachments" # or None
 save_attachments_for_confirmed_spam_too = False
 attachment_filename_maxlen = 30
+
+train_spamprobe_nightly = False # if true, will also run
+# spamprobe training commands on yesterday's messages in
+# these folders every midnight, not just during --archive,
+# to catch any message-filing done the previous day
 
 forced_names = {} # you can set this to a dictionary
 # mapping email address to From name, and whatever other
@@ -478,9 +483,10 @@ def authenticated_wrapper(subject,firstPart,attach={}):
         r=False
     return r, None
 
-def yield_all_messages(searchQuery=None):
+def yield_all_messages(searchQuery=None,since=None):
     "Generator giving (message ID, flags, message) for each message in the current folder of 'imap', without setting the 'seen' flag as a side effect.  Optional searchQuery limits to a text search."
     if searchQuery: typ, data = imap.search(None, 'TEXT', '"'+searchQuery.replace("\\","\\\\").replace('"',r'\"')+'"')
+    elif since: typ, data = imap.search(None, 'SINCE', since)
     else: typ, data = imap.search(None, 'ALL')
     if not typ=='OK': raise Exception(typ)
     bodyPeek_works = True # will set to False if it doesn't
@@ -782,6 +788,12 @@ def delete_attachments(msg):
 def delete_attachment(msg):
     if msg.get_filename(): msg.set_payload("")
 
+def nightly_train(foldername, spamprobe_action):
+    make_sure_logged_in()
+    typ, data = imap.select(foldername)
+    if not typ=='OK': return # couldn't select that folder
+    for msgID,flags,message in yield_all_messages(since='-'.join(email.utils.formatdate(time.time()-24*3600,localtime=True).split()[1:4])): run_spamprobe(spamprobe_action, message) # TODO: combine multiple messages first?
+    
 def open_compressed(fname,mode):
     if compression=="bz2":
         return bz2.BZ2File(fname+".bz2",mode)
@@ -1202,6 +1214,7 @@ def mainloop():
       if midnight_command: os.system(midnight_command)
       if postponed_foldercheck or postponed_daynames:
           do_postponed_foldercheck()
+      if train_spamprobe_nightly: do_nightly_train()
       done_spamprobe_cleanup = False
     if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime): break
   finally: make_sure_logged_out()
@@ -1245,6 +1258,10 @@ def do_archive():
         if age: age = age*24*3600
         archive(foldername, archive_path+os.sep+foldername, age, action)
 
+def do_nightly_train():
+    for foldername,age,action in archive_rules:
+        nightly_train(foldername, action)
+        
 def yield_folders():
     "iterates through folders in imap, selecting each one as it goes"
     make_sure_logged_in()
