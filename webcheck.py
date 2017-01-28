@@ -236,7 +236,6 @@ def run_webdriver_inner(actionList,browser):
             tries = 30
             while tries and not a[1:-1] in browser.page_source:
               time.sleep(delay) ; tries -= 1
-              print browser.capabilities
             if not tries: raise NoTracebackException("webdriver timeout while waiting for \"%s\" (current URL is \"%s\")\n" % (a[1:-1],browser.current_url))
         elif a.startswith('[') and a.endswith(']'): # click
             findElem(a[1:-1]).click()
