@@ -1,5 +1,5 @@
 
-# webcheck.py v1.25 (c) 2014-16 Silas S. Brown.
+# webcheck.py v1.26 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -218,14 +218,26 @@ def run_webdriver(actionList):
     browser.quit()
     return r
 
+def webdriver_screenshot(browser):
+    global screenshot_no
+    try: screenshot_no
+    except: screenshot_no = 0
+    screenshot_filename = "screenshot%d.png" % screenshot_no
+    print "Problem finding element: saving screenshot to " + screenshot_filename
+    browser.save_screenshot(screenshot_filename)
+
 def run_webdriver_inner(actionList,browser):
     browser.set_window_size(1024, 768)
     browser.implicitly_wait(30)
     def findElem(spec):
+      try:
         if spec.startswith('#'):
             return browser.find_element_by_id(spec[1:])
         # TODO: other patterns?
         else: return browser.find_element_by_link_text(spec)
+      except webdriver.remote.errorhandler.NoSuchElementException, e:
+        webdriver_screenshot(browser)
+        raise e
     snippets = []
     for a in actionList:
         if a.startswith('http'): browser.get(a)
@@ -234,8 +246,9 @@ def run_webdriver_inner(actionList,browser):
             tries = 30
             while tries and not a[1:-1] in browser.page_source:
               time.sleep(delay) ; tries -= 1
-            if sys.stderr.isatty() and not a[1:-1] in browser.page_source:
-                sys.stderr.write("webdriver timeout while waiting for \"%s\"\n" % (a[1:-1],))
+            if sys.stderr.isatty() and not tries:
+                webdriver_screenshot(browser)
+                raise Exception("webdriver timeout while waiting for \"%s\"\n" % (a[1:-1],))
                 # sys.stderr.write("Current source:\n"+browser.page_source+"\n\n") # this can produce a LOT of output
         elif a.startswith('[') and a.endswith(']'): # click
             findElem(a[1:-1]).click()
