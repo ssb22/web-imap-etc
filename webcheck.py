@@ -202,42 +202,32 @@ def worker_thread(*args):
                 check(t,textContent,url,errmsg)
         jobs.task_done()
 
+class NoTracebackException(Exception): pass
 def run_webdriver(actionList):
     global webdriver # so run_webdriver_inner has it
     try: from selenium import webdriver
     except:
         print "webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)"
         return ""
-    try: browser = webdriver.PhantomJS()
+    try: browser = webdriver.PhantomJS(service_args=['--ssl-protocol=any'])
     except:
       print "webcheck misconfigured: can't create webdriver.PhantomJS (is another running? selenium installed OK?)"
       return ""
     r = ""
     try: r = run_webdriver_inner(actionList,browser)
+    except NoTracebackException, e: print e.message
     except: print traceback.format_exc()
     browser.quit()
     return r
-
-def webdriver_screenshot(browser):
-    global screenshot_no
-    try: screenshot_no
-    except: screenshot_no = 0
-    screenshot_filename = "screenshot%d.png" % screenshot_no
-    print "Problem finding element: saving screenshot to " + screenshot_filename
-    browser.save_screenshot(screenshot_filename)
 
 def run_webdriver_inner(actionList,browser):
     browser.set_window_size(1024, 768)
     browser.implicitly_wait(30)
     def findElem(spec):
-      try:
         if spec.startswith('#'):
             return browser.find_element_by_id(spec[1:])
         # TODO: other patterns?
         else: return browser.find_element_by_link_text(spec)
-      except webdriver.remote.errorhandler.NoSuchElementException, e:
-        webdriver_screenshot(browser)
-        raise e
     snippets = []
     for a in actionList:
         if a.startswith('http'): browser.get(a)
@@ -246,10 +236,8 @@ def run_webdriver_inner(actionList,browser):
             tries = 30
             while tries and not a[1:-1] in browser.page_source:
               time.sleep(delay) ; tries -= 1
-            if sys.stderr.isatty() and not tries:
-                webdriver_screenshot(browser)
-                raise Exception("webdriver timeout while waiting for \"%s\"\n" % (a[1:-1],))
-                # sys.stderr.write("Current source:\n"+browser.page_source+"\n\n") # this can produce a LOT of output
+              print browser.capabilities
+            if not tries: raise NoTracebackException("webdriver timeout while waiting for \"%s\" (current URL is \"%s\")\n" % (a[1:-1],browser.current_url))
         elif a.startswith('[') and a.endswith(']'): # click
             findElem(a[1:-1]).click()
         elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
