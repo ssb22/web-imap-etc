@@ -1,5 +1,5 @@
 
-# webcheck.py v1.26 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.27 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -167,7 +167,7 @@ def worker_thread(*args):
               try: u,content = None, ' '.join(sorted(set('('+x[-1][0]+')' for x in socket.getaddrinfo(url[6:],1)))) # TODO this 'sorted' is lexicographical not numeric; it should be OK for most simple cases though (keeping things in a defined order so can check 2 or 3 IPs on same line if the numbers are consecutive and hold same number of digits).  Might be better if parse and numeric sort
               except: u,content=None,"DNS lookup failed"
               textContent = content
-          elif url.startswith("wd://"): # run webdriver
+          elif url.startswith("wd://"): # run webdriver (this type of url is set internally: see read_input)
               u,content = None, run_webdriver(url[5:].split(chr(0)))
               textContent = None # parse 'content' if needed
               url = url[5:].split(chr(0),1)[0] # for display
@@ -178,6 +178,16 @@ def worker_thread(*args):
                 u,content = None,"yes"
               except: u,content = None,"no"
               textContent = content
+          elif url.startswith("e://"): # run edbrowse
+              from subprocess import Popen,PIPE
+              try: child = Popen(["edbrowse","-e"],-1,stdin=PIPE,stdout=PIPE,stderr=PIPE)
+              except OSError:
+                print "webcheck misconfigured: couldn't run edbrowse"
+                continue # no need to update last_fetch_finished
+              u,(content,stderr) = None,child.communicate("b "+url[4:].replace('\\','\n')+"\n,p\nq\n") # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
+              if child.returncode: print "webcheck misconfigured: edbrowse failed" # but carry on anyway in case it did return some text before failing
+              textContent = content.replace('{',' ').replace('}',' ') # edbrowse uses {...} to denote links
+              url = url[4:].split('\\',1)[0] # for display
           else:
               if opener==None: opener = default_opener()
               u,content = tryRead(url,opener,extraHeaders)
@@ -228,13 +238,14 @@ def run_webdriver_inner(actionList,browser):
             return browser.find_element_by_id(spec[1:])
         # TODO: other patterns?
         else: return browser.find_element_by_link_text(spec)
+    def getSrc(): return browser.find_element_by_xpath("//*").get_attribute("outerHTML").encode('utf-8')
     snippets = []
     for a in actionList:
         if a.startswith('http'): browser.get(a)
         elif a.startswith('"') and a.endswith('"'):
             # wait for "string" to appear in the source
             tries = 30
-            while tries and not a[1:-1] in browser.page_source:
+            while tries and not a[1:-1] in getSrc():
               time.sleep(delay) ; tries -= 1
             if not tries: raise NoTracebackException("webdriver timeout while waiting for \"%s\" (current URL is \"%s\")\n" % (a[1:-1],browser.current_url))
         elif a.startswith('[') and a.endswith(']'): # click
@@ -242,12 +253,12 @@ def run_webdriver_inner(actionList,browser):
         elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
             start = a[1:a.rindex('/')]
             delayAfter = int(a[a.rindex('/')+1:])
-            l = re.findall(' [iI][dD] *="('+re.escape(start)+'[^"]*)',browser.page_source) + re.findall(' [iI][dD] *=('+re.escape(start)+'[^"> ]*)',browser.page_source)
+            l = re.findall(' [iI][dD] *="('+re.escape(start)+'[^"]*)',getSrc()) + re.findall(' [iI][dD] *=('+re.escape(start)+'[^"> ]*)',getSrc())
             for m in l:
               browser.find_element_by_id(m).click()
               if sys.stderr.isatty(): sys.stderr.write('*') # webdriver's '.' for click-multiple
               time.sleep(delayAfter)
-              snippets.append(browser.page_source.encode('utf-8'))
+              snippets.append(getSrc())
         elif '->' in a: # set a selection box
             spec, val = a.split('->',1)
             e = webdriver.support.ui.Select(findElem(spec))
@@ -266,7 +277,7 @@ def run_webdriver_inner(actionList,browser):
         else: sys.stderr.write("Ignoring webdriver unknown action "+repr(a)+'\n')
         if sys.stderr.isatty(): sys.stderr.write(':') # webdriver's '.'
         time.sleep(delay)
-    snippets.append(browser.page_source.encode('utf-8'))
+    snippets.append(getSrc())
     return '\n'.join(snippets)
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
