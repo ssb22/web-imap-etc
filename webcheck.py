@@ -184,7 +184,7 @@ def worker_thread(*args):
               except OSError:
                 print "webcheck misconfigured: couldn't run edbrowse"
                 continue # no need to update last_fetch_finished
-              u,(content,stderr) = None,child.communicate("b "+url[4:].replace('\\','\n')+"\n,p\nq\n") # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
+              u,(content,stderr) = None,child.communicate("b "+url[4:].replace('\\','\n')+"\n,p\nqt\n") # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
               if child.returncode: print "webcheck misconfigured: edbrowse failed" # but carry on anyway in case it did return some text before failing
               textContent = content.replace('{',' ').replace('}',' ') # edbrowse uses {...} to denote links
               url = url[4:].split('\\',1)[0] # for display
@@ -397,6 +397,6 @@ def myFind(text,content):
   if text.startswith("*"): return re.search(text[1:],content)
   elif text in content: return True
   return normalisePunc(text) in normalisePunc(content)
-def normalisePunc(t): return re.sub(r"(\s)\s+",r"\1",t.replace(u"\u2019".encode('utf-8'),"'").replace(u"\u00A0".encode('utf-8')," ")) # for apostrophes, + collapse (but don't ignore) whitespace and &nbsp; (TODO: other?)
+def normalisePunc(t): return re.sub(r"(\s)\s+",r"\1",t.replace(u"\u2019".encode('utf-8'),"'").replace(u"\u00A0".encode('utf-8')," ")).lower() # for apostrophes, + collapse (but don't ignore) whitespace and &nbsp; (TODO: other?)
 
 if __name__=="__main__": main()
