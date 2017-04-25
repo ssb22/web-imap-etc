@@ -1,5 +1,5 @@
 
-# webcheck.py v1.27 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.28 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -373,6 +373,7 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     if txt: txt += '\n'
     txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is
     newItems.append(title+'\n'+txt+link)
+  if not pKeep: return # if the feed completely failed to fetch, don't erase what we have
   for k in previous_timestamps.keys():
     if k[:2]==(url,'seenItem') and not k in pKeep:
       del previous_timestamps[k] # dropped from the feed

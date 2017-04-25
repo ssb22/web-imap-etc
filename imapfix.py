@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# ImapFix v1.46 (c) 2013-17 Silas S. Brown.  License: GPL
+"ImapFix v1.461 (c) 2013-17 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1183,6 +1183,7 @@ def mainloop():
       try: os.utime("imapfix_config.py",None) # open with "a" doesn't always update timestamp
       except: pass
     mtime = os.stat("imapfix_config.py").st_mtime
+  debug(__doc__)
   try:
    if postponed_foldercheck: do_postponed_foldercheck("old")
    while True:
@@ -1463,6 +1464,7 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
     msg['From'] = smtp_fromHeader
     msg['To'] = ' '.join(utf8_to_header(h) for h in to_u8.split()) # just the name part needs utf8_to_header, TODO: parse properly instead of going through every word?  + what if it's a list?
     msg['Date'] = email.utils.formatdate(localtime=True)
+    msg['X-Mailer'] = __doc__[:__doc__.index(" (c)")] # in case somebody needs to audit
     for f in attachment_filenames:
         subMsg = email.mime.base.MIMEBase('application', 'octet-stream') # TODO: more specific types?
         subMsg.set_payload(open(f,'rb').read())
