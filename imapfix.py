@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.461 (c) 2013-17 Silas S. Brown.  License: GPL"
+"ImapFix v1.462 (c) 2013-17 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -450,7 +450,7 @@ def myAsString(msg):
         message = re.sub('\r*\n','\r\n',a)+"\r\n\r\n"+b
     # Bug in python2.7/email/header.py: CRLF + whitespace sometimes added by _split_ascii after semicolons or commas, but if this occurs inside quoted-printable strings it'll break the display in some versions of alpine & mutt (RFC 2822 says CRLF + whitespace is interpreted as whitespace, and that's not allowed inside ?=..?= sections)
     a,b = message.split("\r\n\r\n",1)
-    message = re.sub(header_charset_regex,lambda x:re.sub("\r\n ","",x.group()),a,flags=re.DOTALL)+"\r\n\r\n"+b
+    message = re.sub(header_charset_regex,lambda x:re.sub("\r\n ","",x.group()).replace(" _","_"),a,flags=re.DOTALL)+"\r\n\r\n"+b
     return message
 
 imapfix_name = sys.argv[0]
