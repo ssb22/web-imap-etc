@@ -1,5 +1,5 @@
 
-# webcheck.py v1.28 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.29 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -283,16 +283,16 @@ def run_webdriver_inner(actionList,browser):
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 
 def tryRead(url,opener,extraHeaders):
-    for h in extraHeaders: opener.addheaders.append(tuple(x.strip() for x in h.split(':',1)))
-    need2pop = len(extraHeaders)
+    oldAddHeaders = opener.addheaders[:]
+    for h in extraHeaders:
+        if h.lower().startswith("user-agent") and opener.addheaders[0][0]=="User-agent": del opener.addheaders[0] # User-agent override
+        opener.addheaders.append(tuple(x.strip() for x in h.split(':',1)))
     if (url,'lastMod') in previous_timestamps:
         opener.addheaders.append(("If-Modified-Since",previous_timestamps[(url,'lastMod')]))
-        need2pop += 1
     if keep_etags and (url,'ETag') in previous_timestamps:
         opener.addheaders.append(("If-None-Match",previous_timestamps[(url,'lastMod')]))
-        need2pop += 1
     ret = tryRead0(url,opener)
-    for h in xrange(need2pop): opener.addheaders.pop()
+    opener.addheaders = oldAddHeaders
     return ret
 
 def tryRead0(url,opener):

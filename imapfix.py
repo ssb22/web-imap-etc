@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.462 (c) 2013-17 Silas S. Brown.  License: GPL"
+"ImapFix v1.47 (c) 2013-17 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -43,6 +43,13 @@ image_size = None # or e.g. image_size = (320,240)
 # This option also tries to ensure that all images are set to
 # an image/ rather than application/ Content-Type, which
 # helps some mailers.
+
+office_convert = None # or "html" or "pdf", to use
+# LibreOffice/OpenOffice's 'soffice --convert-to' option
+# to produce converted versions of office documents
+# (beware, I have not checked soffice for vulnerabilities)
+# - resulting HTML might not work on old WM phones as they
+# don't support data: image URLs
 
 header_rules = [
     ("folder-name-1",
@@ -580,10 +587,11 @@ def process_imap_inbox():
         if not box==None:
          # globalise charsets BEFORE the filtering rules
          # (especially if they've been developed based on
-         # post-charset-conversion saved messages)
+         # post-charset-conversion saved messages) - but
+         # no point doing preview images or Office
+         # conversions for spam or to-delete messages
          changed = globalise_charsets(msg,imap_8bit) or changed
          changed = remove_blank_inline_parts(msg) or changed
-         if image_size: changed = add_previews(msg) or changed
          changed = rewrite_deliveryfail(msg) or changed
          changed = forced_from(msg) or changed
          changed = rewrite_importance(msg) or changed
@@ -601,6 +609,12 @@ def process_imap_inbox():
                 box = filtered_inbox
             if box==False: box = spamprobe_rules(message)
         if box:
+            if not box==spam_folder:
+                changed2 = False
+                if image_size: changed2 = add_previews(msg) or changed2
+                if office_convert: changed2 = add_office(msg) or changed2
+                changed = changed2 or changed
+                if changed2: message = myAsString(msg)
             if seenFlag: copyWorked = False # TODO: unless we can get copy_to to set the Seen flag on the copy
             elif not changed and saveImap == imap:
                 debug("Copying unchanged message to "+box)
@@ -694,7 +708,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if mbox:
         mbox.close()
-        if not os.stat(mboxpath).st_size: os.remove(mboxpath) # ended up with an empty file - delete it
+        if not os.stat(mboxpath).st_size: tryRm(mboxpath) # ended up with an empty file - delete it
         else:
           if archive_8bit:
             d1 = open(mboxpath,'rb').read()
@@ -702,7 +716,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
             if not d2==d1: open(mboxpath,'wb').write(d2)
           if compression:
             open_compressed(mboxpath,'wb').write(open(mboxpath,'rb').read()) # will write a .bz2 etc
-            os.remove(mboxpath)
+            tryRm(mboxpath)
     # don't do this until got here without error:
     check_ok(imap.expunge())
 
@@ -1105,6 +1119,37 @@ def add_preview(message,accum):
     i['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.'+ext # needed for some clients to show it
     to_attach.append(i) ; accum[0] += 1
     return True
+def add_office(message):
+    global to_attach ; to_attach = None
+    accum = [1]
+    return walk_msg(message,add_office0,accum)
+def add_office0(message,accum):
+    if to_attach == None: return False # TODO? (message sent with a single document and nothing else)
+    if not 'Content-Disposition' in message: return False
+    fn = str(message['Content-Disposition'])
+    if not 'filename' in fn: return False
+    ext = fn[fn.index('filename'):].replace('"',"")
+    if not '.' in ext: return False
+    ext = ext[ext.rindex('.'):].lower()
+    if not ext in ".doc .docx .rtf .odt .xls .xlsx .ods .ppt .odp".split(): return False
+    debug("Getting payload")
+    payload = message.get_payload(decode=True)
+    infile = "tmpdoc-%d%s" % (os.getpid(),ext)
+    outfile = "tmpdoc-%d.%s"%(os.getpid(),office_convert)
+    open(infile,"wb").write(payload)
+    debug("Running soffice to get "+office_convert)
+    if os.system("soffice --convert-to %s %s" % (office_convert, infile)): # conversion error, or soffice not found
+        debug("soffice run returned failure")
+        tryRm(infile) ; tryRm(outfile) ; return False
+    mimeType = {"html":"text/html","pdf":"application/pdf"}.get(office_convert,"application/binary")
+    mT,subT = mimeType.split("/")
+    b = email.mime.base.MIMEBase(mT,subT)
+    b.set_payload(open(outfile,"rb").read())
+    tryRm(infile) ; tryRm(outfile)
+    if office_convert in ["html"] and not (max_size_of_first_part and len(b.get_payload) > max_size_of_first_part): pass # show it inline
+    else: b['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.'+office_convert
+    to_attach.append(b) ; accum[0] += 1
+    return True
 
 def folderList(pattern="*"):
     make_sure_logged_in()
@@ -1302,8 +1347,12 @@ def multinote(filelist,to_real_inbox,use_filename=False):
                 if os.sep in subj: subj=subj[subj.rindex(os.sep)+1:]
             else: subj = None
             do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj) ; debug("Uploaded "+f)
-        os.remove(f)
-    
+        tryRm(f)
+
+def tryRm(f):
+    try: os.remove(f)
+    except: pass
+
 def do_multinote(body,theDate,to_real_inbox,subject):
     body = re.sub("\r\n?","\n",body.strip())
     if not body and not subject:
