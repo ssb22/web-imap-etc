@@ -1131,6 +1131,7 @@ def add_office0(message,accum):
     ext = fn[fn.index('filename'):].replace('"',"")
     if not '.' in ext: return False
     ext = ext[ext.rindex('.'):].lower()
+    if ';' in ext: ext=ext[:ext.index(';')]
     if not ext in ".doc .docx .rtf .odt .xls .xlsx .ods .ppt .odp".split(): return False
     debug("Getting payload")
     payload = message.get_payload(decode=True)
@@ -1141,7 +1142,7 @@ def add_office0(message,accum):
     if os.system("soffice --convert-to %s %s" % (office_convert, infile)): # conversion error, or soffice not found
         debug("soffice run returned failure")
         tryRm(infile) ; tryRm(outfile) ; return False
-    mimeType = {"html":"text/html","pdf":"application/pdf"}.get(office_convert,"application/binary")
+    mimeType = {"html":"text/html; charset=utf-8","pdf":"application/pdf"}.get(office_convert,"application/binary")
     mT,subT = mimeType.split("/")
     b = email.mime.base.MIMEBase(mT,subT)
     b.set_payload(open(outfile,"rb").read())
