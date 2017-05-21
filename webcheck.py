@@ -188,7 +188,7 @@ def worker_thread(*args):
               if child.returncode: print "webcheck misconfigured: edbrowse failed" # but carry on anyway in case it did return some text before failing
               textContent = content.replace('{',' ').replace('}',' ') # edbrowse uses {...} to denote links
               url = url[4:].split('\\',1)[0] # for display
-          else:
+          else: # normal URL
               if opener==None: opener = default_opener()
               u,content = tryRead(url,opener,extraHeaders)
               textContent = None
