@@ -2,7 +2,8 @@
 # Script to make the Mac more Linux-like
 # Silas S. Brown 2012-14,2016 - public domain  (version 1.44)
 
-# This goes in your ~/.bashrc and/or ~/.bash_profile,
+# This goes in your ~/.bashrc and/or ~/.bash_profile - for example:
+# curl http://people.ds.cam.ac.uk/ssb22/setup/maclinux.txt >> ~/.bash_profile
 # or if you prefer you can keep it in a separate file
 # and source it from your .bashrc and/or .bash_profile
 
@@ -57,7 +58,7 @@ if ! which -s free; then
   free () { top -l 1 -s 0 | grep -m 1 PhysMem ; }
   export -f free
 fi
-alias do-i-need-more-ram="if test $((vm_stat|grep '^Page[io]'|sed -e 's/.*://' -e 's/\.$//';echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 100)) -lt 10; then echo 'Maybe'; else echo 'Probably not'; fi" # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
+alias do-i-need-more-ram='if test $((vm_stat|grep "^Page[io]"|sed -e "s/.*://" -e "s/\.$//";echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 100)) -lt 10; then echo Maybe; else echo Probably not; fi' # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
 
 # Note: Anything with a hyphen in it must be an alias, not a
 # function (or at least not exported), or /bin/sh won't like
