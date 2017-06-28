@@ -1,5 +1,5 @@
 
-# webcheck.py v1.29 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.291 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -31,13 +31,23 @@ except: # you won't be able to check https:// URLs
   ssl = 0 ; verify_SSL_certificates = False
 if max_threads > 1: import thread
 
+def read_input_file(fname="webcheck.list"):
+  lines = open(fname).read().replace("\r","\n").split("\n")
+  lines.reverse() # so can pop() them in order
+  return lines
 def read_input():
   ret = {} # domain -> { url -> [(days,text)] }
   days = 0 ; extraHeaders = []
   url = mainDomain = None
-  for line in open("webcheck.list").read().replace("\r","\n").split("\n"):
-    line = line.strip()
-    if not line or line[0]=='#': continue
+  lines = read_input_file()
+  while lines:
+    line = line_withComment = " ".join(lines.pop().split())
+    if " #" in line: line = line[:line.index(" #")].strip()
+    if not line or line_withComment[0]=='#': continue
+    
+    if line.startswith(":include"):
+      lines += [(l+" # from "+line) for l in read_input_file(line.split(None,1)[1])]
+      continue
 
     if line.endswith(':'): freqCmd = line[:-1]
     else: freqCmd = line
@@ -49,18 +59,22 @@ def read_input():
     if freqCmd: continue
 
     if line.startswith('also:') and url:
-      text = line[5:].strip()
+      text = line_withComment[5:].strip()
       # and leave url and mainDomain as-is (same as above line)
     elif ':' in line and not line.split(':',1)[1].startswith('//'):
-      extraHeaders.append(line) ; continue
+      if not line.split(':',1)[1]: # deleting a header
+        for e in extraHeaders:
+          if e.startswith(line): extraHeaders.remove(e)
+      else: extraHeaders.append(line)
+      continue
     elif line.startswith('{') and '}' in line: # webdriver
       actions = line[1:line.index('}')].split()
       balanceBrackets(actions)
-      text = line[line.index('}')+1:].strip()
+      text = line_withComment[line.index('}')+1:].strip()
       mainDomain = '.'.join(urlparse.urlparse(actions[0]).netloc.rsplit('.',2)[-2:]) # assumes 1st action is a URL
       url = "wd://"+chr(0).join(actions)
     else: # not webdriver
-      lSplit = line.split(None,1)
+      lSplit = line_withComment.split(None,1)
       if len(lSplit)==1: url, text = lSplit[0],"" # RSS only
       else: url, text = lSplit
       mainDomain = '.'.join(urlparse.urlparse(url).netloc.rsplit('.',2)[-2:])
