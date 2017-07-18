@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.47 (c) 2013-17 Silas S. Brown.  License: GPL"
+"ImapFix v1.48 (c) 2013-17 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1165,18 +1165,24 @@ if postponed_daynames:
     months = [time.strftime("%b",time.gmtime(time.mktime((2001,i,1,0,0,0,0,0,0)))).lower() for i in range(1,13)]
     weekMonth = "("+"|".join(weekdays+months)+")(?=$|:)"
 def isoToday(): return "%04d-%02d-%02d" % time.localtime()[:3]
+def check_todays_dayname():
+    if postponed_daynames:
+        do_postponed_foldercheck(time.strftime("%a").lower()) # weekday
+        if time.localtime()[2]==1: # 1st of the month
+            do_postponed_foldercheck(time.strftime("%b").lower()) # month
 def do_postponed_foldercheck(dayToCheck="today"):
     today = isoToday()
     if dayToCheck=="old": # called only on startup (and only if postponed_foldercheck)
+        if postponed_daynames and time.localtime()[3:5] < (0,30):
+            # If we restarted less than half an hour after midnight, check dayname folders on startup (because it might not have happened if we were in the middle of a 29-minute imap idle when the server rebooted)
+            check_todays_dayname()
+        # and regardless of what time of day we are doing this (re)start, check for dated folders of today and older
         for f in folderList():
             if re.match(isoDate+'$',f) and f <= today: # TODO: Y10K (lexicographic comparison)
                 do_postponed_foldercheck(f)
         return
     elif dayToCheck=="today": # called at midnight rollover (if postponed_foldercheck or postponed_daynames)
-        if postponed_daynames:
-            do_postponed_foldercheck(time.strftime("%a").lower()) # weekday
-            if time.localtime()[2]==1: # 1st of the month
-                do_postponed_foldercheck(time.strftime("%b").lower()) # month
+        check_todays_dayname()
         if postponed_foldercheck: dayToCheck = today
         else: return
     f = folderList(dayToCheck)
@@ -1231,7 +1237,7 @@ def mainloop():
     mtime = os.stat("imapfix_config.py").st_mtime
   debug(__doc__)
   try:
-   if postponed_foldercheck: do_postponed_foldercheck("old")
+   if postponed_foldercheck or postponed_daynames: do_postponed_foldercheck("old")
    while True:
     if alarm_delay: checkAlarmDelay()
     if maildirs_to_imap: do_maildirs_to_imap()
