@@ -1,5 +1,5 @@
 
-# webcheck.py v1.291 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.292 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -199,7 +199,12 @@ def worker_thread(*args):
                 print "webcheck misconfigured: couldn't run edbrowse"
                 continue # no need to update last_fetch_finished
               u,(content,stderr) = None,child.communicate("b "+url[4:].replace('\\','\n')+"\n,p\nqt\n") # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
-              if child.returncode: print "webcheck misconfigured: edbrowse failed" # but carry on anyway in case it did return some text before failing
+              if child.returncode:
+                print "edbrowse failed on",url
+                # Most likely the failure was some link didn't exist when it should have, so show the output for debugging
+                print "edbrowse output was:",content,"\n"
+                last_fetch_finished = time.time()
+                continue
               textContent = content.replace('{',' ').replace('}',' ') # edbrowse uses {...} to denote links
               url = url[4:].split('\\',1)[0] # for display
           else: # normal URL
