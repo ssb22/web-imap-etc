@@ -1291,10 +1291,20 @@ if secondary_imap_hostname:
 def process_secondary_imap():
   global imap
   for sih,siu,sip in zip(secondary_imap_hostname, secondary_imap_username, secondary_imap_password):
-    try:
+    debug("Logging in to "+sih)
+    imap = None
+    if secondary_is_insecure: # try non-SSL first, in case it's a non-SSL-only server (don't get held up waiting for an SSL port that might be filtered)
+        debug("Trying non-SSL")
+        try:
+            imap = imaplib.IMAP4(sih)
+            check_ok(imap.login(siu,sip))
+        except: imap = None
+    if imap==None:
+      if secondary_is_insecure: debug("Trying SSL")
+      try:
         imap = imaplib.IMAP4_SSL(sih)
         check_ok(imap.login(siu,sip))
-    except:
+      except:
         msg = "Could not log in as %s to secondary IMAP %s: skipping it this time" % (siu,sih)
         debug(msg)
         if report_secondary_login_failures:
@@ -1397,12 +1407,22 @@ def do_copy(foldername):
     make_sure_logged_in()
     global imap,saveImap
     check_ok(imap.select(foldername))
-    try:
-        saveImap = imaplib.IMAP4_SSL(secondary_imap_hostname[0])
-        check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
-    except:
-        debug("Could not log in to secondary IMAP")
-        return
+    saveImap = None
+    debug("Logging in to secondary")
+    if secondary_is_insecure:
+        debug("Trying non-SSL first (secondary_is_insecure)")
+        try:
+            saveImap = imaplib.IMAP4_SSL(secondary_imap_hostname[0])
+            check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
+        except: saveImap = None
+    if saveImap == None:
+        if secondary_is_insecure: debug("Trying SSL")
+        try:
+            saveImap = imaplib.IMAP4(secondary_imap_hostname[0])
+            check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
+        except:
+            debug("Could not log in to secondary IMAP")
+            return
     # Work out which messages need to be deleted:
     do_not_delete = set() ; do_not_copy = set()
     debug("Checking primary messages")
