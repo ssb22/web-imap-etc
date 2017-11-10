@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.48 (c) 2013-17 Silas S. Brown.  License: GPL"
+"ImapFix v1.49 (c) 2013-17 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -268,10 +268,9 @@ secondary_is_insecure = False # if True, the --copy option
 # that the throwaway account is only for READING messages
 # on the mobile, not for actual replying or management.
 
-secondary_is_insecure_login = False # if True, try the
-# non-SSL version of IMAP4 before trying the SSL version
-# when accessing secondary (might speed things up for
-# non-SSL email boxes)
+secLimit = 99999 # max number of bytes checked for email
+# addresses by secondary_is_insecure (to prevent holdups
+# if you have multi-megabyte attachments)
 
 exit_if_imapfix_config_py_changes = False # if True, does
 # what it says, on the assumption that a wrapper script
@@ -502,7 +501,13 @@ def yield_all_messages(searchQuery=None,since=None):
     else: typ, data = imap.search(None, 'ALL')
     if not typ=='OK': raise Exception(typ)
     bodyPeek_works = True # will set to False if it doesn't
-    for msgID in data[0].split():
+    dList = data[0].split(); count = 1
+    lastTime = time.time()
+    for msgID in dList:
+        if not quiet and time.time() > lastTime + 2:
+            sys.stdout.write("  %d%%\r" % (100*count/len(dList))) ; sys.stdout.flush()
+            lastTime = time.time()
+        count += 1
         typ, data = imap.fetch(msgID, '(FLAGS)')
         if not typ=='OK': continue
         flags = data[0]
@@ -847,7 +852,7 @@ def save_to(mailbox, message_as_string, flags=""):
     msg = email.message_from_string(message_as_string)
     if 'Date' in msg: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
     else: imap_timestamp = time.time() # undated message ? (TODO: could parse Received lines)
-    if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check that that's in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
+    if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check the "Content-Transfer-Encoding" is in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(imap_timestamp), message_as_string))
 
 def rename_folder(folder):
@@ -1297,20 +1302,12 @@ def process_secondary_imap():
   global imap
   for sih,siu,sip in zip(secondary_imap_hostname, secondary_imap_username, secondary_imap_password):
     debug("Logging in to "+sih)
-    imap = None
-    if secondary_is_insecure_login: # try non-SSL first, in case it's a non-SSL-only server (don't get held up waiting for an SSL port that might be filtered)
-        debug("Trying non-SSL")
-        try:
-            imap = imaplib.IMAP4(sih)
-            check_ok(imap.login(siu,sip))
-        except: imap = None
-    if imap==None:
-      if secondary_is_insecure_login:
-          debug("Trying SSL")
-      try:
+    if secondary_is_insecure_login:
+        debug("Trying SSL")
+    try:
         imap = imaplib.IMAP4_SSL(sih)
         check_ok(imap.login(siu,sip))
-      except:
+    except:
         msg = "Could not log in as %s to secondary IMAP %s: skipping it this time" % (siu,sih)
         debug(msg)
         if report_secondary_login_failures:
@@ -1402,8 +1399,19 @@ def do_delete(foldername):
     check_ok(imap.delete(foldername))
 
 def secondary_security(message_as_string):
-    if secondary_is_insecure: return re.sub(r"([a-zA-Z0-9_\-\.]+)(=\r?\n[a-zA-Z0-9_\-\.]*)*@((=\r?\n)*[a-zA-Z0-9_\-\.]+)(=\r?\n[a-zA-Z0-9_\-\.]*)*\.([a-zA-Z]{2,5})","email.removed@email.removed",message_as_string) # TODO: this deals with the header easily, and with SOME quoted-printable-in-long-HTML-line situations, but should also rm from Base64 in body (if quoting)
-    else: return message_as_string
+    oms = message_as_string
+    if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # because saveTo will do this (same TODO as there) so normalise for comparing across servers
+    if secondary_is_insecure: message_as_string = re.sub(addr_regex,"email.removed@example.org",message_as_string[:secLimit])+message_as_string[secLimit:] # NB the substitute email MUST fit into the original pattern: in particular the top-level domain must be between 2 and 5 letters, otherwise reapplying this function will get different text (e.g. ".removeded" if using @email.removed)
+    if not message_as_string == oms: message_as_string = re.sub("\r\nContent-Length: [0-9]+\r\n","\r\n",message_as_string) # secondary IMAP will likely fix or delete this anyway
+    return message_as_string
+def ccnl(c): return c+r'+(?:=\r?\n'+c+'*)?' # character class + maybe newline: for speed we limit the number of line breaks that occur in each ccnl to one
+def cnl(c): return c+r'(?:=\r?\n)?' # char + opt newline
+addr_regex = re.compile("".join([
+    # TODO: need to make this faster.  (Or can we be more selective about which parts of the message get it i.e. not images etc)
+    ccnl('[a-zA-Z0-9_\-\.]'),
+    cnl('@'),
+    '(?:'+ccnl('[a-zA-Z0-9\-]')+cnl(r'(?:\.|=2E)')+')+',
+    '(?:'+cnl('[a-zA-Z]')+'){2,5}(?![a-zA-Z])'])) # TODO: this deals with the header easily, and with SOME quoted-printable-in-long-HTML-line situations, but should also rm from Base64 in body (if quoting) (+ email at very end of msg w. no trailing \n)
 
 def do_copy(foldername):
     foldername = foldername.strip()
@@ -1413,55 +1421,46 @@ def do_copy(foldername):
     make_sure_logged_in()
     global imap,saveImap
     check_ok(imap.select(foldername))
-    saveImap = None
     debug("Logging in to secondary")
-    if secondary_is_insecure_login:
-        debug("Trying non-SSL first (secondary_is_insecure_login)")
-        try:
-            saveImap = imaplib.IMAP4_SSL(secondary_imap_hostname[0])
-            check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
-        except: saveImap = None
-    if saveImap == None:
-        if secondary_is_insecure_login:
-            debug("Trying SSL")
-        try:
-            saveImap = imaplib.IMAP4(secondary_imap_hostname[0])
-            check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
-        except:
-            debug("Could not log in to secondary IMAP")
-            return
+    try:
+        saveImap = imaplib.IMAP4(secondary_imap_hostname[0])
+        check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
+    except:
+        debug("Could not log in to secondary IMAP")
+        return
     # Work out which messages need to be deleted:
     do_not_delete = set() ; do_not_copy = set()
     debug("Checking primary messages")
+    def zapSpace(m): return re.sub(r"\s+","",m) # for comparing modulo trailing newlines, different line splitting in the header, etc
     for msgID,flags,message in yield_all_messages():
-        do_not_delete.add(secondary_security(message))
-    debug("Checking secondary messages")
+        do_not_delete.add(zapSpace(secondary_security(message)))
+    debug("Checking secondary messages; removing old ones")
     saveImap.create(foldername) # error if exists OK
     check_ok(saveImap.select(foldername))
     tot=rm=0
     imap,saveImap = saveImap,imap
     for msgID,flags,message in yield_all_messages():
         tot += 1
-        if message in do_not_delete and not message in do_not_copy:
-            do_not_copy.add(message) # already there (and not a duplicate; latter check added to help clean up damage due to multiple imapfix processes running on a cluster)
+        message = secondary_security(message) # for comparisons to work
+        if zapSpace(message) in do_not_delete and not zapSpace(message) in do_not_copy: do_not_copy.add(zapSpace(message)) # already there (and not a duplicate; latter check added to help clean up damage due to multiple imapfix processes running on a cluster)
         else:
             imap.store(msgID, '+FLAGS', '\\Deleted')
             rm += 1
     imap,saveImap = saveImap,imap
-    debug("%d of %d old messages removed from secondary" % (rm,tot))
-    # Copy in the new messages:
+    debug("... %d of %d removed" % (rm,tot))
+    debug("Copying new messages to secondary")
     tot = cp = 0
     for msgID,flags,message in yield_all_messages():
         tot += 1
         message = secondary_security(message)
-        if not message in do_not_copy:
+        if not zapSpace(message) in do_not_copy:
             flags2 = [] # don't just copy them over, as the secondary IMAP might not understand all the same flags
             if "\\answered" in flags.lower(): flags2.append("\\Answered")
             if "\\seen" in flags.lower() and not "old" in flags.lower(): flags2.append("\\Seen")
             # Not sure if all secondary IMAPs will understand \Flagged (called "star" in some clients e.g. K9 Mail; mutt default keybindings set with w ! and clear with W ! )
             flags = " ".join(flags2)
             save_to(foldername,message,flags) ; cp += 1
-    debug("%d of %d messages added to secondary" % (cp,tot))
+    debug("... %d of %d added" % (cp,tot))
     check_ok(saveImap.expunge())
 
 def do_quicksearch(s):
@@ -1537,7 +1536,7 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
         if toSleep: debug("Sleeping for another %d seconds before reconnecting to SMTP" % toSleep)
         time.sleep(toSleep)
     debug("SMTP to "+repr(to_u8))
-    msg = email.mime.text.MIMEText(re.sub('\r*\n','\r\n',txt),ttype,charset) # RFC 2822 says MUST use CRLF; some mail clients get confused by just \n (e.g. some versions of MPro on RISC OS when replying with quote)
+    msg = email.mime.text.MIMEText(re.sub('\r?\n','\r\n',txt),ttype,charset) # RFC 2822 says MUST use CRLF; some mail clients get confused by just \n (e.g. some versions of MPro on RISC OS when replying with quote)
     if attachment_filenames:
         from email.mime.multipart import MIMEMultipart
         msg2 = msg
