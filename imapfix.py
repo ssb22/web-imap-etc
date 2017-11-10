@@ -268,6 +268,11 @@ secondary_is_insecure = False # if True, the --copy option
 # that the throwaway account is only for READING messages
 # on the mobile, not for actual replying or management.
 
+secondary_is_insecure_login = False # if True, try the
+# non-SSL version of IMAP4 before trying the SSL version
+# when accessing secondary (might speed things up for
+# non-SSL email boxes)
+
 exit_if_imapfix_config_py_changes = False # if True, does
 # what it says, on the assumption that a wrapper script
 # will restart it (TODO: make it restart by itself?)
@@ -1293,14 +1298,15 @@ def process_secondary_imap():
   for sih,siu,sip in zip(secondary_imap_hostname, secondary_imap_username, secondary_imap_password):
     debug("Logging in to "+sih)
     imap = None
-    if secondary_is_insecure: # try non-SSL first, in case it's a non-SSL-only server (don't get held up waiting for an SSL port that might be filtered)
+    if secondary_is_insecure_login: # try non-SSL first, in case it's a non-SSL-only server (don't get held up waiting for an SSL port that might be filtered)
         debug("Trying non-SSL")
         try:
             imap = imaplib.IMAP4(sih)
             check_ok(imap.login(siu,sip))
         except: imap = None
     if imap==None:
-      if secondary_is_insecure: debug("Trying SSL")
+      if secondary_is_insecure_login:
+          debug("Trying SSL")
       try:
         imap = imaplib.IMAP4_SSL(sih)
         check_ok(imap.login(siu,sip))
@@ -1409,14 +1415,15 @@ def do_copy(foldername):
     check_ok(imap.select(foldername))
     saveImap = None
     debug("Logging in to secondary")
-    if secondary_is_insecure:
-        debug("Trying non-SSL first (secondary_is_insecure)")
+    if secondary_is_insecure_login:
+        debug("Trying non-SSL first (secondary_is_insecure_login)")
         try:
             saveImap = imaplib.IMAP4_SSL(secondary_imap_hostname[0])
             check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
         except: saveImap = None
     if saveImap == None:
-        if secondary_is_insecure: debug("Trying SSL")
+        if secondary_is_insecure_login:
+            debug("Trying SSL")
         try:
             saveImap = imaplib.IMAP4(secondary_imap_hostname[0])
             check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
