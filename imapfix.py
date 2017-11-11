@@ -1302,8 +1302,6 @@ def process_secondary_imap():
   global imap
   for sih,siu,sip in zip(secondary_imap_hostname, secondary_imap_username, secondary_imap_password):
     debug("Logging in to "+sih)
-    if secondary_is_insecure_login:
-        debug("Trying SSL")
     try:
         imap = imaplib.IMAP4_SSL(sih)
         check_ok(imap.login(siu,sip))
