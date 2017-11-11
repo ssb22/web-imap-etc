@@ -272,6 +272,11 @@ secLimit = 99999 # max number of bytes checked for email
 # addresses by secondary_is_insecure (to prevent holdups
 # if you have multi-megabyte attachments)
 
+insecure_login = [] # set to a list of host names that are
+# not expected to support SSL.  This speeds things up by
+# trying the non-SSL login first on those hosts.  See also
+# secondary_is_insecure option above.
+
 exit_if_imapfix_config_py_changes = False # if True, does
 # what it says, on the assumption that a wrapper script
 # will restart it (TODO: make it restart by itself?)
@@ -1298,13 +1303,23 @@ if secondary_imap_hostname:
         secondary_imap_password = [secondary_imap_password]
     else: assert len(secondary_imap_hostname) == len(secondary_imap_username) == len(secondary_imap_password), "secondary_imap lists have differing lengths"
 
+def get_logged_in_imap(host,user,pwd,insecureFirst=False):
+    debug("Logging in to "+host)
+    if host in insecure_login: # expect no SSL
+        order = [imaplib.IMAP4, imaplib.IMAP4_SSL]
+    else: order = [imaplib.IMAP4_SSL,imaplib.IMAP4]
+    for Class in order:
+        try:
+            imap = Class(host)
+            check_ok(imap.login(user,pwd))
+            return imap
+        except: pass
+    raise Exception("Could not log in")
+
 def process_secondary_imap():
   global imap
   for sih,siu,sip in zip(secondary_imap_hostname, secondary_imap_username, secondary_imap_password):
-    debug("Logging in to "+sih)
-    try:
-        imap = imaplib.IMAP4_SSL(sih)
-        check_ok(imap.login(siu,sip))
+    try: imap = get_logged_in_imap(sih,siu,sip)
     except:
         msg = "Could not log in as %s to secondary IMAP %s: skipping it this time" % (siu,sih)
         debug(msg)
@@ -1419,10 +1434,7 @@ def do_copy(foldername):
     make_sure_logged_in()
     global imap,saveImap
     check_ok(imap.select(foldername))
-    debug("Logging in to secondary")
-    try:
-        saveImap = imaplib.IMAP4(secondary_imap_hostname[0])
-        check_ok(saveImap.login(secondary_imap_username[0],secondary_imap_password[0]))
+    try: saveImap = get_logged_in_imap(secondary_imap_hostname[0],secondary_imap_username[0],secondary_imap_password[0])
     except:
         debug("Could not log in to secondary IMAP")
         return
@@ -1489,10 +1501,7 @@ imap = None
 def make_sure_logged_in():
     global imap, saveImap
     while imap==None:
-        debug("Logging in")
-        try:
-            imap = saveImap = imaplib.IMAP4_SSL(hostname)
-            check_ok(imap.login(username,password))
+        try: imap = saveImap = get_logged_in_imap(hostname,username,password)
         except:
             if not login_retry: raise
             imap = None
