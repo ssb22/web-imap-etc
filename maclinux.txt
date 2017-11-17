@@ -14,6 +14,7 @@
 # If you want to compare this code to old versions, the old
 # versions are being kept in the E-GuideDog SVN repository at
 # http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
+# and on GitHub at https://github.com/ssb22/web-imap-etc
 # although some early ones are missing.
 
 if test -d /Volumes && test "$(uname -s)" == Darwin; then
