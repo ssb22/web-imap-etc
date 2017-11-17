@@ -17,7 +17,10 @@
 # If you want to compare this code to old versions, most old
 # versions are being kept on SourceForge's E-GuideDog SVN repository
 # http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
+# and on GitHub at https://github.com/ssb22/web-imap-etc
 # To check out the repository, you can do:
+# git clone git@github.com:ssb22/web-imap-etc.git
+# or
 # svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 
 max_threads = 10
