@@ -1070,6 +1070,7 @@ def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by defau
         avoid.add((m.start(),m.end()))
         return m.group()
     re.sub(header_charset_regex,avoidAdd,s,flags=re.DOTALL) # don't want to interfere with MIME 'charset' etc in subject lines
+    re.sub(r'h(=\r?\n)?t(=\r?\n)?t(=\r?\n)?p(=\r?\n)?(s(=\r?\n)?)?:(=\r?\n)?/(=\r?\n)?/(=\r?\n)?([^ "<>^'+"`'"+'](=\r?\n)?)+',avoidAdd,s) # and don't want to interfere with =hex in URLs (the '=' of which should have been double-encoded anyway, but sometimes isn't)
     def maybeDecode(m):
         for start,end in avoid: # TODO: improve efficiency when dealing with a very large archive with many headers?
             if start <= m.start() < end: return m.group()
