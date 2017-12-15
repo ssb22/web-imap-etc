@@ -1,5 +1,5 @@
 
-# webcheck.py v1.293 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.3 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -241,12 +241,19 @@ def run_webdriver(actionList):
     except:
         print "webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)"
         return ""
-    sa = ['--ssl-protocol=any']
-    if not verify_SSL_certificates: sa.append('--ignore-ssl-errors=true')
-    try: browser = webdriver.PhantomJS(service_args=sa)
-    except:
-      print "webcheck misconfigured: can't create webdriver.PhantomJS (is another running? selenium installed OK?)"
-      return ""
+    try:
+      from selenium.webdriver.chrome.options import Options
+      opts = Options()
+      opts.add_argument("--headless")
+      opts.add_argument("--disable-gpu")
+      browser = webdriver.Chrome(chrome_options=opts)
+    except: # probably no HeadlessChrome, try PhantomJS
+      sa = ['--ssl-protocol=any']
+      if not verify_SSL_certificates: sa.append('--ignore-ssl-errors=true')
+      try: browser = webdriver.PhantomJS(service_args=sa)
+      except:
+        print "webcheck misconfigured: can't create either HeadlessChrome or PhantomJS (check installation)"
+        return ""
     r = ""
     try: r = run_webdriver_inner(actionList,browser)
     except NoTracebackException, e: print e.message
