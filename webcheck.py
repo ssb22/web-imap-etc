@@ -1,5 +1,5 @@
 
-# webcheck.py v1.292 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.293 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -70,10 +70,10 @@ def read_input():
           if e.startswith(line): extraHeaders.remove(e)
       else: extraHeaders.append(line)
       continue
-    elif line.startswith('{') and '}' in line: # webdriver
-      actions = line[1:line.index('}')].split()
+    elif line.startswith('{') and '}' in line_withComment: # webdriver
+      actions = line_withComment[1:line_withComment.index('}')].split()
       balanceBrackets(actions)
-      text = line_withComment[line.index('}')+1:].strip()
+      text = line_withComment[line_withComment.index('}')+1:].strip()
       mainDomain = '.'.join(urlparse.urlparse(actions[0]).netloc.rsplit('.',2)[-2:]) # assumes 1st action is a URL
       url = "wd://"+chr(0).join(actions)
     else: # not webdriver
@@ -241,7 +241,9 @@ def run_webdriver(actionList):
     except:
         print "webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)"
         return ""
-    try: browser = webdriver.PhantomJS(service_args=['--ssl-protocol=any'])
+    sa = ['--ssl-protocol=any']
+    if not verify_SSL_certificates: sa.append('--ignore-ssl-errors=true')
+    try: browser = webdriver.PhantomJS(service_args=sa)
     except:
       print "webcheck misconfigured: can't create webdriver.PhantomJS (is another running? selenium installed OK?)"
       return ""
