@@ -389,8 +389,11 @@ def parseRSS(url,content,comment):
   parser.StartElementHandler = StartElementHandler
   parser.CharacterDataHandler = CharacterDataHandler
   try: parser.Parse(content,1)
-  except expat.error: pass # TODO: print error?
+  except expat.error,e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n\n")
   handleRSS(url,items,comment)
+def paren(comment):
+  if comment: return " ("+comment+")"
+  else: return ""
 def handleRSS(url,items,comment,itemType="RSS/Atom"):
   newItems = [] ; pKeep = set()
   for title,link,txt in items:
@@ -408,8 +411,7 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
   for k in previous_timestamps.keys():
     if k[:2]==(url,'seenItem') and not k in pKeep:
       del previous_timestamps[k] # dropped from the feed
-  if comment: comment=" ("+comment+")"
-  if newItems: sys.stdout.write(str(len(newItems))+" new "+itemType+" items in "+url+comment+' :\n'+'\n---\n'.join(n.strip() for n in newItems).encode('utf-8')+'\n\n')
+  if newItems: sys.stdout.write(str(len(newItems))+" new "+itemType+" items in "+url+paren(comment)+' :\n'+'\n---\n'.join(n.strip() for n in newItems).encode('utf-8')+'\n\n')
 
 def extract(url,content,startEndMarkers,comment):
   assert len(startEndMarkers)==2, "Should have exactly one '...' between the braces when extracting items"
