@@ -1,5 +1,6 @@
+#!/usr/bin/env python
 
-# webcheck.py v1.3 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.31 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -380,8 +381,15 @@ def parseRSS(url,content,comment):
     elif name=='link': curElem[0]=1
     elif name in ['description','summary']: curElem[0]=2
     else: curElem[0]=None
-    if name=='link' and 'href' in attrs:
+    if name=='link' and 'href' in attrs: # (note this isn't the ONLY way an href could get in: <link>http...</link> is also possible, and is handled by CharacterDataHandler below, hence EndElementHandler is important for separating links)
       items[-1][curElem[0]].append(attrs['href']+' ')
+  def EndElementHandler(name):
+    if name in ['item','entry']: # ensure any <link>s outside <item>s are separated
+      items.append([[],[],[]])
+      curElem[0]=None
+    elif name in ['description','summary','title','link']:
+      if not curElem[0]==None: items[-1][curElem[0]].append(' ') # ensure any additional ones are space-separated
+      curElem[0]=None
   def CharacterDataHandler(data):
     data=data.strip()
     if data and not curElem[0]==None:
