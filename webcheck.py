@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.31 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.32 (c) 2014-17 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -395,6 +395,7 @@ def parseRSS(url,content,comment):
     if data and not curElem[0]==None:
       items[-1][curElem[0]].append(data)
   parser.StartElementHandler = StartElementHandler
+  parser.EndElementHandler = EndElementHandler
   parser.CharacterDataHandler = CharacterDataHandler
   try: parser.Parse(content,1)
   except expat.error,e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n\n")
