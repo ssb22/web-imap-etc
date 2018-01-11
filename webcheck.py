@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.32 (c) 2014-17 Silas S. Brown.
+# webcheck.py v1.321 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -216,7 +216,7 @@ def worker_thread(*args):
               u,content = tryRead(url,opener,extraHeaders)
               textContent = None
           last_fetch_finished = time.time()
-          if content==None: continue # not modified
+          if content==None: continue # not modified (so nothing to report), or problem retrieving (which will have been reported by tryRead0)
           if u:
               lm = u.info().getheader("Last-Modified",None)
               if lm: previous_timestamps[(url,'lastMod')] = lm
@@ -343,10 +343,10 @@ def tryRead0(url,opener):
         except urllib2.HTTPError, e: return u,tryGzip(e.fp.read())
         except urllib2.URLError, e: # don't need full traceback for URLError, just the message itself
             sys.stdout.write("Problem retrieving "+url+"\n"+str(e)+"\n")
-            return None,""
+            return None,None
         except: # full traceback by default
             sys.stdout.write("Problem retrieving "+url+"\n"+traceback.format_exc())
-            return None,""
+            return None,None
 
 def tryGzip(t):
     try: return gzip.GzipFile('','rb',9,StringIO.StringIO(t)).read()
