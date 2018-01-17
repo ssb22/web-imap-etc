@@ -20,7 +20,7 @@
 # http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
 # and on GitHub at https://github.com/ssb22/web-imap-etc
 # To check out the repository, you can do:
-# git clone git@github.com:ssb22/web-imap-etc.git
+# git clone https://github.com/ssb22/web-imap-etc.git
 # or
 # svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 
