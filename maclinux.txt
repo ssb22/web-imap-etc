@@ -288,3 +288,6 @@ catdocx_cp1252 () { catdocx_utf8 "$@" | iconv -c -f UTF8 -t CP1252//TRANSLIT ; }
 # self-extracting shell script (for email or whatever)
 # (must o/p to a file; i/p cannot incl dirs)
 shellarc () { export Out="$1"; if test -e "$Out" ; then echo "Output file $Out exists; I'd rather not overwrite it" ; return; fi; echo "Writing $Out"; (echo '#!/bin/bash' ; while ! [ "a$2" == a ]; do if echo "$2"|grep / >/dev/null; then echo mkdir -p '"'"$(echo "$2"|sed -e 's,/[^/]*$,,')"'"'; fi; export C=0; while grep EOF$C "$2" >/dev/null; do export C=$[C+1]; done ; echo "cat > \"$2\" <<\"EOF$C\"" ; cat $2 ; echo EOF$C ; shift; done) > "$Out" ; chmod +x "$Out" ; }
+
+# Bonus command 3: pdfmerge, on any machine with qpdf installed (to help with double-sided printing)
+which qpdf >/dev/null 2>/dev/null && pdfmerge () { if test -e merged.pdf; then rm -i merged.pdf; fi && qpdf --empty --pages $(for i in $@; do echo $i 1-z; done) -- merged.pdf && du -h merged.pdf ; }
