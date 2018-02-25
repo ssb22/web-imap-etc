@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.321 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.322 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -29,7 +29,7 @@ delay = 2 # seconds
 keep_etags = False # if True, will also keep any ETag headers as well as Last-Modified
 verify_SSL_certificates = False # webcheck's non-Webdriver URLs are for monitoring public services and there's not a lot of point in SSL authentication; failures due to server/client certificate misconfigurations are more trouble than they're worth
 
-import htmlentitydefs, traceback, HTMLParser, urllib2, urlparse, time, pickle, gzip, StringIO, re, Queue, sys, socket
+import htmlentitydefs, traceback, HTMLParser, urllib2, urlparse, time, pickle, gzip, StringIO, re, Queue, os, sys, socket
 try: import ssl
 except: # you won't be able to check https:// URLs
   ssl = 0 ; verify_SSL_certificates = False
@@ -61,6 +61,13 @@ def read_input():
     elif freqCmd.startswith("days"): days=int(freqCmd.split()[1])
     else: freqCmd = None
     if freqCmd: continue
+
+    if line.startswith("PYTHONPATH="):
+      sys.path = line.split("=",1)[1].replace("$PYTHONPATH:","").replace(":$PYTHONPATH","").split(":") + sys.path # for importing selenium etc
+      continue
+    if line.startswith("PATH="):
+      os.environ["PATH"] = ":".join(line.split("=",1)[1].replace("$PATH:","").replace(":$PATH","").split(":") + os.environ.get("PATH","").split(":"))
+      continue
 
     if line.startswith('also:') and url:
       text = line_withComment[5:].strip()
@@ -160,7 +167,7 @@ def main():
 def default_opener():
     if sys.version_info >= (2,7,9) and not verify_SSL_certificates: opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())) # HTTPCookieProcessor needed for some redirects
     else: opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
-    opener.addheaders = [('User-agent', 'Mozilla/5.0 or Lynx or whatever you like (actually Webcheck)'), # TODO: ? (just Mozilla/5.0 is not always acceptable to all servers)
+    opener.addheaders = [('User-agent', 'Mozilla/5.0 or whatever you like (actually Webcheck)'), # TODO: ? (just Mozilla/5.0 is not always acceptable to all servers; Lynx is sometimes blocked by misguided 'security' products; override in webcheck.list if there's a problem)
                          ('Accept-Encoding', 'gzip')]
     return opener
 
@@ -175,7 +182,7 @@ def worker_thread(*args):
               url = url.split('\n')
               extraHeaders = url[1:] ; url = url[0]
           else: extraHeaders = []
-          if (url,'lastFetch') in previous_timestamps:
+          if (url,'lastFetch') in previous_timestamps and not '--test-all' in sys.argv: # (--test-all is different from removing .webcheck.last because it shouldn't also re-output old items in RSS feeds)
               minDays = min(d for d,_ in daysTextList)
               if minDays and previous_timestamps[(url,'lastFetch')]+minDays >= dayNo(): continue
           previous_timestamps[(url,'lastFetch')] = dayNo() # (keep it even if minDays==0, because that might be changed by later edits of webcheck.list)
@@ -319,9 +326,9 @@ def tryRead(url,opener,extraHeaders):
     for h in extraHeaders:
         if h.lower().startswith("user-agent") and opener.addheaders[0][0]=="User-agent": del opener.addheaders[0] # User-agent override
         opener.addheaders.append(tuple(x.strip() for x in h.split(':',1)))
-    if (url,'lastMod') in previous_timestamps:
+    if (url,'lastMod') in previous_timestamps and not '--test-all' in sys.argv:
         opener.addheaders.append(("If-Modified-Since",previous_timestamps[(url,'lastMod')]))
-    if keep_etags and (url,'ETag') in previous_timestamps:
+    if keep_etags and (url,'ETag') in previous_timestamps and not '--test-all' in sys.argv:
         opener.addheaders.append(("If-None-Match",previous_timestamps[(url,'lastMod')]))
     ret = tryRead0(url,opener)
     opener.addheaders = oldAddHeaders
