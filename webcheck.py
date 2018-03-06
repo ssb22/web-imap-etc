@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.322 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.323 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -167,9 +167,11 @@ def main():
 def default_opener():
     if sys.version_info >= (2,7,9) and not verify_SSL_certificates: opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())) # HTTPCookieProcessor needed for some redirects
     else: opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
-    opener.addheaders = [('User-agent', 'Mozilla/5.0 or whatever you like (actually Webcheck)'), # TODO: ? (just Mozilla/5.0 is not always acceptable to all servers; Lynx is sometimes blocked by misguided 'security' products; override in webcheck.list if there's a problem)
+    opener.addheaders = [('User-agent', default_ua),
                          ('Accept-Encoding', 'gzip')]
     return opener
+
+default_ua = 'Mozilla/5.0 or whatever you like (actually Webcheck)'
 
 def worker_thread(*args):
     opener = None
@@ -218,6 +220,20 @@ def worker_thread(*args):
                 continue
               textContent = content.replace('{',' ').replace('}',' ') # edbrowse uses {...} to denote links
               url = url[4:].split('\\',1)[0] # for display
+          elif url.startswith("blocks-lynx://"):
+              r=urllib2.Request(url[len("blocks-lynx://"):])
+              r.get_method=lambda:'HEAD'
+              r.add_header('User-agent','Lynx/2.8.9dev.4 libwww-FM/2.14')
+              u,content = None,"no"
+              try: urllib2.urlopen(r)
+              except urllib2.HTTPError, e:
+                r.add_header('User-agent',default_ua)
+                try:
+                  urllib2.urlopen(r)
+                  content = "yes" # error ONLY with Lynx, not with default UA
+                except urllib2.HTTPError, e: pass # error with default UA as well, so don't flag this one as a Lynx-test failure
+              except urllib2.URLError, e: print "Info:",url,"got URLError: check the server exists at all"
+              textContent = content
           else: # normal URL
               if opener==None: opener = default_opener()
               u,content = tryRead(url,opener,extraHeaders)
@@ -324,7 +340,7 @@ def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 def tryRead(url,opener,extraHeaders):
     oldAddHeaders = opener.addheaders[:]
     for h in extraHeaders:
-        if h.lower().startswith("user-agent") and opener.addheaders[0][0]=="User-agent": del opener.addheaders[0] # User-agent override
+        if h.lower().startswith("user-agent") and opener.addheaders[0][0]=="User-agent": del opener.addheaders[0] # User-agent override (will be restored after by oldAddHeaders)
         opener.addheaders.append(tuple(x.strip() for x in h.split(':',1)))
     if (url,'lastMod') in previous_timestamps and not '--test-all' in sys.argv:
         opener.addheaders.append(("If-Modified-Since",previous_timestamps[(url,'lastMod')]))
