@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.323 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.324 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -224,15 +224,16 @@ def worker_thread(*args):
               r=urllib2.Request(url[len("blocks-lynx://"):])
               r.get_method=lambda:'HEAD'
               r.add_header('User-agent','Lynx/2.8.9dev.4 libwww-FM/2.14')
-              u,content = None,"no"
+              u,content = None,"no" # not blocking Lynx?
               try: urllib2.urlopen(r)
-              except urllib2.HTTPError, e:
-                r.add_header('User-agent',default_ua)
-                try:
-                  urllib2.urlopen(r)
-                  content = "yes" # error ONLY with Lynx, not with default UA
-                except urllib2.HTTPError, e: pass # error with default UA as well, so don't flag this one as a Lynx-test failure
-              except urllib2.URLError, e: print "Info:",url,"got URLError: check the server exists at all"
+              except Exception, e:
+                if type(e) in [urllib2.HTTPError,socket.error]: # MIGHT be blocking Lynx, check:
+                  r.add_header('User-agent',default_ua)
+                  try:
+                    urllib2.urlopen(r)
+                    content = "yes" # error ONLY with Lynx, not with default UA
+                  except Exception, e: pass # error with default UA as well, so don't flag this one as a Lynx-test failure
+                else: print "Info:",url,"got",type(e),"(check the server exists at all?)"
               textContent = content
           else: # normal URL
               if opener==None: opener = default_opener()
