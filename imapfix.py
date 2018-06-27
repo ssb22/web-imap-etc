@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.49 (c) 2013-17 Silas S. Brown.  License: GPL"
+"ImapFix v1.491 (c) 2013-18 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -267,6 +267,10 @@ secondary_is_insecure = False # if True, the --copy option
 # mean you can't reply so easily as well, but the idea is
 # that the throwaway account is only for READING messages
 # on the mobile, not for actual replying or management.
+
+first_secondary_is_copy_only = False # if True, the first
+# server listed in secondary will be used ONLY for --copy
+# and not for periodic checking.
 
 secLimit = 99999 # max number of bytes checked for email
 # addresses by secondary_is_insecure (to prevent holdups
@@ -1321,8 +1325,10 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
     raise Exception("Could not log in")
 
 def process_secondary_imap():
-  global imap
+  global imap ; first=True
   for sih,siu,sip in zip(secondary_imap_hostname, secondary_imap_username, secondary_imap_password):
+    if first_secondary_is_copy_only and first:
+      first = False ; continue
     try: imap = get_logged_in_imap(sih,siu,sip)
     except:
         msg = "Could not log in as %s to secondary IMAP %s: skipping it this time" % (siu,sih)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.324 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.325 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -35,7 +35,17 @@ except: # you won't be able to check https:// URLs
   ssl = 0 ; verify_SSL_certificates = False
 if max_threads > 1: import thread
 
-def read_input_file(fname="webcheck.list"):
+default_filename = "webcheck" + os.extsep + "list"
+def read_input_file(fname=default_filename):
+  if os.path.isdir(fname): # support webcheck.list etc as a directory
+    ret = [] ; files = os.listdir(fname)
+    if default_filename in files: # do this one first
+      ret += read_input_file(fname+os.sep+default_filename)
+      files.remove(default_filename)
+    for f in files:
+      if f.endswith("~") or f.lower().endswith(".bak"): continue # ignore
+      ret += [(l+" # from "+f) for l in read_input_file(fname+os.sep+f)]
+    return ret
   lines = open(fname).read().replace("\r","\n").split("\n")
   lines.reverse() # so can pop() them in order
   return lines
