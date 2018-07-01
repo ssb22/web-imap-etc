@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-"ImapFix v1.491 (c) 2013-18 Silas S. Brown.  License: GPL"
+"ImapFix v1.492 (c) 2013-18 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
 
-hostname = "imap4-ssl.example.org"
+hostname = "imap4-ssl.example.org" # or host:port
 username = "me"
 password = "xxxxxxxx"
 login_retry = False # True = don't stop on login failure
@@ -242,7 +242,7 @@ important_regexps = [
 # between checks.)  It's also possible to set the first
 # three of these options to lists, in order to check
 # multiple secondary IMAP servers or multiple identities.
-secondary_imap_hostname = ""
+secondary_imap_hostname = "" # host or host:port
 secondary_imap_username = "me"
 secondary_imap_password = "xxxxxxxx"
 secondary_imap_delay = 24 * 3600
@@ -276,7 +276,7 @@ secLimit = 99999 # max number of bytes checked for email
 # addresses by secondary_is_insecure (to prevent holdups
 # if you have multi-megabyte attachments)
 
-insecure_login = [] # set to a list of host names that are
+insecure_login = [] # set to a list of host names (or host:port)
 # not expected to support SSL.  This speeds things up by
 # trying the non-SSL login first on those hosts.  See also
 # secondary_is_insecure option above.
@@ -1267,11 +1267,17 @@ def mainloop():
     if maildir_to_copyself: do_maildir_to_copyself()
     if copyself_alt_folder: do_copyself_to_copyself()
     if auto_delete_folder: do_auto_delete()
+    global filtered_inbox
     if filtered_inbox:
         process_imap_inbox()
-        if time.time() > secondary_imap_due and secondary_imap_hostname:
-            process_secondary_imap()
-            secondary_imap_due = time.time() + secondary_imap_delay
+    if time.time() > secondary_imap_due and secondary_imap_hostname:
+        fiO = filtered_inbox
+        if not filtered_inbox:
+            make_sure_logged_in()
+            filtered_inbox=""
+        process_secondary_imap()
+        filtered_inbox = fiO
+        secondary_imap_due = time.time() + secondary_imap_delay
     if logout_before_sleep: make_sure_logged_out()
     if not poll_interval: break
     if not done_spamprobe_cleanup:
@@ -1318,11 +1324,14 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
     else: order = [imaplib.IMAP4_SSL,imaplib.IMAP4]
     for Class in order:
         try:
-            imap = Class(host)
+            if len(host.split(':'))==2:
+                host,port = host.split(':')
+                imap = Class(host, int(port))
+            else: imap = Class(host)
             check_ok(imap.login(user,pwd))
             return imap
         except: pass
-    raise Exception("Could not log in")
+    raise Exception("Could not log in to "+host)
 
 def process_secondary_imap():
   global imap ; first=True
