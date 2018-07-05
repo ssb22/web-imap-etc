@@ -398,8 +398,14 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # versions are being kept on SourceForge's E-GuideDog SVN repository
 # http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
 # and on GitHub at https://github.com/ssb22/web-imap-etc
+# and on GitLab at https://gitlab.com/ssb22/web-imap-etc
+# and on Bitbucket https://bitbucket.org/ssb22/web-imap-etc
 # To check out the repository, you can do:
 # git clone https://github.com/ssb22/web-imap-etc.git
+# or
+# git clone https://gitlab.com/ssb22/web-imap-etc.git
+# or
+# git clone https://bitbucket.org/ssb22/web-imap-etc.git
 # or
 # svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 
