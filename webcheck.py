@@ -438,7 +438,7 @@ def parseRSS(url,content,comment):
   parser.EndElementHandler = EndElementHandler
   parser.CharacterDataHandler = CharacterDataHandler
   try: parser.Parse(content,1)
-  except expat.error,e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n\n")
+  except expat.error,e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
   handleRSS(url,items,comment)
 def paren(comment):
   if comment: return " ("+comment+")"
