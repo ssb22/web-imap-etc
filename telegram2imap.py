@@ -1,7 +1,9 @@
 # Script to convert Saved Messages copied out of Telegram Messenger
 # (Desktop) into note-to-self emails in IMAP (requires imapfix.py).
 # Works on GNU/Linux and Mac versions of Telegram Desktop as of 2018-04
-# but not mobile versions.  NB they can select only 100 messages at a time.
+# but not mobile versions.  NB they can select only 100 messages at a time,
+# but if you have a version of Telegram Desktop published after 2018-08,
+# it can export entire conversations to HTML by itself.
 
 # This version assumes no paragraph breaks in messages.
 
