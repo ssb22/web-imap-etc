@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.492 (c) 2013-18 Silas S. Brown.  License: GPL"
+"ImapFix v1.493 (c) 2013-18 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -50,6 +50,8 @@ office_convert = None # or "html" or "pdf", to use
 # (beware, I have not checked soffice for vulnerabilities)
 # - resulting HTML might not work on old WM phones as they
 # don't support data: image URLs
+
+use_tnef = False # True = use "tnef" command on winmail.dat
 
 header_rules = [
     ("folder-name-1",
@@ -420,6 +422,7 @@ assert not secondary_imap_delay=="idle", "'idle' polling not implemented for sec
 if filtered_inbox==None: spamprobe_command = None
 
 import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback
+from email import encoders
 from cStringIO import StringIO
 
 if compression=="bz2":
@@ -639,6 +642,7 @@ def process_imap_inbox():
         if box:
             if not box==spam_folder:
                 changed2 = False
+                if use_tnef: changed2 = add_tnef(msg) or changed2
                 if image_size: changed2 = add_previews(msg) or changed2
                 if office_convert: changed2 = add_office(msg) or changed2
                 changed = changed2 or changed
@@ -1105,7 +1109,7 @@ def add_previews(message):
     accum = [1]
     return walk_msg(message,add_preview,accum)
 def add_preview(message,accum):
-    if to_attach == None: return False # TODO? (message sent with a single image and nothing else)
+    if to_attach == None: return False # TODO? (non-multipart message sent with a single image and nothing else)
     if not 'Content-Type' in message or message["Content-Type"].startswith("text/"): return False
     payload = message.get_payload(decode=True)
     try: img=Image.open(StringIO(payload))
@@ -1153,7 +1157,7 @@ def add_office(message):
     accum = [1]
     return walk_msg(message,add_office0,accum)
 def add_office0(message,accum):
-    if to_attach == None: return False # TODO? (message sent with a single document and nothing else)
+    if to_attach == None: return False # TODO? (non-multipart message sent with a single document and nothing else)
     if not 'Content-Disposition' in message: return False
     fn = str(message['Content-Disposition'])
     if not 'filename' in fn: return False
@@ -1175,11 +1179,47 @@ def add_office0(message,accum):
     mT,subT = mimeType.split("/")
     b = email.mime.base.MIMEBase(mT,subT)
     b.set_payload(open(outfile,"rb").read())
+    if not office_convert=="html": encoders.encode_base64(b)
     tryRm(infile) ; tryRm(outfile)
     if office_convert in ["html"] and not (max_size_of_first_part and len(b.get_payload) > max_size_of_first_part): pass # show it inline
     else: b['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.'+office_convert
     to_attach.append(b) ; accum[0] += 1
     return True
+def add_tnef(message):
+    global to_attach ; to_attach = None
+    accum = [1]
+    return walk_msg(message,add_tnef0,accum)
+def add_tnef0(message,accum):
+    if to_attach == None: return False # TODO? (non-multipart message sent with winmail.dat and nothing else?)
+    if not 'Content-Disposition' in message: return False
+    fn = str(message['Content-Disposition'])
+    if not 'winmail.dat' in fn.lower(): return False
+    ret = False
+    debug("Getting winmail.dat")
+    payload = message.get_payload(decode=True)
+    debug("Running tnef on winmail.dat")
+    outdir = "tnefout-%d" % (os.getpid(),)
+    os.mkdir(outdir)
+    os.popen("tnef -C "+outdir+" --number-backups --unix-paths --save-body --ignore-checksum --ignore-encode --ignore-cruft","wb").write(payload)
+    for f in os.listdir(outdir):
+        debug("Adding "+repr(f))
+        origF,f = f,outdir+os.sep+f ; mimeType = "application/binary"
+        if os.sep in f:
+            _,ext = f.rsplit(os.sep)
+            if ext=="pdf": mimeType = "application/pdf"
+            # TODO: other extensions / types ?
+            # any message.rtf should be picked up by office
+        mT,subT = mimeType.split("/")
+        b = email.mime.base.MIMEBase(mT,subT)
+        b.set_payload(open(f,"rb").read())
+        tryRm(f)
+        b['Content-Disposition']='attachment; filename='+origF
+        encoders.encode_base64(b)
+        to_attach.append(b) ; accum[0] += 1 ; ret = True
+    try: os.rmdir(outdir)
+    except: debug("Could not remove "+outdir)
+    if ret: message.set_payload("") # no point keeping the winmail.dat itself if we successfully got its contents out
+    return ret
 
 def folderList(pattern="*"):
     make_sure_logged_in()
@@ -1582,7 +1622,6 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
     for f in attachment_filenames:
         subMsg = email.mime.base.MIMEBase('application', 'octet-stream') # TODO: more specific types?
         subMsg.set_payload(open(f,'rb').read())
-        from email import encoders
         encoders.encode_base64(subMsg)
         if os.sep in f: f=f[f.rindex(os.sep)+1:]
         subMsg.add_header('Content-Disposition', 'attachment', filename=f)
