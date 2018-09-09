@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.325 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.326 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -473,7 +473,7 @@ def extract(url,content,startEndMarkers,comment):
     if j==-1: break
     items.append(('Auto-extracted text:','',content[i+len(start):j].decode('utf-8'))) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
     i = j+len(end)
-  # if not items: print "No items in",repr(content)
+  if not items: print "No items were extracted from",url,"(check that site changes haven't invalidated your extraction rule)"
   handleRSS(url,items,comment,"extracted")
 
 def myFind(text,content):
