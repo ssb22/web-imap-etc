@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.326 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.327 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -52,7 +52,9 @@ def read_input_file(fname=default_filename):
       if f.endswith("~") or f.lower().endswith(".bak"): continue # ignore
       ret += [(l+" # from "+f) for l in read_input_file(fname+os.sep+f)]
     return ret
-  lines = open(fname).read().replace("\r","\n").split("\n")
+  try: o = open(fname)
+  except: return [] # not a file or resolvable link to one, e.g. lockfile in a webcheck.list dir
+  lines = o.read().replace("\r","\n").split("\n")
   lines.reverse() # so can pop() them in order
   return lines
 def read_input():
@@ -310,7 +312,17 @@ def run_webdriver_inner(actionList,browser):
             return browser.find_element_by_id(spec[1:])
         # TODO: other patterns?
         else: return browser.find_element_by_link_text(spec)
-    def getSrc(): return browser.find_element_by_xpath("//*").get_attribute("outerHTML").encode('utf-8')
+    def getSrc():
+      def f(b,switchBack=[]):
+        src = b.find_element_by_xpath("//*").get_attribute("outerHTML")
+        for el in ['frame','iframe']:
+          for frame in b.find_elements_by_tag_name(el):
+            b.switch_to.frame(frame)
+            src += f(b,switchBack+[frame])
+            b.switch_to.default_content()
+            for fr in switchBack: b.switch_to.frame(fr)
+        return src
+      return f(browser).encode('utf-8')
     snippets = []
     for a in actionList:
         if a.startswith('http'): browser.get(a)
