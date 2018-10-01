@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# webcheck.py v1.327 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.328 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -461,12 +461,12 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     def f(t): return "".join(t).strip()
     title,link,txt=f(title),f(link),f(txt)
     if not title: continue # valid entry must have title
-    k = (url,'seenItem',hash((title,link,txt))) # TODO: option to keep the whole thing in case someone has the space and is concerned about the small probability of hash collisions?
+    k = (url,'seenItem',hash((title,link,re.sub("</?[A-Za-z][^>]*>","",txt)))) # (ignore HTML markup in RSS, since it sometimes includes things like renumbered IDs) TODO: option not to call hash(), in case someone has the space and is concerned about the small probability of hash collisions?
     pKeep.add(k)
-    if k in previous_timestamps: continue
+    if k in previous_timestamps: continue # seen this one already
     previous_timestamps[k] = True
     if txt: txt += '\n'
-    txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is
+    txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is (in RSS it would have originated with a double-'escaped' < within 'escaped' html markup)
     newItems.append(title+'\n'+txt+link)
   if not pKeep: return # if the feed completely failed to fetch, don't erase what we have
   for k in previous_timestamps.keys():
