@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.493 (c) 2013-18 Silas S. Brown.  License: GPL"
+"ImapFix v1.494 (c) 2013-18 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1499,21 +1499,21 @@ def do_copy(foldername):
     make_sure_logged_in()
     global imap,saveImap
     check_ok(imap.select(foldername))
-    try: saveImap = get_logged_in_imap(secondary_imap_hostname[0],secondary_imap_username[0],secondary_imap_password[0])
-    except:
-        debug("Could not log in to secondary IMAP")
-        return
     # Work out which messages need to be deleted:
     do_not_delete = set() ; do_not_copy = set()
     debug("Checking primary messages")
     def zapSpace(m): return re.sub(r"\s+","",m) # for comparing modulo trailing newlines, different line splitting in the header, etc
     for msgID,flags,message in yield_all_messages():
         do_not_delete.add(zapSpace(secondary_security(message)))
+    make_sure_logged_out() # as the next step might cause the first imap to time out on us while it's waiting
+    try: imap = get_logged_in_imap(secondary_imap_hostname[0],secondary_imap_username[0],secondary_imap_password[0])
+    except:
+        debug("Could not log in to secondary IMAP")
+        return
     debug("Checking secondary messages; removing old ones")
-    saveImap.create(foldername) # error if exists OK
-    check_ok(saveImap.select(foldername))
+    imap.create(foldername) # error if exists OK
+    check_ok(imap.select(foldername))
     tot=rm=0
-    imap,saveImap = saveImap,imap
     for msgID,flags,message in yield_all_messages():
         tot += 1
         message = secondary_security(message) # for comparisons to work
@@ -1521,9 +1521,11 @@ def do_copy(foldername):
         else:
             imap.store(msgID, '+FLAGS', '\\Deleted')
             rm += 1
-    imap,saveImap = saveImap,imap
     debug("... %d of %d removed" % (rm,tot))
+    imap,_saveImap = None,imap
+    make_sure_logged_in() ; saveImap=_saveImap
     debug("Copying new messages to secondary")
+    check_ok(imap.select(foldername))
     tot = cp = 0
     for msgID,flags,message in yield_all_messages():
         tot += 1
