@@ -469,7 +469,7 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is (in RSS it would have originated with a double-'escaped' < within 'escaped' html markup)
     newItems.append(title+'\n'+txt+link)
   if not pKeep: return # if the feed completely failed to fetch, don't erase what we have
-  for k in previous_timestamps.iterkeys():
+  for k in previous_timestamps.keys():
     if k[:2]==(url,'seenItem') and not k in pKeep:
       del previous_timestamps[k] # dropped from the feed
   if newItems: sys.stdout.write(str(len(newItems))+" new "+itemType+" items in "+url+paren(comment)+' :\n'+'\n---\n'.join(n.strip() for n in newItems).encode('utf-8')+'\n\n')
