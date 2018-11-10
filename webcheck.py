@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 # webcheck.py v1.328 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
