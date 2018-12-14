@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.328 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.329 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -451,6 +451,8 @@ def parseRSS(url,content,comment):
   parser.CharacterDataHandler = CharacterDataHandler
   try: parser.Parse(content,1)
   except expat.error,e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
+  for i in xrange(len(items)): # handle links relative to the RSS itself:
+    items[i][1] = [urlparse.urljoin(url,w) for w in "".join(items[i][1]).strip().split()]
   handleRSS(url,items,comment)
 def paren(comment):
   if comment: return " ("+comment+")"
@@ -463,7 +465,7 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     if not title: continue # valid entry must have title
     k = (url,'seenItem',hash((title,link,re.sub("</?[A-Za-z][^>]*>","",txt)))) # (ignore HTML markup in RSS, since it sometimes includes things like renumbered IDs) TODO: option not to call hash(), in case someone has the space and is concerned about the small probability of hash collisions?
     pKeep.add(k)
-    if k in previous_timestamps: continue # seen this one already
+    if k in previous_timestamps and not '--show-seen-rss' in sys.argv: continue # seen this one already
     previous_timestamps[k] = True
     if txt: txt += '\n'
     txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is (in RSS it would have originated with a double-'escaped' < within 'escaped' html markup)
