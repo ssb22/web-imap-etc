@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.329 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.33 (c) 2014-18 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -255,7 +255,7 @@ def worker_thread(*args):
               textContent = content
           else: # normal URL
               if opener==None: opener = default_opener()
-              u,content = tryRead(url,opener,extraHeaders)
+              u,content = tryRead(url,opener,extraHeaders,all(t and not t.startswith('#') for _,t in daysTextList)) # don't monitorError for RSS feeds (don't try to RSS-parse an error message)
               textContent = None
           last_fetch_finished = time.time()
           if content==None: continue # not modified (so nothing to report), or problem retrieving (which will have been reported by tryRead0)
@@ -366,7 +366,7 @@ def run_webdriver_inner(actionList,browser):
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 
-def tryRead(url,opener,extraHeaders):
+def tryRead(url,opener,extraHeaders,monitorError=True):
     oldAddHeaders = opener.addheaders[:]
     for h in extraHeaders:
         if h.lower().startswith("user-agent") and opener.addheaders[0][0]=="User-agent": del opener.addheaders[0] # User-agent override (will be restored after by oldAddHeaders)
@@ -375,24 +375,27 @@ def tryRead(url,opener,extraHeaders):
         opener.addheaders.append(("If-Modified-Since",previous_timestamps[(url,'lastMod')]))
     if keep_etags and (url,'ETag') in previous_timestamps and not '--test-all' in sys.argv:
         opener.addheaders.append(("If-None-Match",previous_timestamps[(url,'lastMod')]))
-    ret = tryRead0(url,opener)
+    ret = tryRead0(url,opener,monitorError)
     opener.addheaders = oldAddHeaders
     return ret
 
-def tryRead0(url,opener):
+def tryRead0(url,opener,monitorError):
     u = None
     try:
         u = opener.open(url)
         return u,tryGzip(u.read())
     except urllib2.HTTPError, e:
         if e.code==304: return None,None # not modified
-        return None,tryGzip(e.fp.read()) # as might want to monitor some phrase on a 404 page
+        elif monitorError: return None,tryGzip(e.fp.read()) # as might want to monitor some phrase on a 404 page
+        sys.stderr.write("Error "+str(e.code)+" retrieving "+url+"\n") ; return None,None
     except: # try it with a fresh opener and no headers
         try:
             if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())).open(url)
             else: u = urllib2.build_opener(urllib2.HTTPCookieProcessor()).open(url)
             return u,tryGzip(u.read())
-        except urllib2.HTTPError, e: return u,tryGzip(e.fp.read())
+        except urllib2.HTTPError, e:
+          if monitorError: return u,tryGzip(e.fp.read())
+          sys.stderr.write("Error "+str(e.code)+" retrieving "+url+"\n") ; return None,None
         except urllib2.URLError, e: # don't need full traceback for URLError, just the message itself
             sys.stdout.write("Problem retrieving "+url+"\n"+str(e)+"\n")
             return None,None
