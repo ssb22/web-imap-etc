@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.33 (c) 2014-18 Silas S. Brown.
+# webcheck.py v1.34 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -358,7 +358,7 @@ def run_webdriver_inner(actionList,browser):
         elif '=' in a: # put text in an input box
             spec, val = a.split('=',1)
             findElem(spec).send_keys(val)
-        else: sys.stderr.write("Ignoring webdriver unknown action "+repr(a)+'\n')
+        else: sys.stdout.write("Ignoring webdriver unknown action "+repr(a)+'\n')
         if sys.stderr.isatty(): sys.stderr.write(':') # webdriver's '.'
         time.sleep(delay)
     snippets.append(getSrc())
@@ -387,7 +387,7 @@ def tryRead0(url,opener,monitorError):
     except urllib2.HTTPError, e:
         if e.code==304: return None,None # not modified
         elif monitorError: return None,tryGzip(e.fp.read()) # as might want to monitor some phrase on a 404 page
-        sys.stderr.write("Error "+str(e.code)+" retrieving "+url+"\n") ; return None,None
+        sys.stdout.write("Error "+str(e.code)+" retrieving "+url+"\n") ; return None,None
     except: # try it with a fresh opener and no headers
         try:
             if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())).open(url)
@@ -395,7 +395,7 @@ def tryRead0(url,opener,monitorError):
             return u,tryGzip(u.read())
         except urllib2.HTTPError, e:
           if monitorError: return u,tryGzip(e.fp.read())
-          sys.stderr.write("Error "+str(e.code)+" retrieving "+url+"\n") ; return None,None
+          sys.stdout.write("Error "+str(e.code)+" retrieving "+url+"\n") ; return None,None
         except urllib2.URLError, e: # don't need full traceback for URLError, just the message itself
             sys.stdout.write("Problem retrieving "+url+"\n"+str(e)+"\n")
             return None,None
