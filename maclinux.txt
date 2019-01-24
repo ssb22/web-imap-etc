@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Silas S. Brown 2012-14,2016 - public domain  (version 1.44)
+# Version 1.44, Silas S. Brown 2012-14,2016 - public domain (no warranty)
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile - for example:
 # curl http://people.ds.cam.ac.uk/ssb22/setup/maclinux.txt >> ~/.bash_profile
