@@ -259,7 +259,7 @@ alias make-ramdisk=_make_ramdisk
 # Here's a function to read MIDI data out of saved GarageBand loops.
 # It's better to download the GPL MIDI application "Aria Maestosa",
 # but if for some reason you're stuck with GarageBand:
-_garageband_getMIDI() { cd ~/Library/Audio/"Apple Loops/User Loops/"SingleFiles && for N in *.aif; do if test -e "$N"; then mv -iv "$N" /tmp && export M=/tmp/"$(echo "$N"|sed -e s/aif$/mid/)" && python -c 'import sys;d=sys.stdin.read();m=d[d.index("MThd"):]sys.stdout.write(m[:m.index("CHS")])' < /tmp/"$N" > "$M" && du -h "$M"; fi; done; }
+_garageband_getMIDI() { cd ~/Library/Audio/"Apple Loops/User Loops/"SingleFiles && for N in *.aif; do if test -e "$N"; then mv -iv "$N" /tmp && export M=/tmp/"$(echo "$N"|sed -e s/aif$/mid/)" && python -c 'import sys;d=sys.stdin.read();m=d[d.index("MThd"):];sys.stdout.write(m[:m.index("CHS")])' < /tmp/"$N" > "$M" && du -h "$M"; fi; done; }
 alias garageband-getMIDI=_garageband_getMIDI
 # GarageBand '11 6.0.5 on MacOS 10.7.5: new track (Cmd-Shift-N or bottom-left "+" icon), record (if all red & doesn't go green, may hv to reset the midi connection esp if going via a hub), if multi-track then join them (Edit / Select All (cmd-A), Edit / Join (cmd-J)), then to save, do Edit / Add to loop library, then run garageband-getMIDI.
 # ground-bass stuff: GarageBand / Preferences / General: "Cycle Recording (Automatically merge Software Instrument recordings when using the cycle region)", then record, then add a loop with Control / Snap to Grid (Cmd-G) switched OFF, then record again to add layers to the loop.
