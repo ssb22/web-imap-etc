@@ -188,7 +188,7 @@ ulimit -n 1024 # allow programs to have more open files
 # doesn't exactly emulate the Linux commands on various
 # distributions but at least it's a start) -
 volume () {
-  if test "a$1" == a; then
+  if [ ! "$1" ]; then
     # if no argument, print current percentage
     osascript -e "output volume of (get volume settings)"
   else osascript -e "set volume output volume $1"; fi }
@@ -230,7 +230,7 @@ export -f updatedb
 _install_login_command () {
   if ! test -e "/$1"; then echo "Syntax: install-login-command executable-full-path"; echo "(see comments in maclinux for caveats)"; return; fi
   export L="$(echo "$1"|sed -e 's,.*/,,')"
-  if test -e "$HOME/Library/LaunchAgents/$L.plist" || test "a$L" == a || ! touch "$HOME/Library/LaunchAgents/$L.plist" 2>/dev/null; then
+  if [ -e "$HOME/Library/LaunchAgents/$L.plist" ] || [ ! "$L" ] || ! touch "$HOME/Library/LaunchAgents/$L.plist" 2>/dev/null; then
     # can't use executable name as plist name (exists or can't create), so make a generic one
     export C=0; while test -e "$HOME/Library/LaunchAgents/loginscript$C.plist"; do export C=$[$C+1]; done; export L=loginscript$C
   fi
@@ -266,7 +266,7 @@ alias garageband-getMIDI=_garageband_getMIDI
 # ground-bass stuff: GarageBand / Preferences / General: "Cycle Recording (Automatically merge Software Instrument recordings when using the cycle region)", then record, then add a loop with Control / Snap to Grid (Cmd-G) switched OFF, then record again to add layers to the loop.
 
 # Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
-if test "a$SSH_CLIENT" == a; then
+if [ "$SSH_CLIENT" ]; then
   # simpler prompt for a local Mac (hostname can be a bit long)
   export PS1='mac:\w\$ '
 elif test "$(hostname -s)" == mac || test "$(hostname -s)" == unknown; then
@@ -279,7 +279,7 @@ fi
 
 export BASH_ENV="$__OldBashEnv"
 
-elif ! test "a$COLUMNS" == a && test $COLUMNS -le 50 && wget --version 2>/dev/null|head -1|grep "Wget 1.17" >/dev/null; then alias wget="echo 'Doing wget -q to work around Debian bug #823891';wget -q" # non-Mac, but that bug affects the version of wget shipped with Ubuntu 16.04 LTS so I put this in for the Cambridge MCS remote GNU/Linux machines at the time
+elif [ "$COLUMNS" ] && [ $COLUMNS -le 50 ] && wget --version 2>/dev/null|head -1|grep "Wget 1.17" >/dev/null; then alias wget="echo 'Doing wget -q to work around Debian bug #823891';wget -q" # non-Mac, but that bug affects the version of wget shipped with Ubuntu 16.04 LTS so I put this in for the Cambridge MCS remote GNU/Linux machines at the time
 fi # end of "we're on a Mac" block
 # (so you can put all this into a .bashrc that will
 # get sourced from either Mac or Linux machines)
@@ -292,13 +292,13 @@ which unix2dos >/dev/null 2>/dev/null || alias unix2dos="perl -i -p -e 's|[\r\n]
 # between the XML markup).  catdocx_utf8 outputs UTF-8;
 # catdocx_cp1252 outputs "Windows 1252" as used on old
 # Psion PDAs etc.
-catdocx_utf8 () { while [ ! "a$1" == "a" ]; do unzip -Cp "$1" word/[dfe]*[ts].xml; shift; done|perl -p -e 's/<w:p(\s[^>]*)?>/\n/g;s/<[^>]*>//g;s/  */ /g;s/&lt;/</g;s/&gt;/>/g'|grep -v '^ *$' ; } # (want to unzip document.xml, endnotes.xml and footnotes.xml but not emit warnings if missing and not match fontTable etc, hence the awkward file specification; perl rather than sed so as to avoid BSD sed / gsed differences re \n in replacement etc)
+catdocx_utf8 () { while [ "$1" ]; do unzip -Cp "$1" word/[dfe]*[ts].xml; shift; done|perl -p -e 's/<w:p(\s[^>]*)?>/\n/g;s/<[^>]*>//g;s/  */ /g;s/&lt;/</g;s/&gt;/>/g'|grep -v '^ *$' ; } # (want to unzip document.xml, endnotes.xml and footnotes.xml but not emit warnings if missing and not match fontTable etc, hence the awkward file specification; perl rather than sed so as to avoid BSD sed / gsed differences re \n in replacement etc)
 catdocx_cp1252 () { catdocx_utf8 "$@" | iconv -c -f UTF8 -t CP1252//TRANSLIT ; } # --unicode-subst="[U+%04X]" instead of -c would be nice, but it's not available on all versions of iconv
 
 # Bonus command 2: cat a load of text files into a
 # self-extracting shell script (for email or whatever)
 # (must o/p to a file; i/p cannot incl dirs)
-shellarc () { export Out="$1"; if test -e "$Out" ; then echo "Output file $Out exists; I'd rather not overwrite it" ; return; fi; echo "Writing $Out"; (echo '#!/bin/bash' ; while ! [ "a$2" == a ]; do if echo "$2"|grep / >/dev/null; then echo mkdir -p '"'"$(echo "$2"|sed -e 's,/[^/]*$,,')"'"'; fi; export C=0; while grep EOF$C "$2" >/dev/null; do export C=$[C+1]; done ; echo "cat > \"$2\" <<\"EOF$C\"" ; cat $2 ; echo EOF$C ; shift; done) > "$Out" ; chmod +x "$Out" ; }
+shellarc () { export Out="$1"; if test -e "$Out" ; then echo "Output file $Out exists; I'd rather not overwrite it" ; return; fi; echo "Writing $Out"; (echo '#!/bin/bash' ; while [ "$2" ]; do if echo "$2"|grep / >/dev/null; then echo mkdir -p '"'"$(echo "$2"|sed -e 's,/[^/]*$,,')"'"'; fi; export C=0; while grep EOF$C "$2" >/dev/null; do export C=$[C+1]; done ; echo "cat > \"$2\" <<\"EOF$C\"" ; cat $2 ; echo EOF$C ; shift; done) > "$Out" ; chmod +x "$Out" ; }
 
 # Bonus command 3: pdfmerge, on any machine with qpdf installed (to help with double-sided printing)
 which qpdf >/dev/null 2>/dev/null && pdfmerge () { if test -e merged.pdf; then rm -i merged.pdf; fi && qpdf --empty --pages $(for i in $@; do echo $i 1-z; done) -- merged.pdf && du -h merged.pdf ; }
