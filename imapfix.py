@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.494 (c) 2013-18 Silas S. Brown.  License: GPL"
+"ImapFix v1.495 (c) 2013-19 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1042,23 +1042,42 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         return changed
     cType = message.get_content_type()
     is_html = cType and cType.startswith("text/html")
-    m = message.get_content_charset(None)
-    if not force_change:
+    specified_charset = message.get_content_charset(None)
+    is_unspecified = cType and cType.startswith("text/") and specified_charset==None
+    try: p0 = message.get_payload(decode=True) # in most cases we need it (TODO: in a few small cases we don't, but low-priority as the entire message has probably been loaded into RAM already)
+    except:
+        message['X-ImapFix-Globalise-Charset-Decode-Error'] = str(sys.exc_info()[1])
+        return True
+    if is_unspecified: # can we detect it?
+        if p0.startswith('\xfe\xff'): specified_charset = 'utf-16be'
+        elif p0.startswith('\xff\xfe'): specified_charset = 'utf-16le'
+        elif p0.startswith('\xef\xbb\xbf'): specified_charset = 'utf-8'
+        else:
+            try:
+                import chardet
+                d = chardet.detect(p0)
+                if d['confidence'] > 0.99:
+                    specified_charset = d['encoding']
+            except: pass # no chardet or sthg
+    if not force_change: # should we SET force_change? :
       if 'Content-Transfer-Encoding' in message and not message['Content-Transfer-Encoding']=='quoted-printable': force_change = True # if it's base64, always see if we can change it
-      elif will_use_8bit and m=='utf-8':
+      elif specified_charset=='utf-8':
+       if p0.startswith('\xef\xbb\xbf'): force_change = True # we'll want to remove that "BOM"
+       elif will_use_8bit:
         try:
           if re.search("[^\x00-\x80]",message.get_payload(decode=True)): force_change = True
         except: pass # we would full back to return anyway on the 'problems decoding this message' below
-    if not force_change and m in [None,'us-ascii','utf-8'] and not is_html: return changed # no further conversion required
-    if m in ['gb2312','gbk']: m = 'gb18030'
-    try:
-        p0 = message.get_payload(decode=True)
-        p = p0.decode(m)
-    except: return changed # problems decoding this message
+    if not force_change and specified_charset in [None,'us-ascii','utf-8'] and not is_html: return changed # no further conversion required
+    if specified_charset in ['gb2312','gbk']: specified_charset = 'gb18030'
+    try: p = p0.decode(specified_charset)
+    except:
+        message['X-ImapFix-Globalise-Charset-Error'] = str(sys.exc_info()[1])
+        return True
     if is_html:
         q = '[\'"]' # could use either " or ' quotes
         p = re.sub(r'(?i)<meta\s+http[_-]equiv='+q+r'?content-type'+q+r'?\s+content='+q+'[^\'"]*'+q+r'>','',p) # better remove charset meta tags after we changed the charset (TODO: what if they conflict with the message header anyway?)
         p = re.sub(r'(?i)<meta\s+content='+q+'[^\'"]*'+q+r'\s+http[_-]equiv='+q+r'?content-type'+q+r'?>','',p) # some authoring tools emit the attributes in THIS order
+    if p.startswith(u"\ufeff"): p=p[1:]
     p = p.encode('utf-8')
     if not force_change and p==p0: return changed # didn't fix meta tags or change charset so don't need to re-encode
     if 'Content-Transfer-Encoding' in message:
