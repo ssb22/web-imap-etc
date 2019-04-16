@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.495 (c) 2013-19 Silas S. Brown.  License: GPL"
+"ImapFix v1.496 (c) 2013-19 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1043,7 +1043,11 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
     cType = message.get_content_type()
     is_html = cType and cType.startswith("text/html")
     specified_charset = message.get_content_charset(None)
-    is_unspecified = cType and cType.startswith("text/") and specified_charset==None
+    while specified_charset and specified_charset.startswith("charset="):
+        # bug in some mailers: charset=charset=
+        specified_charset = specified_charset[len("charset="):]
+        force_change = True
+    is_unspecified = cType and cType.startswith("text/") and not specified_charset
     try: p0 = message.get_payload(decode=True) # in most cases we need it (TODO: in a few small cases we don't, but low-priority as the entire message has probably been loaded into RAM already)
     except:
         message['X-ImapFix-Globalise-Charset-Decode-Error'] = str(sys.exc_info()[1])
@@ -1067,7 +1071,8 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         try:
           if re.search("[^\x00-\x80]",message.get_payload(decode=True)): force_change = True
         except: pass # we would full back to return anyway on the 'problems decoding this message' below
-    if not force_change and specified_charset in [None,'us-ascii','utf-8'] and not is_html: return changed # no further conversion required
+    if not specified_charset: return changed # not a lot we can do if we still haven't detected it
+    if not force_change and specified_charset in ['us-ascii','utf-8'] and not is_html: return changed # no further conversion required
     if specified_charset in ['gb2312','gbk']: specified_charset = 'gb18030'
     try: p = p0.decode(specified_charset)
     except:
