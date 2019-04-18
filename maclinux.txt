@@ -211,7 +211,9 @@ halt () { (sleep 0.5 ; osascript -e "tell application \"Finder\" to shut down") 
 poweroff () { halt ; }
 reboot () { (sleep 0.5 ; osascript -e "tell application \"Finder\" to restart") & exit ; }
 logout () { (sleep 0.5 ; osascript -e "tell application \"System Events\" to log out") & exit ; }
-export -f halt poweroff reboot logout
+sleepnow () { (sleep 0.5; pmset sleepnow) & exit ; }
+alias suspend-mac=sleepnow
+export -f halt poweroff reboot logout sleepnow
 # (the "exit"s at the end of the above are so the terminal doesn't stop it with "are you sure", unless there are other terminal sessions)
 
 # Spotlight is required by app-store, e.g. for XCode updates (otherwise can get misleading error messages about account sign-in).  But you might want Spotlight disabled at other times (especially when accessing removable media).
@@ -266,7 +268,7 @@ alias garageband-getMIDI=_garageband_getMIDI
 # ground-bass stuff: GarageBand / Preferences / General: "Cycle Recording (Automatically merge Software Instrument recordings when using the cycle region)", then record, then add a loop with Control / Snap to Grid (Cmd-G) switched OFF, then record again to add layers to the loop.
 
 # Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
-if [ "$SSH_CLIENT" ]; then
+if [ ! "$SSH_CLIENT" ]; then
   # simpler prompt for a local Mac (hostname can be a bit long)
   export PS1='mac:\w\$ '
 elif test "$(hostname -s)" == mac || test "$(hostname -s)" == unknown; then
