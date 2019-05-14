@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.46, Silas S. Brown 2012-14,2016,2019 - public domain (no warranty)
+# Version 1.47, Silas S. Brown 2012-14,2016,2019 - public domain (no warranty)
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile - for example:
 # curl http://people.ds.cam.ac.uk/ssb22/setup/maclinux.txt >> ~/.bash_profile
@@ -207,10 +207,11 @@ stop () { osascript -e "tell application \"iTunes\" to stop" ; }
 export -f pause stop
 
 # we can also do the following without sudo, as long as a desktop session is running:
-halt () { (sleep 0.5 ; osascript -e "tell application \"Finder\" to shut down") & exit ; }
+halt () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to shut down") & ) ; exit ; }
+# (if the "exit" warns about stopped jobs, we won't do the shutdown)
 poweroff () { halt ; }
-reboot () { (sleep 0.5 ; osascript -e "tell application \"Finder\" to restart") & exit ; }
-logout () { (sleep 0.5 ; osascript -e "tell application \"System Events\" to log out") & exit ; }
+reboot () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to restart") & ) ; exit ; }
+logout () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell application \"System Events\" to log out") & ) ; exit ; }
 sleepnow () { (sleep 0.5; pmset sleepnow) & exit ; }
 alias suspend-mac=sleepnow
 export -f halt poweroff reboot logout sleepnow
