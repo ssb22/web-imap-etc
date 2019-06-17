@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.496 (c) 2013-19 Silas S. Brown.  License: GPL"
+"ImapFix v1.497 (c) 2013-19 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1052,7 +1052,12 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
     except:
         message['X-ImapFix-Globalise-Charset-Decode-Error'] = str(sys.exc_info()[1])
         return True
-    if is_unspecified: # can we detect it?
+    if specified_charset=='us-ascii' and re.search('[\x80-\xff]',p0): # mislabelled ASCII
+        force_change = is_unspecified = True
+        specified_charset = None
+        message.set_payload(p0,None)
+        changed = True
+    if is_unspecified:
         if p0.startswith('\xfe\xff'): specified_charset = 'utf-16be'
         elif p0.startswith('\xff\xfe'): specified_charset = 'utf-16le'
         elif p0.startswith('\xef\xbb\xbf'): specified_charset = 'utf-8'
@@ -1060,8 +1065,12 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
             try:
                 import chardet
                 d = chardet.detect(p0)
-                if d['confidence'] > 0.99:
+                threshold = 0.99
+                if d['confidence'] >= threshold:
                     specified_charset = d['encoding']
+                else:
+                    message['X-ImapFix-Chardet']=d['encoding']+"; confidence="+str(d['confidence'])+" does not meet threshold "+str(threshold)+" so not setting charset"
+                    changed = True
             except: pass # no chardet or sthg
     if not force_change: # should we SET force_change? :
       if 'Content-Transfer-Encoding' in message and not message['Content-Transfer-Encoding']=='quoted-printable': force_change = True # if it's base64, always see if we can change it
@@ -1071,19 +1080,23 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         try:
           if re.search("[^\x00-\x80]",message.get_payload(decode=True)): force_change = True
         except: pass # we would full back to return anyway on the 'problems decoding this message' below
-    if not specified_charset: return changed # not a lot we can do if we still haven't detected it
-    if not force_change and specified_charset in ['us-ascii','utf-8'] and not is_html: return changed # no further conversion required
-    if specified_charset in ['gb2312','gbk']: specified_charset = 'gb18030'
-    try: p = p0.decode(specified_charset)
-    except:
+    if specified_charset:
+      if not force_change and specified_charset in ['us-ascii','utf-8'] and not is_html: return changed # no further conversion required
+      if specified_charset in ['gb2312','gbk']: specified_charset = 'gb18030'
+      try: p = p0.decode(specified_charset)
+      except:
         message['X-ImapFix-Globalise-Charset-Error'] = str(sys.exc_info()[1])
         return True
-    if is_html:
+      if is_html:
         q = '[\'"]' # could use either " or ' quotes
         p = re.sub(r'(?i)<meta\s+http[_-]equiv='+q+r'?content-type'+q+r'?\s+content='+q+'[^\'"]*'+q+r'>','',p) # better remove charset meta tags after we changed the charset (TODO: what if they conflict with the message header anyway?)
         p = re.sub(r'(?i)<meta\s+content='+q+'[^\'"]*'+q+r'\s+http[_-]equiv='+q+r'?content-type'+q+r'?>','',p) # some authoring tools emit the attributes in THIS order
-    if p.startswith(u"\ufeff"): p=p[1:]
-    p = p.encode('utf-8')
+      if p.startswith(u"\ufeff"): p=p[1:]
+      specified_charset = 'utf-8'
+      p = p.encode(specified_charset)
+    else: # no specified_charset and we couldn't detect
+      p = p0
+      specified_charset = 'x-unknown' # contrary to the documentation, at least some versions of the library add 'us-ascii' if set to None
     if not force_change and p==p0: return changed # didn't fix meta tags or change charset so don't need to re-encode
     if 'Content-Transfer-Encoding' in message:
         isQP = (message['Content-Transfer-Encoding']=='quoted-printable')
@@ -1095,7 +1108,7 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         isQP = (len(pp) <= b64len or (will_use_8bit and len(quopri_to_u8_8bitOnly(pp)) <= b64len)) # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
     if isQP: email_u8_quopri()
     else: email_u8_b64()
-    message.set_payload(p,'utf-8')
+    message.set_payload(p,specified_charset)
     if isQP: email_u8_quopri()
     else: email_u8_b64() # again, just in case
     return True # charset changed
