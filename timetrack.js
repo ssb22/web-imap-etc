@@ -45,7 +45,7 @@ function doNow() {
 
 function parseTime(hmStr) {
     if (hmStr.length <= 2) return [false,Number(hmStr)];
-    else return [Number(hmStr.slice(0,-2)),Number(hmStr.slice(-2))];
+    else return [Number(hmStr.slice(0,-2).replace(/[:.]/g,'')),Number(hmStr.slice(-2))];
 }
 
 function pad(n, width) { n+=''; if (n.length >= width) return n; return new Array(width-n.length+1).join('0') + n; }
