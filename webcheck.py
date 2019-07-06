@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.35 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.36 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -133,8 +133,9 @@ class HTMLStrings(HTMLParser.HTMLParser):
     def __init__(self):
         HTMLParser.HTMLParser.__init__(self)
         self.theTxt = []
+        self.omit = False
     def handle_data(self, data):
-        if not data: return
+        if self.omit or not data: return
         elif not data.strip(): self.ensure(' ')
         else:
           d2 = data.lstrip()
@@ -145,8 +146,12 @@ class HTMLStrings(HTMLParser.HTMLParser):
         self.theTxt.append(thing)
     def handle_starttag(self, tag, attrs):
         if tag in "p br div h1 h2 h3 h4 h5 h6 th tr td table".split(): self.ensure(' ') # space rather than newline because we might want to watch for a string that goes across headings etc
+        elif tag in "script style": self.omit=True
+    def handle_endtag(self, tag):
+        if tag in "script style": self.omit=False
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag,attrs)
+        self.handle_endtag(tag)
     def unescape(self,attr): return attr # as we don't use attrs above, no point trying to unescape them and possibly falling over if something's malformed
     def handle_charref(self,ref):
         if ref.startswith('x'): self.handle_data(unichr(int(ref[1:],16)).encode('utf-8'))
