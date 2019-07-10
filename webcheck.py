@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.36 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.37 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -428,7 +428,7 @@ def check(text,content,url,errmsg):
         if myFind(text[1:],content):
             sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
     elif not myFind(text,content): # alert if DOESN'T contain
-        sys.stdout.write(url+" no longer contains "+text+comment+errmsg+"\n")
+        sys.stdout.write(linkify(url)+" no longer contains "+text+comment+errmsg+"\n")
         if '??show?' in comment: sys.stdout.write(content+'\n') # TODO: document this (for debugging cases where the text shown in Lynx is not the text shown to Webcheck, and Webcheck says "no longer contains" when it still does)
 
 def parseRSS(url,content,comment):
@@ -477,12 +477,13 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     previous_timestamps[k] = True
     if txt: txt += '\n'
     txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is (in RSS it would have originated with a double-'escaped' < within 'escaped' html markup)
-    newItems.append(title+'\n'+txt+link.replace("(","%28").replace(")","%29")) # .replace is for email clients etc that terminate URLs at parens
+    newItems.append(title+'\n'+txt+linkify(link))
   if not pKeep: return # if the feed completely failed to fetch, don't erase what we have
   for k in previous_timestamps.keys():
     if k[:2]==(url,'seenItem') and not k in pKeep:
       del previous_timestamps[k] # dropped from the feed
   if newItems: sys.stdout.write(str(len(newItems))+" new "+itemType+" items in "+url+paren(comment)+' :\n'+'\n---\n'.join(n.strip() for n in newItems).encode('utf-8')+'\n\n')
+def linkify(link): return link.replace("(","%28").replace(")","%29") # for email clients etc that terminate URLs at parens
 
 def extract(url,content,startEndMarkers,comment):
   assert len(startEndMarkers)==2, "Should have exactly one '...' between the braces when extracting items"
