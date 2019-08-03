@@ -44,8 +44,15 @@ function doNow() {
 }
 
 function parseTime(hmStr) {
-    if (hmStr.length <= 2) return [false,Number(hmStr)];
-    else return [Number(hmStr.slice(0,-2).replace(/[:.]/g,'')),Number(hmStr.slice(-2))];
+    if (hmStr.length <= 2) {
+        var n=Number(hmStr);
+        if(isNaN(n)) return "E: cannot convert "+hmStr+" to number";
+        return [false,n];
+    } else {
+        var h=Number(hmStr.slice(0,-2).replace(/[:.]/g,'')),m=Number(hmStr.slice(-2));
+        if(isNaN(h) || isNaN(m)) return "E: cannot parse time "+hmStr;
+        return [h,m];
+    }
 }
 
 function pad(n, width) { n+=''; if (n.length >= width) return n; return new Array(width-n.length+1).join('0') + n; }
@@ -53,8 +60,10 @@ function pad(n, width) { n+=''; if (n.length >= width) return n; return new Arra
 function parseTimeRelative(hmStr1,hmStr2) { // parse hmStr2 relative to hmStr1
     if (hmStr2.length > 2) return parseTime(hmStr2);
     var hm = parseTime(hmStr1);
+    if(typeof hm=='string') return hm;
     if (hmStr2.length==1) hmStr2=pad(hm[1],2).charAt(0)+hmStr2;
     var m2 = Number(hmStr2);
+    if(isNaN(m2)) return "E: cannot parse finish time "+hmStr2;
     if (m2<hm[1]) return "E: minute "+m2+" is less than minute "+hm[1];
     return [hm[0],m2];
 }
@@ -64,7 +73,7 @@ function curTime(oldTime) {
    var h=date.getHours(),m=date.getMinutes();
    if (h>12) h -= 12;
    else if (h==0) h = 12;
-   if (oldTime) hhmm = parseTime(oldTime);
+   if (oldTime) { hhmm = parseTime(oldTime); if(typeof hhmm=='string') hhmm = [-1,-1]; }
    else hhmm = [-1,-1];
    if (hhmm[0]==h && hhmm[1]==m) { // can't have 0min, minimum 1min
         m += 1;
@@ -167,6 +176,7 @@ function addup(s) {
             proj = lastProj; // TODO: even if we DIDN'T add the space?
             if (!proj.startedAt) return "E: Don't know when "+w+" started";
             oldHM = parseTime(proj.startedAt);
+            if(typeof oldHM=='string') return oldHM;
             hm = parseTimeRelative(proj.startedAt,w.slice(1));
             if(typeof hm=='string') return hm;
             var oldH=oldHM[0],oldM=oldHM[1],h=hm[0],m=hm[1];
