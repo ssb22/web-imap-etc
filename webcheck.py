@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.38 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.39 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -314,8 +314,11 @@ def run_webdriver_inner(actionList,browser):
     browser.implicitly_wait(30)
     def findElem(spec):
         if spec.startswith('#'):
-            return browser.find_element_by_id(spec[1:])
-        # TODO: other patterns?
+            try: return browser.find_element_by_id(spec[1:])
+            except: return browser.find_element_by_name(spec[1:])
+        elif spec.startswith('.'):
+          if '#' in spec: return browser.find_elements_by_class_name(spec[1:spec.index('#')])[int(spec.split('#')[1])-1] # TODO: document this: .class#1, .class#2 etc
+          else: return browser.find_element_by_class_name(spec[1:])
         else: return browser.find_element_by_link_text(spec)
     def getSrc():
       def f(b,switchBack=[]):
