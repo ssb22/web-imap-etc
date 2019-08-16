@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.39 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.391 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -345,8 +345,15 @@ def run_webdriver_inner(actionList,browser):
         elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
             start = a[1:a.rindex('/')]
             delayAfter = int(a[a.rindex('/')+1:])
-            l = re.findall(' [iI][dD] *="('+re.escape(start)+'[^"]*)',getSrc()) + re.findall(' [iI][dD] *=('+re.escape(start)+'[^"> ]*)',getSrc())
-            for m in l:
+            if start.startswith('.'): # TODO: document this: /.class/delay match an exact class rather than the start of an ID
+              for m in browser.find_elements_by_class_name(start[1:]):
+                m.click()
+                if sys.stderr.isatty(): sys.stderr.write('*') # webdriver's '.' for click-multiple
+                time.sleep(delayAfter)
+                snippets.append(getSrc())
+            else:
+             l = re.findall(' [iI][dD] *="('+re.escape(start)+'[^"]*)',getSrc()) + re.findall(' [iI][dD] *=('+re.escape(start)+'[^"> ]*)',getSrc())
+             for m in l:
               browser.find_element_by_id(m).click()
               if sys.stderr.isatty(): sys.stderr.write('*') # webdriver's '.' for click-multiple
               time.sleep(delayAfter)
