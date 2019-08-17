@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.391 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.392 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -317,7 +317,7 @@ def run_webdriver_inner(actionList,browser):
             try: return browser.find_element_by_id(spec[1:])
             except: return browser.find_element_by_name(spec[1:])
         elif spec.startswith('.'):
-          if '#' in spec: return browser.find_elements_by_class_name(spec[1:spec.index('#')])[int(spec.split('#')[1])-1] # TODO: document this: .class#1, .class#2 etc
+          if '#' in spec: return browser.find_elements_by_class_name(spec[1:spec.index('#')])[int(spec.split('#')[1])-1] # TODO: document this: .class#1, .class#2 etc to choose the Nth element of that class
           else: return browser.find_element_by_class_name(spec[1:])
         else: return browser.find_element_by_link_text(spec)
     def getSrc():
@@ -345,12 +345,19 @@ def run_webdriver_inner(actionList,browser):
         elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
             start = a[1:a.rindex('/')]
             delayAfter = int(a[a.rindex('/')+1:])
-            if start.startswith('.'): # TODO: document this: /.class/delay match an exact class rather than the start of an ID
-              for m in browser.find_elements_by_class_name(start[1:]):
+            if start.startswith('.'): # TODO: document this: /.class/delay to match an exact class rather than the start of an ID, also /.class.closeClass/delay if it pops up a 'modal' box which then needs to be dismissed before clicking the next one
+              startClass = start[1:]
+              if '.' in startClass: startClass,closeClass = startClass.split('.')
+              else: closeClass = None
+              for m in browser.find_elements_by_class_name(startClass):
                 m.click()
                 if sys.stderr.isatty(): sys.stderr.write('*') # webdriver's '.' for click-multiple
                 time.sleep(delayAfter)
                 snippets.append(getSrc())
+                if closeClass:
+                  browser.find_element_by_class_name(closeClass).click()
+                  if sys.stderr.isatty(): sys.stderr.write('x')
+                  time.sleep(delayAfter)
             else:
              l = re.findall(' [iI][dD] *="('+re.escape(start)+'[^"]*)',getSrc()) + re.findall(' [iI][dD] *=('+re.escape(start)+'[^"> ]*)',getSrc())
              for m in l:
