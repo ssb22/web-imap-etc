@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.392 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.393 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -311,7 +311,7 @@ def run_webdriver(actionList):
 
 def run_webdriver_inner(actionList,browser):
     browser.set_window_size(1024, 768)
-    browser.implicitly_wait(30)
+    browser.implicitly_wait(2) # we have our own 'wait for text' and delay values, so the implicit wait does not have to be too high
     def findElem(spec):
         if spec.startswith('#'):
             try: return browser.find_element_by_id(spec[1:])
