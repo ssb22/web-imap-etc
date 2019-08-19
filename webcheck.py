@@ -350,12 +350,15 @@ def run_webdriver_inner(actionList,browser):
               if '.' in startClass: startClass,closeClass = startClass.split('.')
               else: closeClass = None
               for m in browser.find_elements_by_class_name(startClass):
-                m.click()
+                try: m.click()
+                except: continue # can't click on that one for some reason (don't propagate exception here because the partial output will likely help diagnose)
                 if sys.stderr.isatty(): sys.stderr.write('*') # webdriver's '.' for click-multiple
                 time.sleep(delayAfter)
                 snippets.append(getSrc())
                 if closeClass:
-                  browser.find_element_by_class_name(closeClass).click()
+                  for c in browser.find_elements_by_class_name(closeClass):
+                    try: c.click()
+                    except: pass # maybe it wasn't that one
                   if sys.stderr.isatty(): sys.stderr.write('x')
                   time.sleep(delayAfter)
             else:
