@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.393 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.394 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -258,6 +258,14 @@ def worker_thread(*args):
                   except Exception, e: pass # error with default UA as well, so don't flag this one as a Lynx-test failure
                 else: print "Info:",url,"got",type(e),"(check the server exists at all?)"
               textContent = content
+          elif url.startswith("head://"):
+              r=urllib2.Request(url[len("head://"):])
+              r.get_method=lambda:'HEAD'
+              for h in extraHeaders: r.add_header(*tuple(x.strip() for x in h.split(':',1)))
+              if not "User-agent" in extraHeaders: r.add_header('User-agent',default_ua)
+              u=None
+              if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=str(urllib2.urlopen(r,context=ssl._create_unverified_context()).info())
+              else: content=textContent=str(urllib2.urlopen(r).info())
           else: # normal URL
               if opener==None: opener = default_opener()
               u,content = tryRead(url,opener,extraHeaders,all(t and not t.startswith('#') for _,t in daysTextList)) # don't monitorError for RSS feeds (don't try to RSS-parse an error message)
