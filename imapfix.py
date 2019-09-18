@@ -8,6 +8,13 @@
 hostname = "imap4-ssl.example.org" # or host:port
 username = "me"
 password = "xxxxxxxx"
+# (If you are likely to be editing configuration rules when
+# others can see your screen, you might like to store the
+# password in a separate file and do, for example,
+#    password = open(".imapfix-pass").read().strip()
+# instead, so that it won't be shown on-screen when you're
+# editing other things.)
+
 login_retry = False # True = don't stop on login failure
 # (useful if your network connection is not always on)
 
