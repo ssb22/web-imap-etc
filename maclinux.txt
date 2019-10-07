@@ -3,7 +3,7 @@
 # Version 1.47, Silas S. Brown 2012-14,2016,2019 - public domain (no warranty)
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile - for example:
-# curl http://people.ds.cam.ac.uk/ssb22/setup/maclinux.txt >> ~/.bash_profile
+# curl http://ssb22.user.srcf.net/setup/maclinux.txt >> ~/.bash_profile
 # or if you prefer you can keep it in a separate file
 # and source it from your .bashrc and/or .bash_profile
 
@@ -260,9 +260,14 @@ alias make-ramdisk=_make_ramdisk
 # Mac.  That way it's less likely you'll end up with a dmg
 # that the Linux kernel refuses to mount for some reason.
 
-# Here's a function to read MIDI data out of saved GarageBand loops.
+# Below is a function to read MIDI data out of saved GarageBand loops.
 # It's better to download the GPL MIDI application "Aria Maestosa",
-# but if for some reason you're stuck with GarageBand:
+# but if for some reason you're stuck with GarageBand, you can use this.
+
+# TODO: In some circumstances Aria Maestosa 1.4.10 (latest version available on MacOS 10.7) playback to external MIDI somehow configures it to transpose down a tone.
+# This state can be reset by opening an existing MIDI file in MuseScore (2.3.2, last one available for MacOS 10.7 as 3.x is 10.10+) but this has only step-time input.
+# GarageBand (at least on 10.7) has no option to play back to external MIDI, so computer's speakers need to be matched to keyboard's volume.
+
 _garageband_getMIDI() { cd ~/Library/Audio/"Apple Loops/User Loops/"SingleFiles && for N in *.aif; do if test -e "$N"; then mv -iv "$N" /tmp && export M=/tmp/"$(echo "$N"|sed -e s/aif$/mid/)" && python -c 'import sys;d=sys.stdin.read();m=d[d.index("MThd"):];sys.stdout.write(m[:m.index("CHS")])' < /tmp/"$N" > "$M" && du -h "$M"; fi; done; }
 alias garageband-getMIDI=_garageband_getMIDI
 # GarageBand '11 6.0.5 on MacOS 10.7.5: new track (Cmd-Shift-N or bottom-left "+" icon), record (if all red & doesn't go green, may hv to reset the midi connection esp if going via a hub), if multi-track then join them (Edit / Select All (cmd-A), Edit / Join (cmd-J)), then to save, do Edit / Add to loop library, then run garageband-getMIDI.
