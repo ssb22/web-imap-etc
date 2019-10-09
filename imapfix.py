@@ -1488,7 +1488,7 @@ def multinote(filelist,to_real_inbox,use_filename=False):
                 subj = f
                 if os.sep in subj: subj=subj[subj.rindex(os.sep)+1:]
             else: subj = None
-            do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj) ; debug("Uploaded "+f)
+            if do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj): debug("Uploaded "+f)
         tryRm(f)
 
 def tryRm(f):
@@ -1499,7 +1499,7 @@ def do_multinote(body,theDate,to_real_inbox,subject):
     body = re.sub("\r\n?","\n",body.strip())
     if not body and not subject:
         debug("Not creating message from blank file")
-        return
+        return False
     if not subject: subject,body = (body+"\n").split("\n",1)
     if to_real_inbox: box = ""
     else:
@@ -1507,6 +1507,7 @@ def do_multinote(body,theDate,to_real_inbox,subject):
         if newSubj: subject = newSubj
     if box==False: box=filtered_inbox
     if not box==None: save_to(box,"From: "+imapfix_name+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
+    return True
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
 if quiet==2: quiet = not isatty(sys.stdout)
