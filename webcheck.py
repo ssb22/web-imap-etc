@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.394 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.395 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -413,6 +413,7 @@ def tryRead(url,opener,extraHeaders,monitorError=True):
     return ret
 
 def tryRead0(url,opener,monitorError):
+    url = re.sub("[^!-~]+",lambda m:urllib2.quote(m.group()),url) # it seems some versions of the library do this automatically but others don't
     u = None
     try:
         u = opener.open(url)
@@ -420,7 +421,7 @@ def tryRead0(url,opener,monitorError):
     except urllib2.HTTPError, e:
         if e.code==304: return None,None # not modified
         elif monitorError: return None,tryGzip(e.fp.read()) # as might want to monitor some phrase on a 404 page
-        sys.stdout.write("Error "+str(e.code)+" retrieving "+url+"\n") ; return None,None
+        sys.stdout.write("Error "+str(e.code)+" retrieving "+linkify(url)+"\n") ; return None,None
     except: # try it with a fresh opener and no headers
         try:
             if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())).open(url)
@@ -428,12 +429,12 @@ def tryRead0(url,opener,monitorError):
             return u,tryGzip(u.read())
         except urllib2.HTTPError, e:
           if monitorError: return u,tryGzip(e.fp.read())
-          sys.stdout.write("Error "+str(e.code)+" retrieving "+url+"\n") ; return None,None
+          sys.stdout.write("Error "+str(e.code)+" retrieving "+linkify(url)+"\n") ; return None,None
         except urllib2.URLError, e: # don't need full traceback for URLError, just the message itself
-            sys.stdout.write("Problem retrieving "+url+"\n"+str(e)+"\n")
+            sys.stdout.write("Problem retrieving "+linkify(url)+"\n"+str(e)+"\n")
             return None,None
         except: # full traceback by default
-            sys.stdout.write("Problem retrieving "+url+"\n"+traceback.format_exc())
+            sys.stdout.write("Problem retrieving "+linkify(url)+"\n"+traceback.format_exc())
             return None,None
 
 def tryGzip(t):

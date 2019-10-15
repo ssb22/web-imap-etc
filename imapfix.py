@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"ImapFix v1.497 (c) 2013-19 Silas S. Brown.  License: GPL"
+"ImapFix v1.498 (c) 2013-19 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1031,7 +1031,7 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         Returns True if any changes were made.
         (Use force_change if you need to ensure encoding
         options are set correctly in case you want to do
-        set_payload yourself to change the text.)"""
+        setPayload yourself to change the text.)"""
     changed = False
     for line in ["From","To","Cc","Subject","Reply-To"]:
         if not line in message: continue
@@ -1105,22 +1105,21 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
       p = p0
       specified_charset = 'x-unknown' # contrary to the documentation, at least some versions of the library add 'us-ascii' if set to None
     if not force_change and p==p0: return changed # didn't fix meta tags or change charset so don't need to re-encode
+    return setPayload(message,p,specified_charset)
+def setPayload(message,p,charset):
     if 'Content-Transfer-Encoding' in message:
         isQP = (message['Content-Transfer-Encoding']=='quoted-printable')
         del message['Content-Transfer-Encoding']
     else: isQP = False
-    if not isQP:
-        b64len = base64.encodestring(p)
+    if not isQP: # not already decided on quoted-printable; SHOULD we?
+        b64len = len(base64.encodestring(p))
         pp = quopri.encodestring(p)
         isQP = (len(pp) <= b64len or (will_use_8bit and len(quopri_to_u8_8bitOnly(pp)) <= b64len)) # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
-    if isQP: email_u8_quopri()
-    else: email_u8_b64()
-    message.set_payload(p,specified_charset)
-    if isQP: email_u8_quopri()
-    else: email_u8_b64() # again, just in case
-    return True # charset changed
-def email_u8_quopri(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.QP,'utf-8')
-def email_u8_b64(): email.charset.add_charset('utf-8',email.charset.SHORTEST,email.charset.BASE64,'utf-8')
+    for i in [1,2]: # before AND after, just in case
+        if isQP: email.charset.add_charset(charset,email.charset.SHORTEST,email.charset.QP,charset)
+        else: email.charset.add_charset(charset,email.charset.SHORTEST,email.charset.BASE64,charset)
+        if i==2: return True
+        message.set_payload(p,charset)
 def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by default).  Must ensure any header blocks in s are not touched!  (or imap server may substitute Xs etc)
     if re.search('[\x80-\xff]',s): return s # message already contains 8-bit stuff: we probably shouldn't redo this in case of coincidental UTF-8 quoted-printable in a binary attachment (TODO: what if such an attachment happens to lack any bytes with the high bit set)
     avoid = set()
@@ -1315,12 +1314,10 @@ def do_postponed_foldercheck(dayToCheck="today"):
                     if message["Content-Type"].startswith("text/html"): newPara = "<p>" # TODO: might end up being before the HTML tag; depends which browser you use
                 if 'Content-Disposition' in message and message['Content-Disposition'].startswith('attachment'): return False
                 changed = globalise_charsets(message, imap_8bit) # just in case
-                p = message.get_payload(decode=True)
                 dateIntro = imapfix_name+": original Date: "
-                if p.startswith(dateIntro): return changed
+                if message.get_payload(decode=True).startswith(dateIntro): return changed
                 if not changed: globalise_charsets(message, imap_8bit, True) # ensure set up for:
-                message.set_payload(dateIntro + old_date + newPara + "\n\n" + p,'utf-8')
-                email_u8_quopri() ; return True
+                return setPayload(message,dateIntro + old_date + newPara + "\n\n" + message.get_payload(decode=True),'utf-8') # Fixed in v1.498: postponing a message previously caused quopri to be decoded but still declared, invalidating URLs that had = followed by hex code in them, breaking links on commercial mailing-list trackers like MailChimp
             if 'From' in msg and msg['From']==imapfix_name: pass # no need to add old date if it's a --note or --multinote
             elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
             else: walk_msg(msg,addOldDate)
