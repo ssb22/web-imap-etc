@@ -1105,8 +1105,8 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
       p = p0
       specified_charset = 'x-unknown' # contrary to the documentation, at least some versions of the library add 'us-ascii' if set to None
     if not force_change and p==p0: return changed # didn't fix meta tags or change charset so don't need to re-encode
-    return setPayload(message,p,specified_charset)
-def setPayload(message,p,charset):
+    return setPayload(message,p,specified_charset,will_use_8bit)
+def setPayload(message,p,charset,will_use_8bit=False):
     if 'Content-Transfer-Encoding' in message:
         isQP = (message['Content-Transfer-Encoding']=='quoted-printable')
         del message['Content-Transfer-Encoding']
