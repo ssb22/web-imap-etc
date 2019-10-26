@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# webcheck.py v1.395 (c) 2014-19 Silas S. Brown.
+# webcheck.py v1.396 (c) 2014-19 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -39,6 +39,7 @@ import htmlentitydefs, traceback, HTMLParser, urllib2, urlparse, time, pickle, g
 try: import ssl
 except: # you won't be able to check https:// URLs
   ssl = 0 ; verify_SSL_certificates = False
+if '--single-thread' in sys.argv: max_threads = 1 # use --single-thread if something gets stuck and you need Ctrl-C to generate a meaningful traceback
 if max_threads > 1: import thread
 
 default_filename = "webcheck" + os.extsep + "list"
@@ -223,8 +224,8 @@ def worker_thread(*args):
               url = url[5:].split(chr(0),1)[0] # for display
           elif url.startswith("up://"): # just test if server is up, and no error if not
               try:
-                if sys.version_info >= (2,7,9) and not verify_SSL_certificates: urllib2.urlopen(url[5:],context=ssl._create_unverified_context())
-                else: urllib2.urlopen(url[5:])
+                if sys.version_info >= (2,7,9) and not verify_SSL_certificates: urllib2.urlopen(url[5:],context=ssl._create_unverified_context(),timeout=60)
+                else: urllib2.urlopen(url[5:],timeout=60)
                 u,content = None,"yes"
               except: u,content = None,"no"
               textContent = content
@@ -248,15 +249,18 @@ def worker_thread(*args):
               r.get_method=lambda:'HEAD'
               r.add_header('User-agent','Lynx/2.8.9dev.4 libwww-FM/2.14')
               u,content = None,"no" # not blocking Lynx?
-              try: urllib2.urlopen(r)
+              try: urllib2.urlopen(r,timeout=60)
               except Exception, e:
-                if type(e) in [urllib2.HTTPError,socket.error]: # MIGHT be blocking Lynx, check:
+                if type(e) in [urllib2.HTTPError,socket.error,ssl.SSLError]: # MIGHT be blocking Lynx (SSLError can be raised if hit the timeout), check:
                   r.add_header('User-agent',default_ua)
                   try:
-                    urllib2.urlopen(r)
+                    urllib2.urlopen(r,timeout=60)
                     content = "yes" # error ONLY with Lynx, not with default UA
                   except Exception, e: pass # error with default UA as well, so don't flag this one as a Lynx-test failure
-                else: print "Info:",url,"got",type(e),"(check the server exists at all?)"
+                else:
+                  print "Info:",url,"got",type(e),"(check the server exists at all?)"
+                  try: print e.message
+                  except: pass
               textContent = content
           elif url.startswith("head://"):
               r=urllib2.Request(url[len("head://"):])
@@ -264,8 +268,8 @@ def worker_thread(*args):
               for h in extraHeaders: r.add_header(*tuple(x.strip() for x in h.split(':',1)))
               if not "User-agent" in extraHeaders: r.add_header('User-agent',default_ua)
               u=None
-              if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=str(urllib2.urlopen(r,context=ssl._create_unverified_context()).info())
-              else: content=textContent=str(urllib2.urlopen(r).info())
+              if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=str(urllib2.urlopen(r,context=ssl._create_unverified_context(),timeout=60).info())
+              else: content=textContent=str(urllib2.urlopen(r,timeout=60).info())
           else: # normal URL
               if opener==None: opener = default_opener()
               u,content = tryRead(url,opener,extraHeaders,all(t and not t.startswith('#') for _,t in daysTextList)) # don't monitorError for RSS feeds (don't try to RSS-parse an error message)
@@ -416,7 +420,7 @@ def tryRead0(url,opener,monitorError):
     url = re.sub("[^!-~]+",lambda m:urllib2.quote(m.group()),url) # it seems some versions of the library do this automatically but others don't
     u = None
     try:
-        u = opener.open(url)
+        u = opener.open(url,timeout=60)
         return u,tryGzip(u.read())
     except urllib2.HTTPError, e:
         if e.code==304: return None,None # not modified
@@ -424,14 +428,17 @@ def tryRead0(url,opener,monitorError):
         sys.stdout.write("Error "+str(e.code)+" retrieving "+linkify(url)+"\n") ; return None,None
     except: # try it with a fresh opener and no headers
         try:
-            if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())).open(url)
-            else: u = urllib2.build_opener(urllib2.HTTPCookieProcessor()).open(url)
+            if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = urllib2.build_opener(urllib2.HTTPCookieProcessor(),urllib2.HTTPSHandler(context=ssl._create_unverified_context())).open(url,timeout=60)
+            else: u = urllib2.build_opener(urllib2.HTTPCookieProcessor()).open(url,timeout=60)
             return u,tryGzip(u.read())
         except urllib2.HTTPError, e:
           if monitorError: return u,tryGzip(e.fp.read())
           sys.stdout.write("Error "+str(e.code)+" retrieving "+linkify(url)+"\n") ; return None,None
         except urllib2.URLError, e: # don't need full traceback for URLError, just the message itself
             sys.stdout.write("Problem retrieving "+linkify(url)+"\n"+str(e)+"\n")
+            return None,None
+        except socket.timeout:
+            sys.stdout.write("Timed out retrieving "+linkify(url)+"\n"+str(e)+"\n")
             return None,None
         except: # full traceback by default
             sys.stdout.write("Problem retrieving "+linkify(url)+"\n"+traceback.format_exc())
