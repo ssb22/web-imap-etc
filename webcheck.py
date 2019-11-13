@@ -109,11 +109,7 @@ def read_input():
       else: url, text = lSplit
       mainDomain = '.'.join(urlparse.urlparse(url).netloc.rsplit('.',2)[-2:])
       if extraHeaders: url += '\n'+'\n'.join(extraHeaders)
-    if not mainDomain in ret:
-        ret[mainDomain] = {}
-    if not url in ret[mainDomain]:
-        ret[mainDomain][url] = []
-    ret[mainDomain][url].append((days,text))
+    ret.setdefault(mainDomain,{}).setdefault(url,[]).append((days,text))
   return ret
 
 def balanceBrackets(wordList):
