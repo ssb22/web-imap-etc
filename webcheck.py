@@ -434,7 +434,7 @@ def tryRead0(url,opener,monitorError):
             sys.stdout.write("Problem retrieving "+linkify(url)+"\n"+str(e)+"\n")
             return None,None
         except socket.timeout:
-            sys.stdout.write("Timed out retrieving "+linkify(url)+"\n"+str(e)+"\n")
+            sys.stdout.write("Timed out retrieving "+linkify(url)+"\n")
             return None,None
         except: # full traceback by default
             sys.stdout.write("Problem retrieving "+linkify(url)+"\n"+traceback.format_exc())
