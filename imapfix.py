@@ -1,6 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
+# (Requires Python 2.x, not 3; search for "3.3+" in comment
+# below to see how awkward a forward-port would be)
 
-"ImapFix v1.498 (c) 2013-19 Silas S. Brown.  License: GPL"
+"ImapFix v1.4981 (c) 2013-20 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -419,18 +421,21 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 
 from imapfix_config import *
+import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback
+if not sys.version_info[0]==2:
+    print ("ERROR: ImapFix is a Python 2 program and should be run with 'python2'.\nIt needs major revision for Python 3's version of the email library.\nTry compiling Python 2.7 in your home directory if it's no longer installed on your system.")
+    # In particular, Python 3.3+ revised the Message class into an EmailMessage class (with Message as a compatibility option), need to use as_bytes rather than as_string; set_payload available only in compatibility mode and works in Python3 Unicode-strings so we'd need to figure out how to handle other charsets including invalid coding.
+    # That's on top of the usual 'make sure all our code works whether or not type("")==type(u"")' issue.
+    sys.exit(1)
+from email import encoders
+from cStringIO import StringIO
 if poll_interval=="idle":
     import imaplib2 as imaplib
     assert not logout_before_sleep, "Can't logout_before_sleep when poll_interval==\"idle\""
-else:
-    import imaplib
+else: import imaplib
 assert not secondary_imap_delay=="idle", "'idle' polling not implemented for secondary"
 
 if filtered_inbox==None: spamprobe_command = None
-
-import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback
-from email import encoders
-from cStringIO import StringIO
 
 if compression=="bz2":
     import bz2
@@ -445,7 +450,7 @@ if image_size:
     import imghdr
 
 def debug(msg):
-    if not quiet: print msg
+    if not quiet: print (msg)
     
 def check_ok(r):
     "Checks that the return value of an IMAP call 'r' is OK, raises exception if not"
@@ -775,10 +780,10 @@ def fix_archives_written_by_imapfix_v1_308():
                 r.append(l2) ; changed = True ; continue
           r.append(l)
         if changed:
-          print "Fixing",f
+          print ("Fixing "+f)
           if f.endswith(compression_ext): open_compressed(f[:-len(compression_ext)],'wb').write(''.join(r))
           else: open(f,'wb').write(''.join(r))
-        else: print "No need to fix",f
+        else: print ("No need to fix "+f)
 
 def get_attachments(msg):
     if msg.is_multipart():
@@ -1512,10 +1517,10 @@ if quiet==2: quiet = not isatty(sys.stdout)
 def do_delete(foldername):
     foldername = foldername.strip()
     if not foldername:
-        print "No folder name specified"
+        print ("No folder name specified")
         return
     make_sure_logged_in()
-    print "Deleting folder "+repr(foldername)
+    print ("Deleting folder "+repr(foldername))
     check_ok(imap.delete(foldername))
 
 def secondary_security(message_as_string):
@@ -1536,7 +1541,7 @@ addr_regex = re.compile("".join([
 def do_copy(foldername):
     foldername = foldername.strip()
     if not foldername:
-        print "No folder name specified"
+        print ("No folder name specified")
         return
     make_sure_logged_in()
     global imap,saveImap
