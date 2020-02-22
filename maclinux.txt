@@ -122,6 +122,18 @@ else
   export -f edit # and leave bbedit undefined
 fi
 
+if [ -e /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Resources/jsc ] ; then
+  # command-line Javascript interpreter not in default PATH: might as well make this available
+  jsc () { /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Resources/jsc "$@" ; }
+  if ! which -s node; then
+    # might as well alias it, in case you're in the
+    # habit of typing "node" rather than "jsc" (it's
+    # not the same, but near enough for simple tests)
+    node () { jsc "$@" ; }
+    export -f node
+  fi
+fi
+
 # Ditto for mixed Mac/Linux environments where you
 # can type "jmacs" on the Linux terminal to get a
 # quick emacs-like editor:
