@@ -1595,7 +1595,11 @@ def do_quicksearch(s):
             for m in matching_lines:
                 try_print(foldername,m.strip())
     if not archive_path: return
-    for f in listdir(archive_path):
+    try: dirlist = listdir(archive_path)
+    except:
+        debug("Can't open "+archive_path+", omitting")
+        dirlist = []
+    for f in dirlist:
         f = archive_path+os.sep+f
         if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'r')
         else: f2 = open(f) # ?? (shouldn't happen, as all the files we put there should end with compression_ext, but just in case; TODO other forms of compression?)
