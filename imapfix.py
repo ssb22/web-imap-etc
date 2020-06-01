@@ -1,8 +1,8 @@
 #!/usr/bin/env python2
-# (Requires Python 2.x, not 3; search for "3.3+" in comment
-# below to see how awkward a forward-port would be)
+# (Requires Python 2.x, not 3; search for "3.3+" in
+# comment below to see how awkward forward-port would be)
 
-"ImapFix v1.4981 (c) 2013-20 Silas S. Brown.  License: GPL"
+"ImapFix v1.4982 (c) 2013-20 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1209,9 +1209,9 @@ def add_office0(message,accum):
     if not 'Content-Disposition' in message: return False
     fn = str(message['Content-Disposition'])
     if not 'filename' in fn: return False
-    ext = fn[fn.index('filename'):].replace('"',"")
-    if not '.' in ext: return False
-    ext = ext[ext.rindex('.'):].lower()
+    fn = re.sub(header_charset_regex,header_to_u8,fn[fn.index('filename'):].replace("filename=","",1).replace('"',""))
+    if not '.' in fn: return False
+    ext = fn[fn.rindex('.'):].lower()
     if ';' in ext: ext=ext[:ext.index(';')]
     if not ext in ".doc .docx .rtf .odt .xls .xlsx .ods .ppt .odp".split(): return False
     debug("Getting payload")
