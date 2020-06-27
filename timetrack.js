@@ -21,6 +21,11 @@
   
   (also has functions for timetrack.html, q.v. for full details)
 
+  Where to find history:
+  on GitHub at https://github.com/ssb22/web-imap-etc
+  and on GitLab at https://gitlab.com/ssb22/web-imap-etc
+  and on Bitbucket https://bitbucket.org/ssb22/web-imap-etc
+
   */
 
 function save() { var v=document.forms[0].txt.value; if(window.localStorage!=undefined) localStorage.setItem('ttrk',v); else { document.cookie="ttrk="+escape(v)+"; path=/; expires=Sun, 27-Sep-2037 00:00:00 GMT"; if(document.cookie && getC()!=v && !this.alerted_already) { alert("Too much text to save as cookie (try add-up, or enable HTML-5 Storage)"); this.alerted_already=true } } }
