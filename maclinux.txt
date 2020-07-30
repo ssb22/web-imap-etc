@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.49, Silas S. Brown 2012-14,2016,2019-20 - public domain (no warranty)
+# Version 1.491, Silas S. Brown 2012-14,2016,2019-20 - public domain (no warranty)
 
 # This goes in your ~/.bashrc and/or ~/.bash_profile - for example:
 # curl http://ssb22.user.srcf.net/setup/maclinux.txt >> ~/.bash_profile
@@ -296,6 +296,14 @@ alias garageband-getMIDI=_garageband_getMIDI
 # GarageBand '11 6.0.5 on MacOS 10.7.5: new track (Cmd-Shift-N or bottom-left "+" icon), record (if all red & doesn't go green, may hv to reset the midi connection esp if going via a hub), if multi-track then join them (Edit / Select All (cmd-A), Edit / Join (cmd-J)), then to save, do Edit / Add to loop library, then run garageband-getMIDI.
 # ground-bass stuff: GarageBand / Preferences / General: "Cycle Recording (Automatically merge Software Instrument recordings when using the cycle region)", then record, then add a loop with Control / Snap to Grid (Cmd-G) switched OFF, then record again to add layers to the loop.
 fi
+
+function xmanpage() { open x-man-page://$@ ; echo "To change appearance: Terminal / Preferences / Settings / Man page / (Text,Window)" ; }
+export -f xmanpage
+if ! which -s xman; then xman () { xmanpage "$@" ; } ; export -f xman; fi # (if X11 is present then xman should be installed, but it may fail to read all manpage sections and UTF-8 won't display)
+function psmanpage() { man -t "$@" | open -f -a Preview ; } # will need Invert to change the colours of that
+export -f psmanpage
+alias man-terminal=xmanpage # for auto-complete "man"
+alias man-ps=psmanpage
 
 # Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
 if [ ! "$SSH_CLIENT" ]; then
