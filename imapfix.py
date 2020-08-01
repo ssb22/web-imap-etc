@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.4982 (c) 2013-20 Silas S. Brown.  License: GPL"
+"ImapFix v1.499 (c) 2013-20 Silas S. Brown.  License: GPL"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -364,6 +364,11 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # Run with --delete (folder name) to delete a folder
 # --delete-secondary to do it on secondary_imap_hostname
 # (if there's more than one secondary, the first is used)
+
+# Run with --backup to take a full backup of ALL folders to local .mbox files
+# without separating off attachments.  Use this for example if your account is
+# about to be cancelled and you want to be able to restore things as-is after
+# reinstatement or migration to a new service, Read/Answered flags preserved.
 
 # Run with --copy (folder name) to copy a folder onto secondary_imap_hostname
 # (updating any that already exists of that name: may delete
@@ -1538,6 +1543,34 @@ addr_regex = re.compile("".join([
     '(?:'+ccnl('[a-zA-Z0-9\-]')+cnl(r'(?:\.|=2E)')+')+',
     '(?:'+cnl('[a-zA-Z]')+'){2,5}(?![a-zA-Z])'])) # TODO: this deals with the header easily, and with SOME quoted-printable-in-long-HTML-line situations, but should also rm from Base64 in body (if quoting) (+ email at very end of msg w. no trailing \n)
 
+def do_backup():
+    for foldername in folderList():
+        check_ok(imap.select(foldername))
+        fname = foldername.replace("/","-")+"-backup.mbox"
+        if os.path.exists(fname): # must create new
+            os.rename(fname,fname+"~")
+        mbox = mailbox.mbox(fname)
+        print ("Backing up "+foldername+" to "+fname)
+        for msgID,flags,message in yield_all_messages():
+            msg = email.message_from_string(message)
+            if not message.startswith("From "): # as above
+                if 'From' in msg:
+                    fr = msg['From']
+                    if '<' in fr and '>' in fr[fr.index('<'):]: fr = fr[fr.index('<')+1:fr.rindex('>')]
+                    if not fr: fr = 'unknown'
+                    message="From "+fr+"\r\n"+message
+                    msg = email.message_from_string(message)
+            globalise_charsets(msg,archive_8bit)
+            k=mbox.add(msg)
+            newFlags = ""
+            if "\\seen" in flags.lower() and not "old" in flags.lower(): newFlags += "R"
+            if "\\answered" in flags.lower(): newFlags += "A"
+            if newFlags:
+                msg = mbox.get(k) # to mailbox.mboxMessage
+                msg.set_flags(newFlags)
+                mbox[k] = msg
+        mbox.close()
+
 def do_copy(foldername):
     foldername = foldername.strip()
     if not foldername:
@@ -1701,6 +1734,7 @@ if __name__ == "__main__":
       hostname,username,password = secondary_imap_hostname[0],secondary_imap_username[0],secondary_imap_password[0]
       do_delete(' '.join(sys.argv[sys.argv.index('--delete-secondary')+1:]))
   elif '--copy' in sys.argv: do_copy(' '.join(sys.argv[sys.argv.index('--copy')+1:]))
+  elif '--backup' in sys.argv: do_backup()
   elif '--note' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]))
   elif '--maybenote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--maybenote')+1:]),maybe=1)
   elif '--htmlnote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--htmlnote')+1:]),"text/html")
