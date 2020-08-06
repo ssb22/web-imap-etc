@@ -286,10 +286,10 @@ alias make-ramdisk=_make_ramdisk
 # Below is a function to read MIDI data out of saved GarageBand loops.
 # It's better to download the GPL MIDI application "Aria Maestosa",
 # but if for some reason you're stuck with GarageBand, you can use this.
-
-# TODO: In some circumstances Aria Maestosa 1.4.10 (latest version available on MacOS 10.7) playback to external MIDI somehow configures it to transpose down a tone.
-# This state can be reset by opening an existing MIDI file in MuseScore (2.3.2, last one available for MacOS 10.7 as 3.x is 10.10+) but this has only step-time input.
-# GarageBand (at least on 10.7) has no option to play back to external MIDI, so computer's speakers need to be matched to keyboard's volume.
+# If you do use Aria Maestosa instead, note that in some circumstances Aria Maestosa 1.4.10 (latest version available on MacOS 10.7) playback to external MIDI somehow configures it to transpose down a tone.  This state can be reset by opening an existing MIDI file in MuseScore (2.3.2, last one available for MacOS 10.7 as 3.x is 10.10+) but this has only step-time input so cannot record a performance.
+# GarageBand itself (at least on 10.7) has no option to play back to external MIDI, so computer's speakers need to be matched to keyboard's volume.
+# Other alternatives for playing to external MIDI on older Macs include DOSBox, e.g. in "Library/Preferences/DOSBox 0.74 Preferences" under [midi] change mididevice to mididevice=coremidi, then use a DOS-based MIDI player of your choice, e.g. Manuscript Writer (/PLAY /MIDI) or DOSMid (progs\dosmid\dosmid /mpu but it has no tempo control or track muting),
+# or VirtualBox (non-Vagrant) with the USB-MIDI controller added under Settings/Ports/USB (it must be connected before entering Settings, but the setting then persists across disconnections) and use e.g. Rosegarden on Ubuntu (more flexible than any of the above); note however that non-VirtualBox programs cannot then access the MIDI device any time the set-up VirtualBox is running (whether or not it's accessing MIDI).
 
 if [ "$Python2" ] ; then
 _garageband_getMIDI() { cd ~/Library/Audio/"Apple Loops/User Loops/"SingleFiles && for N in *.aif; do if test -e "$N"; then mv -iv "$N" /tmp && export M=/tmp/"$(echo "$N"|sed -e s/aif$/mid/)" && "$Python2" -c 'import sys;d=sys.stdin.read();m=d[d.index("MThd"):];sys.stdout.write(m[:m.index("CHS")])' < /tmp/"$N" > "$M" && du -h "$M"; fi; done; }
