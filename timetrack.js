@@ -124,7 +124,7 @@ function doOtherButtons() {
         if(had.indexOf(thing)==-1) had.push(thing);
     }
     had = had.slice(3); had.sort();
-    for(i in had) addButton(had[i])
+    for(i in had) if(typeof(had[i])==typeof("")) addButton(had[i])
 }
 
 function doAddup() {
