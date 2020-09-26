@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.41 (c) 2014-20 Silas S. Brown.
+# webcheck.py v1.42 (c) 2014-20 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 #    This program is free software; you can redistribute it and/or modify
@@ -388,9 +388,9 @@ def run_webdriver_inner(actionList,browser):
         elif a.startswith('"') and a.endswith('"'):
             # wait for "string" to appear in the source
             tries = 30
-            while tries and not B(a[1:-1]) in getSrc():
+            while tries and not myFind(a[1:-1],getSrc()):
               time.sleep(delay) ; tries -= 1
-            if not tries: raise NoTracebackException("webdriver timeout while waiting for \"%s\" (current URL is \"%s\")\n" % (a[1:-1],browser.current_url))
+            if not tries: raise NoTracebackException("webdriver timeout while waiting for \"%s\", current URL is \"%s\"\n" % (a[1:-1],browser.current_url)) # don't put (current URL is "") in parentheses: if the resulting email is viewed in (at least some versions of) MHonArc, a bug can result in &quot (i.e. &quot; without the ;) being added to the href, with the ; occurring after the </a>
         elif a.startswith('[') and a.endswith(']'): # click
             findElem(a[1:-1]).click()
         elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
