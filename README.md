@@ -4,7 +4,6 @@ WebCheck
 From http://ssb22.user.srcf.net/setup/webcheck.html (also mirrored at http://ssb22.gitlab.io/setup/webcheck.html just in case)
 
 webcheck.py requires Python, and is compatible with both Python 2 and Python 3.
-(License: GPL v3; contact me if you need a different license.)
 It is a program to check Web pages for changes to specific phrases of text. Some web monitoring programs and “watchlist” facilities etc will tell you when *any* change is made to a page, but that’s of limited use when you are interested in only a few specific phrases, especially when these are surrounded by many other items which change far more frequently than the one that actually interests you. So WebCheck lets you check for changes to a particular item on a page.
 
 Note that this is not a “foolproof” method. If a page lists “old news”, or otherwise incorporates an old version of the item you’re monitoring, WebCheck might fail to spot the new situation. You have to use your judgement about when this program can reasonably be used.
@@ -149,8 +148,7 @@ This Javascript-based tool can be used to add up the time you spend on projects,
 
 Legal
 =====
-All material © Silas S. Brown unless otherwise stated.  Licensed under GPL v3
-(WebCheck, ImapFix), Apache 2 (timetrack), public domain (MacLinux).
+All material © Silas S. Brown unless otherwise stated.  Licensed under Apache 2.
 Javascript is a trademark of Oracle Corporation in the US.
 Python is a trademark of the Python Software Foundation.
 Unicode is a registered trademark of Unicode, Inc. in the United States and other countries.

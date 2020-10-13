@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.4991 (c) 2013-20 Silas S. Brown.  License: GPL"
+"ImapFix v1.4992 (c) 2013-20 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -427,6 +427,18 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # git clone https://gitlab.developers.cam.ac.uk/ssb22/web-imap-etc
 # or
 # svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#     http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from imapfix_config import *
 import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback
