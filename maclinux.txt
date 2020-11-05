@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.492 (c) Silas S. Brown 2012-2020.
+# Version 1.493 (c) Silas S. Brown 2012-2020.
 
 # Tested on Mac OS X versions 10.7 through 10.14.
 # NOT tested on macOS 10.15 (Catalina),
@@ -41,6 +41,9 @@ if test -d /Volumes && test "$(uname -s)" == Darwin; then
 # we're on a Mac
 
 export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV # avoid recursion
+
+# Check SMART status of primary hard disk:
+diskutil info disk0|grep SMART|grep -v 'Status: *Verified$' && echo "Hard disk failing: backup NOW" && echo
 
 # Support installations of HomeBrew/MacTex/MacPorts/Fink:
 export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
