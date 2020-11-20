@@ -149,6 +149,7 @@ This Javascript-based tool can be used to add up the time you spend on projects,
 Legal
 =====
 All material © Silas S. Brown unless otherwise stated.  Licensed under Apache 2.
+Apache is a registered trademark of The Apache Software Foundation.
 Javascript is a trademark of Oracle Corporation in the US.
 Python is a trademark of the Python Software Foundation.
 Unicode is a registered trademark of Unicode, Inc. in the United States and other countries.
