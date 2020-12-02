@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.493 (c) Silas S. Brown 2012-2020.
+# Version 1.494 (c) Silas S. Brown 2012-2020.
 
 # Tested on Mac OS X versions 10.7 through 10.14.
 # NOT tested on macOS 10.15 (Catalina),
@@ -82,7 +82,7 @@ if ! which -s free; then
   free () { top -l 1 -s 0 | grep -m 1 PhysMem ; }
   export -f free
 fi
-alias do-i-need-more-ram='if test $((vm_stat|grep "^Page[io]"|sed -e "s/.*://" -e "s/\.$//";echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 100)) -lt 10; then echo Maybe; else echo Probably not; fi' # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
+alias do-i-need-more-ram='if test $((vm_stat|grep "^Page[io]"|sed -e "s/.*://" -e "s/\.$//";echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 11)) -lt 10; then echo Maybe; else echo Probably not; fi' # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
 alias battery-status='pmset -g batt' # for MacBook laptops
 
 # Note: Anything with a hyphen in it must be an alias, not a
@@ -296,6 +296,8 @@ alias install-login-command=_install_login_command
 _make_ramdisk () { mkdir "$1" && mount -t hfs "$(echo "$(newfs_hfs $(hdid -nomount "ram://$2"))"|sed -e 's,[^/]*/,/,' -e 's/ .*//' -e 's,/rdisk,/disk,')" "$1" ; }
 # (10.5+ can also do e.g. diskutil erasevolume HFS+ "maclinux-RAMdisk" $(hdiutil attach -nomount ram://1024) for /Volumes/maclinux-RAMdisk)
 alias make-ramdisk=_make_ramdisk
+_drop_ramdisk () { D="$(mount|grep "$1 "|sed -e 's/ .*//')" ; /sbin/umount "$1" && hdiutil detach "$D" && rmdir "$1" ; }
+alias drop-ramdisk=_drop_ramdisk
 
 # NOTE: for making HFS+ disk images that will interoperate
 # with Linux, it's really best to do this IN LINUX (use dd
