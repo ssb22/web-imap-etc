@@ -296,8 +296,9 @@ alias install-login-command=_install_login_command
 _make_ramdisk () { mkdir "$1" && mount -t hfs "$(echo "$(newfs_hfs $(hdid -nomount "ram://$2"))"|sed -e 's,[^/]*/,/,' -e 's/ .*//' -e 's,/rdisk,/disk,')" "$1" ; }
 # (10.5+ can also do e.g. diskutil erasevolume HFS+ "maclinux-RAMdisk" $(hdiutil attach -nomount ram://1024) for /Volumes/maclinux-RAMdisk)
 alias make-ramdisk=_make_ramdisk
-_drop_ramdisk () { D="$(mount|grep "$1 "|sed -e 's/ .*//')" ; /sbin/umount "$1" && hdiutil detach "$D" && rmdir "$1" ; }
+_drop_ramdisk () { D="$(mount|grep "$(echo "$1"|sed -e 's,/$,,') "|sed -e 's/ .*//')" ; /sbin/umount "$1" ; hdiutil detach "$D" ; rmdir "$1" ; }
 alias drop-ramdisk=_drop_ramdisk
+export -f _make_ramdisk _drop_ramdisk # so can use from scripts (useful especially if have upgraded HDD to SSD and worried about excessive writes by script temp files)
 
 # NOTE: for making HFS+ disk images that will interoperate
 # with Linux, it's really best to do this IN LINUX (use dd
