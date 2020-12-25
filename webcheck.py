@@ -582,7 +582,8 @@ def extract(url,content,startEndMarkers,comment):
     if i==-1: break
     j = content.find(end,i+len(start))
     if j==-1: break
-    items.append(('Auto-extracted text:','',content[i+len(start):j].decode('utf-8'))) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
+    c = content[i+len(start):j].decode('utf-8').strip()
+    if c: items.append(('Auto-extracted text:','',c)) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
     i = j+len(end)
   if not items: print ("No items were extracted from "+url+" via "+start+"..."+end+" (check that site changes haven't invalidated this extraction rule)")
   handleRSS(url,items,comment,"extracted")
