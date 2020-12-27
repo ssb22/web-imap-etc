@@ -289,11 +289,21 @@ _install_login_command () {
 # (change $HOME/Library/LaunchAgents to /Library/LaunchAgents to run on boot instead of login, but crontab @reboot can do that)
 alias install-login-command=_install_login_command
 
-# Here's a function to make RAMdisks.  1st param = dir
-# (e.g. /tmp/maclinux-RAMdisk, must not already exist),
-# 2nd param = num of 512-byte blocks (min. 1024 for a 512k
-# disk; unfortunately can't auto-expand like /dev/shm)
-_make_ramdisk () { mkdir "$1" && mount -t hfs "$(echo "$(newfs_hfs $(hdid -nomount "ram://$2"))"|sed -e 's,[^/]*/,/,' -e 's/ .*//' -e 's,/rdisk,/disk,')" "$1" ; }
+_make_ramdisk () {
+    case "$1" in
+        "") echo "Syntax: make-ramdisk mountpoint size"
+            # (or size mountpoint : will auto-reverse)
+            echo "(512-byte blocks, min 1024 for 512k,"
+            echo "can specify as M or G instead)"
+            false ;;
+        [1-9]*) case "$2" in [1-9]*) echo "Mountpoint must not start with a number"; false ;; *) _make_ramdisk "$2" "$1" ;; esac ;;
+        *)
+            case "$2" in
+                [1-9]*[gG]) _make_ramdisk "$1" "$[${2%[gG]}*2097152]" ;;
+                [1-9]*[mM]) _make_ramdisk "$1" "$[${2%[mM]}*2048]" ;;
+                *) mkdir "$1" && mount -t hfs "$(echo "$(newfs_hfs $(hdid -nomount "ram://$2"))"|sed -e 's,[^/]*/,/,' -e 's/ .*//' -e 's,/rdisk,/disk,')" "$1" ;;
+            esac ;;
+    esac ; }
 # (10.5+ can also do e.g. diskutil erasevolume HFS+ "maclinux-RAMdisk" $(hdiutil attach -nomount ram://1024) for /Volumes/maclinux-RAMdisk)
 alias make-ramdisk=_make_ramdisk
 _drop_ramdisk () { D="$(mount|grep "$(echo "$1"|sed -e 's,/$,,') "|sed -e 's/ .*//')" ; /sbin/umount "$1" ; hdiutil detach "$D" ; rmdir "$1" ; }
