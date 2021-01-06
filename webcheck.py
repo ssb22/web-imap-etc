@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.43 (c) 2014-20 Silas S. Brown.
+# webcheck.py v1.44 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,10 +57,10 @@ try: import Queue # Python 2
 except: import queue as Queue # Python 3
 try: unichr # Python 2
 except: unichr,xrange = chr,range # Python 3
-try: from urllib2 import quote,HTTPCookieProcessor,build_opener,HTTPSHandler,urlopen,Request,HTTPError,URLError # Python 2
+try: from urllib2 import quote,HTTPCookieProcessor,HTTPErrorProcessor,build_opener,HTTPSHandler,urlopen,Request,HTTPError,URLError # Python 2
 except: # Python 3
   from urllib.parse import quote
-  from urllib.request import HTTPCookieProcessor,build_opener,HTTPSHandler,urlopen,Request
+  from urllib.request import HTTPCookieProcessor,build_opener,HTTPSHandler,urlopen,Request,HTTPErrorProcessor
   from urllib.error import HTTPError,URLError
 def B(s): # byte-string from "" literal
   if type(s)==type("")==type(u""): return s.encode('utf-8') # Python 3
@@ -469,8 +469,8 @@ def tryRead0(url,opener,monitorError):
         sys.stdout.write("Error "+str(e.code)+" retrieving "+linkify(url)+"\n") ; return None,None
     except: # try it with a fresh opener and no headers
         try:
-            if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = build_opener(HTTPCookieProcessor(),HTTPSHandler(context=ssl._create_unverified_context())).open(url,timeout=60)
-            else: u = build_opener(HTTPCookieProcessor()).open(url,timeout=60)
+            if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = build_opener(OurRedirHandler(),HTTPCookieProcessor(),HTTPSHandler(context=ssl._create_unverified_context())).open(url,timeout=60)
+            else: u = build_opener(OurRedirHandler(),HTTPCookieProcessor()).open(url,timeout=60)
             return u,tryGzip(u.read())
         except HTTPError as e:
           if monitorError: return u,tryGzip(e.fp.read())
@@ -484,6 +484,21 @@ def tryRead0(url,opener,monitorError):
         except: # full traceback by default
             sys.stdout.write("Problem retrieving "+linkify(url)+"\n"+traceback.format_exc())
             return None,None
+class OurRedirHandler(HTTPErrorProcessor):
+  def __init__(self,nestLevel=0): self.nestLevel = nestLevel
+  def our_response(self,request,response,prefix):
+    try: code=response.code
+    except: return response
+    if code not in [301,302,303,307]: return response
+    url = re.sub("[^!-~]+",lambda m:quote(m.group()),response.headers['Location']) # not all versions of the library do this, so we'll do it here if simple-open failed
+    if self.nestLevel>9: raise Exception("too many redirects")
+    if url.startswith("//"): url=prefix+url
+    if sys.version_info >= (2,7,9) and not verify_SSL_certificates: return build_opener(OurRedirHandler(self.nestLevel+1),HTTPCookieProcessor(),HTTPSHandler(context=ssl._create_unverified_context())).open(url,timeout=60)
+    else: return build_opener(OurRedirHandler(self.nestLevel+1),HTTPCookieProcessor()).open(url,timeout=60)
+  def http_response(self,request,response):
+    return self.our_response(request,response,"http:")
+  def https_response(self,request,response):
+    return self.our_response(request,response,"https:")
 
 def tryGzip(t):
     try: return gzip.GzipFile('','rb',9,StringIO(t)).read()
