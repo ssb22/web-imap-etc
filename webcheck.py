@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.44 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.441 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -340,6 +340,7 @@ def run_webdriver(actionList):
       opts = Options()
       opts.add_argument("--headless")
       opts.add_argument("--disable-gpu")
+      opts.add_argument("--user-agent="+default_ua)
       try: from inspect import getfullargspec as getargspec # Python 3
       except ImportError:
         try: from inspect import getargspec # Python 2
@@ -447,7 +448,7 @@ def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 def tryRead(url,opener,extraHeaders,monitorError=True):
     oldAddHeaders = opener.addheaders[:]
     for h in extraHeaders:
-        if h.lower().startswith("user-agent") and opener.addheaders[0][0]=="User-agent": del opener.addheaders[0] # User-agent override (will be restored after by oldAddHeaders)
+        if h.lower().startswith("user-agent") and opener.addheaders[0][0]=="User-agent": del opener.addheaders[0] # User-agent override (will be restored after by oldAddHeaders) (TODO: override in run_webdriver also)
         opener.addheaders.append(tuple(x.strip() for x in h.split(':',1)))
     if (url,'lastMod') in previous_timestamps and not '--test-all' in sys.argv:
         opener.addheaders.append(("If-Modified-Since",previous_timestamps[(url,'lastMod')]))
