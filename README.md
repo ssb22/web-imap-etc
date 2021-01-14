@@ -20,7 +20,7 @@ or
 
     http://nice-program.example.com The latest version is 1.0 # otherwise we'd better upgrade
 
-If the text starts with a `*` then the rest of it is treated as a regular expression, otherwise it is treated as a simple case-sensitive search.
+If the text starts with a `*` then the rest of it is treated as a regular expression, otherwise it is treated as a simple search.
 
 You can check for the absence of certain text by prepending a `!` to it:
 
