@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.4992 (c) 2013-20 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.4993 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -59,6 +59,11 @@ office_convert = None # or "html" or "pdf", to use
 # (beware, I have not checked soffice for vulnerabilities)
 # - resulting HTML might not work on old WM phones as they
 # don't support data: image URLs
+
+pdf_convert = False # True = use
+#  a.pdf # makes a-html.html as.html (ignores extra html argument or -stdout)
+# imgs unless -i
+# -c complex , or -noframes ?
 
 use_tnef = False # True = use "tnef" command on winmail.dat
 
@@ -677,6 +682,7 @@ def process_imap_inbox():
                 if use_tnef: changed2 = add_tnef(msg) or changed2
                 if image_size: changed2 = add_previews(msg) or changed2
                 if office_convert: changed2 = add_office(msg) or changed2
+                if pdf_convert: changed2 = add_pdf(msg) or changed2
                 changed = changed2 or changed
                 if changed2: message = myAsString(msg)
             if seenFlag: copyWorked = False # TODO: unless we can get copy_to to set the Seen flag on the copy
@@ -1225,8 +1231,7 @@ def add_office(message):
     global to_attach ; to_attach = None
     accum = [1]
     return walk_msg(message,add_office0,accum)
-def add_office0(message,accum):
-    if to_attach == None: return False # TODO? (non-multipart message sent with a single document and nothing else)
+def filename_ext(message):
     if not 'Content-Disposition' in message: return False
     fn = str(message['Content-Disposition'])
     if not 'filename' in fn: return False
@@ -1234,6 +1239,12 @@ def add_office0(message,accum):
     if not '.' in fn: return False
     ext = fn[fn.rindex('.'):].lower()
     if ';' in ext: ext=ext[:ext.index(';')]
+    return fn,ext
+def add_office0(message,accum):
+    if to_attach == None: return False # TODO? (non-multipart message sent with a single document and nothing else)
+    fn = filename_ext(message)
+    if fn==False: return False
+    fn,ext = fn
     if not ext in ".doc .docx .rtf .odt .xls .xlsx .ods .ppt .odp".split(): return False
     debug("Getting payload")
     payload = message.get_payload(decode=True)
@@ -1252,6 +1263,36 @@ def add_office0(message,accum):
     tryRm(infile) ; tryRm(outfile)
     if office_convert in ["html"] and not (max_size_of_first_part and len(b.get_payload) > max_size_of_first_part): pass # show it inline
     else: b['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.'+office_convert
+    to_attach.append(b) ; accum[0] += 1
+    return True
+def add_pdf(message):
+    global to_attach ; to_attach = None
+    accum = [1]
+    return walk_msg(message,add_pdf0,accum)
+def add_pdf0(message,accum):
+    if to_attach == None: return False # TODO? (non-multipart message sent with a single pdf and nothing else)
+    fn = filename_ext(message)
+    if fn==False: return False
+    fn,ext = fn
+    if not ext==".pdf": return False
+    debug("Getting payload")
+    payload = message.get_payload(decode=True)
+    infile = "tmpdoc-%d.pdf" % (os.getpid(),)
+    outfile = "tmpdoc-%d-html.html" % (os.getpid(),)
+    sfile = "tmpdoc-%ds.html" % (os.getpid(),)
+    open(infile,"wb").write(payload)
+    debug("Running pdftohtml")
+    if os.system("pdftohtml -s -i -enc UTF-8 %s" % (infile,)): # (-s = single page, -i = ignore images, TODO: allow images and also attach them?  may need temporary directory.  Also what if libreoffice creates images in its html in add_office0?)
+        # conversion error
+        debug("pdftohtml run returned failure")
+        tryRm(infile) ; return False
+    tryRm(sfile)
+    # -html.html , s.html
+    b = email.mime.base.MIMEBase("text","html; charset=utf-8")
+    b.set_payload(open(outfile,"rb").read())
+    tryRm(infile) ; tryRm(outfile)
+    if not (max_size_of_first_part and len(b.get_payload) > max_size_of_first_part): pass # show it inline
+    else: b['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.html'
     to_attach.append(b) ; accum[0] += 1
     return True
 def add_tnef(message):
