@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.4993 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.4994 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1278,16 +1278,16 @@ def add_pdf0(message,accum):
     debug("Getting payload")
     payload = message.get_payload(decode=True)
     infile = "tmpdoc-%d.pdf" % (os.getpid(),)
-    outfile = "tmpdoc-%d-html.html" % (os.getpid(),)
-    sfile = "tmpdoc-%ds.html" % (os.getpid(),)
+    outfile = "tmpdoc-%ds.html" % (os.getpid(),)
+    sfile = "tmpdoc-%d_ind.html" % (os.getpid(),)
+    sfile2 = "tmpdoc-%d.html" % (os.getpid(),)
     open(infile,"wb").write(payload)
     debug("Running pdftohtml")
-    if os.system("pdftohtml -s -i -enc UTF-8 %s" % (infile,)): # (-s = single page, -i = ignore images, TODO: allow images and also attach them?  may need temporary directory.  Also what if libreoffice creates images in its html in add_office0?)
+    if os.system("pdftohtml -i -enc UTF-8 %s" % (infile,)): # (-i = ignore images, TODO: allow images and also attach them?  may need temporary directory.  Also what if libreoffice creates images in its html in add_office0?)  (Do not use -s for single page, it results in only the last PDF page being output, it does not mean combine all to a single HTML page, which happens anyway)
         # conversion error
         debug("pdftohtml run returned failure")
         tryRm(infile) ; return False
-    tryRm(sfile)
-    # -html.html , s.html
+    tryRm(sfile) ; tryRm(sfile2)
     b = email.mime.base.MIMEBase("text","html; charset=utf-8")
     b.set_payload(open(outfile,"rb").read())
     tryRm(infile) ; tryRm(outfile)
