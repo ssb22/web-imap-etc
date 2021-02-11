@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.442 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.443 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -155,7 +155,7 @@ def balanceBrackets(wordList):
     while i < len(wordList)-1:
         blOld = bracketLevel
         if wordList[i][0] in '["': bracketLevel += 1
-        elif not bracketLevel and '->"' in wordList[i] and not wordList[i].endswith('->"'): bracketLevel += 1
+        elif not bracketLevel and (('->"' in wordList[i] and not wordList[i].endswith('->"')) or '="' in wordList[i]): bracketLevel += 1
         if wordList[i][-1] in ']"': bracketLevel -= 1
         if bracketLevel > 0:
             wordList [i] += " "+wordList[i+1]
@@ -371,7 +371,7 @@ def run_webdriver_inner(actionList,browser):
             try: return browser.find_element_by_id(spec[1:])
             except: return browser.find_element_by_name(spec[1:])
         elif spec.startswith('.'):
-          if '#' in spec: return browser.find_elements_by_class_name(spec[1:spec.index('#')])[int(spec.split('#')[1])-1] # TODO: document this: .class#1, .class#2 etc to choose the Nth element of that class
+          if '#' in spec: return browser.find_elements_by_class_name(spec[1:spec.index('#')])[int(spec.split('#')[1])-1] # .class#1, .class#2 etc to choose the Nth element of that class
           else: return browser.find_element_by_class_name(spec[1:])
         else: return browser.find_element_by_link_text(spec)
     def getSrc():
@@ -436,6 +436,7 @@ def run_webdriver_inner(actionList,browser):
             if not e.is_selected(): e.click()
         elif '=' in a: # put text in an input box
             spec, val = a.split('=',1)
+            if val.startswith('"') and val.endswith('"'): val=val[1:-1]
             findElem(spec).send_keys(val)
         else: sys.stdout.write("Ignoring webdriver unknown action "+repr(a)+'\n')
         if sys.stderr.isatty(): sys.stderr.write(':'),sys.stderr.flush() # webdriver's '.'
