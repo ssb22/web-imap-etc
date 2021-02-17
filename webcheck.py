@@ -230,6 +230,11 @@ def default_opener():
     return opener
 
 default_ua = 'Mozilla/5.0 or whatever you like (actually Webcheck)'
+# you can override this on a per-site basis with "User-Agent: whatever"
+# and undo again with "User-Agent:" on a line by itself.
+# Please override sparingly or with webmaster permission.
+# Let's not even mention it in the readme: we don't want to encourage
+# people to hide their tools from webmasters unnecessarily.
 
 def worker_thread(*args):
     opener = None
@@ -300,7 +305,7 @@ def worker_thread(*args):
               r=Request(url[len("head://"):])
               r.get_method=lambda:'HEAD'
               for h in extraHeaders: r.add_header(*tuple(x.strip() for x in h.split(':',1)))
-              if not "User-agent" in extraHeaders: r.add_header('User-agent',default_ua)
+              if not any(h.lower().startswith("user-agent:") for h in extraHeaders): r.add_header('User-agent',default_ua)
               u=None
               if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=B(str(urlopen(r,context=ssl._create_unverified_context(),timeout=60).info()))
               else: content=textContent=B(str(urlopen(r,timeout=60).info()))
