@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.443 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.45 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -398,7 +398,7 @@ def run_webdriver_inner(actionList,browser):
             tries = 30
             while tries and not myFind(a[1:-1],getSrc()):
               time.sleep(delay) ; tries -= 1
-            if not tries: raise NoTracebackException("webdriver timeout while waiting for \"%s\", current URL is %s content \"%s\"\n" % (a[1:-1],browser.current_url,getSrc())) # don't quote current URL: if the resulting email is viewed in (at least some versions of) MHonArc, a bug can result in &quot being added to the href
+            if not tries: raise NoTracebackException("webdriver timeout while waiting for %s, current URL is %s content \"%s\"\n" % (repr(a[1:-1]),browser.current_url,repr(getSrc()))) # don't quote current URL: if the resulting email is viewed in (at least some versions of) MHonArc, a bug can result in &quot being added to the href
         elif a.startswith('[') and a.endswith(']'): # click
             findElem(a[1:-1]).click()
         elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
