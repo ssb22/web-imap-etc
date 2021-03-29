@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.4994 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.4995 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1254,13 +1254,13 @@ def add_office0(message,accum):
     debug("Running soffice to get "+office_convert)
     if os.system("soffice --convert-to %s %s" % (office_convert, infile)): # conversion error, or soffice not found
         debug("soffice run returned failure")
-        tryRm(infile) ; tryRm(outfile) ; return False
+        clean_tmpdoc() ; return False
     mimeType = {"html":"text/html; charset=utf-8","pdf":"application/pdf"}.get(office_convert,"application/binary")
     mT,subT = mimeType.split("/")
     b = email.mime.base.MIMEBase(mT,subT)
     b.set_payload(open(outfile,"rb").read())
     if not office_convert=="html": encoders.encode_base64(b)
-    tryRm(infile) ; tryRm(outfile)
+    clean_tmpdoc()
     if office_convert in ["html"] and not (max_size_of_first_part and len(b.get_payload) > max_size_of_first_part): pass # show it inline
     else: b['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.'+office_convert
     to_attach.append(b) ; accum[0] += 1
@@ -1279,22 +1279,24 @@ def add_pdf0(message,accum):
     payload = message.get_payload(decode=True)
     infile = "tmpdoc-%d.pdf" % (os.getpid(),)
     outfile = "tmpdoc-%ds.html" % (os.getpid(),)
-    sfile = "tmpdoc-%d_ind.html" % (os.getpid(),)
-    sfile2 = "tmpdoc-%d.html" % (os.getpid(),)
     open(infile,"wb").write(payload)
     debug("Running pdftohtml")
     if os.system("pdftohtml -i -enc UTF-8 %s" % (infile,)): # (-i = ignore images, TODO: allow images and also attach them?  may need temporary directory.  Also what if libreoffice creates images in its html in add_office0?)  (Do not use -s for single page, it results in only the last PDF page being output, it does not mean combine all to a single HTML page, which happens anyway)
         # conversion error
         debug("pdftohtml run returned failure")
-        tryRm(infile) ; return False
-    tryRm(sfile) ; tryRm(sfile2)
+        clean_tmpdoc() ; return False
     b = email.mime.base.MIMEBase("text","html; charset=utf-8")
     b.set_payload(open(outfile,"rb").read())
-    tryRm(infile) ; tryRm(outfile)
+    clean_tmpdoc()
     if not (max_size_of_first_part and len(b.get_payload) > max_size_of_first_part): pass # show it inline
     else: b['Content-Disposition']='attachment; filename=imapfix-preview'+str(accum[0])+'.html'
     to_attach.append(b) ; accum[0] += 1
     return True
+def clean_tmpdoc():
+    # soffice sometimes leaves images also, so check all
+    prefix = re.compile("tmpdoc-%d[^0-9]" % (os.getpid(),))
+    for f in os.listdir('.'):
+        if re.match(,f): tryRm(f)
 def add_tnef(message):
     global to_attach ; to_attach = None
     accum = [1]
