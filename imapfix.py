@@ -1296,7 +1296,7 @@ def clean_tmpdoc():
     # soffice sometimes leaves images also, so check all
     prefix = re.compile("tmpdoc-%d[^0-9]" % (os.getpid(),))
     for f in os.listdir('.'):
-        if re.match(,f): tryRm(f)
+        if re.match(prefix,f): tryRm(f)
 def add_tnef(message):
     global to_attach ; to_attach = None
     accum = [1]
