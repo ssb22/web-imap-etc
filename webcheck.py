@@ -470,11 +470,11 @@ def get_gemini(url,nestLevel=0):
     if B("\r\n") in g:
         header,body = g.split(B("\r\n"),1)
     else: header,body = g,B("")
-    if B(" ") in header: status,meta = header,split(B(" "),1)
+    if B(" ") in header: status,meta = header.split(B(" "),1)
     else: status,meta = B("?"),header
     try: status = int(status)
     except: status = 0
-    elif 20 <= status <= 29:
+    if 20 <= status <= 29:
         if meta.startswith(B("text/gemini")):
             txtonly = re.sub(B("\n *=> +[^ ]*"),B("\n"),body)
         elif B("html") in meta: txtonly = None # will result in htmlStrings
