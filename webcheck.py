@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.45 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.46 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -309,6 +309,9 @@ def worker_thread(*args):
               u=None
               if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=B(str(urlopen(r,context=ssl._create_unverified_context(),timeout=60).info()))
               else: content=textContent=B(str(urlopen(r,timeout=60).info()))
+          elif url.startswith("gemini://"):
+              u = None
+              content,textContent = get_gemini(url)
           else: # normal URL
               if opener==None: opener = default_opener()
               u,content = tryRead(url,opener,extraHeaders,all(t and not t.startswith('#') for _,t in daysTextList)) # don't monitorError for RSS feeds (don't try to RSS-parse an error message)
@@ -448,6 +451,42 @@ def run_webdriver_inner(actionList,browser):
         time.sleep(delay)
     snippets.append(getSrc())
     return B('\n').join(snippets)
+
+def get_gemini(url,nestLevel=0):
+    if nestLevel > 9: return B("Too many redirects"),B("Too many redirects")
+    url = B(url)
+    host0 = host = re.match(B("gemini://([^/?#]*)"),url).groups(1)[0]
+    port = re.match(B(".*:([0-9]+)$"),host)
+    if port:
+        port = int(port.groups(1)[0])
+        host = host[:host.rindex(B(":"))]
+    else: port = 1965
+    s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    s.settimeout(60) ; s=ssl.wrap_socket(s)
+    s.connect((host,port)) ; s.send(url+B("\r\n"))
+    g=[]
+    while not g or g[-1]: g.append(s.recv())
+    s.close() ; g=B("").join(g)
+    if B("\r\n") in g:
+        header,body = g.split(B("\r\n"),1)
+    else: header,body = g,B("")
+    if B(" ") in header: status,meta = header,split(B(" "),1)
+    else: status,meta = B("?"),header
+    try: status = int(status)
+    except: status = 0
+    elif 20 <= status <= 29:
+        if meta.startswith(B("text/gemini")):
+            txtonly = re.sub(B("\n *=> +[^ ]*"),B("\n"),body)
+        elif B("html") in meta: txtonly = None # will result in htmlStrings
+        else: txtonly = body
+        return body,txtonly
+    elif 30 <= status <= 39:
+        if meta.startswith(B("gemini://")):
+            return get_gemini(meta,nestLevel+1)
+        elif meta.startswith(B("/")):
+            return get_gemini(B("gemini://")+host0+meta,nestLevel+1)
+        else: return get_gemini(url[:url.rindex(B("/"))+1]+meta,nestLevel+1) # TODO: handle ../ ourselves?  or let server do it?  (early protocol specification and practice unclear)
+    else: return meta,meta # input prompt, error message, or certificate required
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 

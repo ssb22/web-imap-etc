@@ -42,7 +42,7 @@ If the site lists new items but does not support RSS, you can also *extract* ite
 
 ## Basic checks
 
-You can check for:
+Besides checking `http://`, `https://` and `gemini://` URLs, you can check for:
 
   * DNS changes (useful if you’re maintaining a hosts file somewhere due to unreliable DNS or an awkward proxy situation): URLs starting `dns://` will return a list of all current IPs, each enclosed in parentheses. So for example to be alerted if `93.184.216.34` ceases to be one of the IP addresses of `example.com`, use `dns://example.com (93.184.216.34)`
   * Server reachability: if a server has been unreachable for a long time and you want to be alerted if it ever becomes reachable again, you can place `up://` before the URL (e.g. `up://http://www.example.com`) which will return `yes` or `no` and not report an error if the server is not reachable.
