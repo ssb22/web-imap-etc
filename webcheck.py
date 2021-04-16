@@ -25,6 +25,7 @@
 # and on GitLab at https://gitlab.com/ssb22/web-imap-etc
 # and on Bitbucket https://bitbucket.org/ssb22/web-imap-etc
 # and at https://gitlab.developers.cam.ac.uk/ssb22/web-imap-etc
+# and in China: https://gitee.com/ssb22/web-imap-etc
 # To check out the repository, you can do:
 # git clone https://github.com/ssb22/web-imap-etc.git
 # or
@@ -33,6 +34,8 @@
 # git clone https://bitbucket.org/ssb22/web-imap-etc.git
 # or
 # git clone https://gitlab.developers.cam.ac.uk/ssb22/web-imap-etc
+# or
+# git clone https://gitee.com/ssb22/web-imap-etc
 # or
 # svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 

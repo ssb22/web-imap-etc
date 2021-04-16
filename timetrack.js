@@ -26,6 +26,7 @@
   and on GitLab at https://gitlab.com/ssb22/web-imap-etc
   and on Bitbucket https://bitbucket.org/ssb22/web-imap-etc
   and at https://gitlab.developers.cam.ac.uk/ssb22/web-imap-etc
+  and in China: https://gitee.com/ssb22/web-imap-etc
 
   */
 
