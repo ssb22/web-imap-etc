@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.46 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.47 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -599,11 +599,11 @@ def parseRSS(url,content,comment):
   parser.EndElementHandler = EndElementHandler
   parser.CharacterDataHandler = CharacterDataHandler
   if type(u"")==type(""): content = content.decode("utf-8") # Python 3 (expat needs 'strings' on each platform)
-  try: parser.Parse(content,1)
-  except expat.error as e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
+  try: parser.Parse(re.sub("&[A-Za-z]*;",entityref,content),1)
+  except expat.error as e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n(Check if this URL is still serving RSS?)\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
   for i in xrange(len(items)):
     items[i][1] = "".join(urlparse.urljoin(url,w) for w in "".join(items[i][1]).strip().split()).strip() # handle links relative to the RSS itself
-    for j in [0,2]: items[i][j]=re.sub("&[A-Za-z]*;",entityref,u"".join(U(x) for x in items[i][j]).strip()) # resolve most entity references (apart from lt etc) in cdata
+    for j in [0,2]: items[i][j]=u"".join(U(x) for x in items[i][j]).strip()
   handleRSS(url,items,comment)
 def entityref(m):
   m=m.group()[1:-1]
@@ -613,7 +613,9 @@ def entityref(m):
       if m.startswith("#x"): m2=unichr(int(m[2:],16))
       elif m.startswith("#"): m2=unichr(int(m[1:]))
     except: m2 = None
-  if m2 and not m2 in "<>&": return m2
+  if m2 and not m2 in "<>&":
+    if type(u"")==type(""): return m2
+    else: return m2.encode('utf-8')
   return "&"+m+";"
 def paren(comment):
   if comment: return " ("+comment+")"
