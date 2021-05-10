@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.4995 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.4996 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -217,7 +217,7 @@ archive_path = "oldmail"
 archive_rules = [
     # These rules are used when you run with --archive
     # Each rule is: ("folder-name", max-age (days), spamprobe-action)
-    # If max-age specified, older messages will be archived.  Independently of this, spamprobe-action (if specified) will be run on all messages.
+    # If max-age is not None, older messages will be archived (so you can set it to 0 to archive all messages).  Independently of this, spamprobe-action (if specified) will be run on all messages.
     ("spam-confirmed", 30, "train-spam"),
     ("some-folder", 90, None),
     ("some-other-folder", None, "train-good"),
@@ -734,7 +734,7 @@ def imapfixNote(): return "From: "+imapfix_name+"\r\nSubject: Folder "+repr(filt
 def isImapfixNote(msg): return ("From: "+imapfix_name) in msg and ("Subject: Folder "+repr(filtered_inbox)+" has new mail") in msg
 
 def archive(foldername, mboxpath, age, spamprobe_action):
-    if age:
+    if not age==None:
       if spamprobe_action: extra = ", spamprobe="+spamprobe_action
       else: extra = ""
       toDbg="Archiving from "+foldername+" to "+mboxpath+extra+"..."
@@ -759,7 +759,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         if spamprobe_action:
             # TODO: combine multiple messages first?
             run_spamprobe(spamprobe_action, message)
-        if not age: continue
+        if age==None: continue
         msg = email.message_from_string(message)
         try: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
         except: t = time.time() # undated message or invalid date (sometimes happens in spam for example)
@@ -842,10 +842,13 @@ def save_attachments_separately(msg):
     walk_msg(msg,save_attachment_separately)
 def save_attachment_separately(msg):
     try: fname = msg.get_filename()
-    except: fname="illegal-filename-A"
+    except: return
     if not fname: return
     if fname.startswith("imapfix-preview"): return
-    try: fname=fname.encode("us-ascii") # (or utf-8 if the filesystem definitely supports it)
+    if not type(fname)==type(u""):
+        try: fname = fname.decode('utf-8')
+        except: pass
+    try: fname=fname.encode("unicode-escape").replace(r"\u","_").replace("/"," ")
     except: fname="illegal-filename-B"
     fname = re.sub(r'\s+',' ',fname)
     if '.' in fname: fext = fname[fname.rindex('.'):]
@@ -1512,7 +1515,7 @@ def do_archive():
     try: os.mkdir(archive_path)
     except: pass # no error if exists
     for foldername,age,action in archive_rules:
-        if age: age = age*24*3600
+        if not age==None: age = age*24*3600
         archive(foldername, archive_path+os.sep+foldername, age, action)
 
 def do_nightly_train():
