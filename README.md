@@ -48,6 +48,7 @@ Besides checking `http://`, `https://` and `gemini://` URLs, you can check for:
   * Server reachability: if a server has been unreachable for a long time and you want to be alerted if it ever becomes reachable again, you can place `up://` before the URL (e.g. `up://http://www.example.com`) which will return `yes` or `no` and not report an error if the server is not reachable.
   * Misguided blocking of the Lynx browser. Prepend `blocks-lynx://` to a URL to have Webcheck try to fetch it with a Lynx user agent and return `yes` if it gets an error or timeout only with that agent, or `no` otherwise, so you can, at least in a `noscript` tag, warn your visitors that the server to which you link has accidentally started discriminating against blind and other users of the text-only Lynx browser due to misguided security settings—some “example” security configurations of web servers incorrectly assume Lynx implies automation and block it, and staff have been known to copy such examples without review or without realising what blocking Lynx implies.
   * Items in the HTTP HEAD response: prepend `head://` to a URL. This might be useful for checking `Last-Modified` to see if a large download has changed, like `wget -N` but without needing to keep a copy of the file on the machine where your WebCheck runs. 
+  * Output of arbitrary shell commands: prepend `c://` to the command, and end it with `;` surrounded by spaces
 
 ## Using a Javascript processor
 

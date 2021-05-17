@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.47 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.48 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -137,6 +137,10 @@ def read_input():
           if e.startswith(line): extraHeaders.remove(e)
       else: extraHeaders.append(line)
       continue
+    elif line.startswith("c://") and ' ; ' in line_withComment: # shell command
+      url, text = line_withComment.split(' ; ',1)
+      # mainDomain = url # if can parallelise
+      mainDomain = "" # might be better not to, if it's ssh commands etc
     elif line.startswith('{') and '}' in line_withComment: # webdriver
       actions = line_withComment[1:line_withComment.index('}')].split()
       balanceBrackets(actions)
@@ -286,6 +290,11 @@ def worker_thread(*args):
                 continue
               textContent = content.replace(B('{'),B(' ')).replace(B('}'),B(' ')) # edbrowse uses {...} to denote links
               url = url[4:].split('\\',1)[0] # for display
+          elif url.startswith("c://"): # run command
+              try: from commands import getoutput
+              except: from subprocess import getoutput
+              content = getoutput(url[len("c://"):])
+              u = textContent = None
           elif url.startswith("blocks-lynx://"):
               r=Request(url[len("blocks-lynx://"):])
               r.get_method=lambda:'HEAD'
