@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.48 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.49 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -615,13 +615,13 @@ def parseRSS(url,content,comment):
     for j in [0,2]: items[i][j]=u"".join(U(x) for x in items[i][j]).strip()
   handleRSS(url,items,comment)
 def entityref(m):
-  m=m.group()[1:-1]
+  m=m.group()[1:-1] ; m2 = None
   try: m2=unichr(htmlentitydefs.name2codepoint[m])
   except:
     try:
       if m.startswith("#x"): m2=unichr(int(m[2:],16))
       elif m.startswith("#"): m2=unichr(int(m[1:]))
-    except: m2 = None
+    except: pass
   if m2 and not m2 in "<>&":
     if type(u"")==type(""): return m2
     else: return m2.encode('utf-8')
