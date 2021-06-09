@@ -60,7 +60,7 @@ If the text you wish to check is written by complex Javascript and there’s no 
 
 and have WebCheck drive one of these.
 
-Edbrowse is more lightweight and should be enough in many cases, but the others have more complete DOM support (see discussion on Edbrowse issue 4), and some sites will work *only* in Headless Chrome. In any case you’d be advised to set the check-frequency wisely (see Efficiency section below).
+Edbrowse is more lightweight and should be enough in many cases, but the others have more complete DOM support (see discussion on [Edbrowse issue 4](https://github.com/CMB/edbrowse/issues/4)), and some sites will work *only* in Headless Chrome. In any case you’d be advised to set the check-frequency wisely (see Efficiency section below).
 
 For Edbrowse, prepend `e://` to the URL, e.g.:
 
