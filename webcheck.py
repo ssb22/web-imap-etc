@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.49 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.5 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -502,7 +502,7 @@ def get_gemini(url,nestLevel=0):
 
 def dayNo(): return int(time.mktime(time.localtime()[:3]+(0,)*6))/(3600*24)
 
-def tryRead(url,opener,extraHeaders,monitorError=True):
+def tryRead(url,opener,extraHeaders,monitorError=True,refreshTry=5):
     oldAddHeaders = opener.addheaders[:]
     for h in extraHeaders:
         if h.lower().startswith("user-agent") and opener.addheaders[0][0]=="User-agent": del opener.addheaders[0] # User-agent override (will be restored after by oldAddHeaders) (TODO: override in run_webdriver also)
@@ -513,6 +513,13 @@ def tryRead(url,opener,extraHeaders,monitorError=True):
         opener.addheaders.append(("If-None-Match",previous_timestamps[(url,'lastMod')]))
     ret = tryRead0(url,opener,monitorError)
     opener.addheaders = oldAddHeaders
+    if refreshTry: # meta refresh redirects
+      u,content = ret
+      m = re.search(br'(?is)<head>.*?<meta http-equiv="refresh" content="0; *url=([^"]*)".*?>.*?</head>',content)
+      if m:
+        m = m.groups(1)[0]
+        if type(u"")==type(""): m=m.decode('latin1')
+        return tryRead(urlparse.urljoin(url,m),opener,extraHeaders,monitorError,refreshTry-1)
     return ret
 
 def tryRead0(url,opener,monitorError):
