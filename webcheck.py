@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.5 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.51 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -246,8 +246,9 @@ default_ua = 'Mozilla/5.0 or whatever you like (actually Webcheck)'
 def worker_thread(*args):
     opener = None
     while True:
-        try: job = jobs.get(False)
-        except: return # no more jobs left
+      try: job = jobs.get(False)
+      except: return # no more jobs left
+      try:
         last_fetch_finished = 0 # or time.time()-delay
         for url,daysTextList in sorted(job.items()): # sorted will group http and https together
           if '\n' in url:
@@ -346,7 +347,10 @@ def worker_thread(*args):
                   textContent,errmsg=htmlStrings(content)
                 else: errmsg = ""
                 check(t,textContent,url,errmsg)
-        jobs.task_done()
+      except Exception as e:
+        print ("Unhandled exception processing job "+repr(job))
+        print (traceback.format_exc())
+      jobs.task_done()
 
 class NoTracebackException(Exception): pass
 def run_webdriver(actionList):
@@ -372,7 +376,7 @@ def run_webdriver(actionList):
     except Exception as eChrome: # probably no HeadlessChrome, try PhantomJS
       sa = ['--ssl-protocol=any']
       if not verify_SSL_certificates: sa.append('--ignore-ssl-errors=true')
-      try: browser = webdriver.PhantomJS(service_args=sa)
+      try: browser = webdriver.PhantomJS(service_args=sa,service_log_path=os.path.devnull)
       except Exception as jChrome:
         print ("webcheck misconfigured: can't create either HeadlessChrome (%s) or PhantomJS (%s).  Check installation.  (PATH=%s, cwd=%s, webdriver version %s)" % (str(eChrome),str(jChrome),repr(os.environ.get("PATH","")),repr(os.getcwd()),repr(webdriver.__version__)))
         return B("")
@@ -515,7 +519,8 @@ def tryRead(url,opener,extraHeaders,monitorError=True,refreshTry=5):
     opener.addheaders = oldAddHeaders
     if refreshTry: # meta refresh redirects
       u,content = ret
-      m = re.search(br'(?is)<head>.*?<meta http-equiv="refresh" content="0; *url=([^"]*)".*?>.*?</head>',content)
+      if content: m = re.search(br'(?is)<head>.*?<meta http-equiv="refresh" content="0; *url=([^"]*)".*?>.*?</head>',content)
+      else: m = None # content==None if 304 not modified
       if m:
         m = m.groups(1)[0]
         if type(u"")==type(""): m=m.decode('latin1')
