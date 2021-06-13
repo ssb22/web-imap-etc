@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.51 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.511 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -374,6 +374,7 @@ def run_webdriver(actionList):
       if useOptions: browser = webdriver.Chrome(options=opts)
       else: browser = webdriver.Chrome(chrome_options=opts)
     except Exception as eChrome: # probably no HeadlessChrome, try PhantomJS
+      os.environ["QT_QPA_PLATFORM"]="offscreen"
       sa = ['--ssl-protocol=any']
       if not verify_SSL_certificates: sa.append('--ignore-ssl-errors=true')
       try: browser = webdriver.PhantomJS(service_args=sa,service_log_path=os.path.devnull)
