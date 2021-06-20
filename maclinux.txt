@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.494 (c) Silas S. Brown 2012-2020.
+# Version 1.495 (c) Silas S. Brown 2012-2021.
 
 # Tested on Mac OS X versions 10.7 through 10.14.
 # NOT tested on macOS 10.15 (Catalina),
@@ -256,7 +256,7 @@ halt () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell applicat
 poweroff () { halt ; }
 reboot () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to restart") & ) ; exit ; }
 logout () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell application \"System Events\" to log out") & ) ; exit ; }
-sleepnow () { (sleep 0.5; pmset sleepnow) & exit ; }
+sleepnow () { if ! pmset -g assertions|grep PreventSystemSleep|grep -v '^ *PreventSystemSleep *0$'; then (sleep 0.5; pmset sleepnow) & exit; else false; fi ; }
 alias suspend-mac=sleepnow
 export -f halt poweroff reboot logout sleepnow
 # (the "exit"s at the end of the above are so the terminal doesn't stop it with "are you sure", unless there are other terminal sessions)
