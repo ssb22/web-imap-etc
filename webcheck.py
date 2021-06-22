@@ -520,7 +520,7 @@ def tryRead(url,opener,extraHeaders,monitorError=True,refreshTry=5):
     opener.addheaders = oldAddHeaders
     if refreshTry: # meta refresh redirects
       u,content = ret
-      if content: m = re.search(br'(?is)<head>.*?<meta http-equiv="refresh" content="0; *url=([^"]*)".*?>.*?</head>',content)
+      if content: m = re.search(br'(?is)<head>.*?<meta http-equiv="refresh" content="0; *url=([^"]*)".*?>.*?</head>',content) # TODO: if string found, remove comments and re-check (or even parse properly) ?
       else: m = None # content==None if 304 not modified
       if m:
         m = m.groups(1)[0]
