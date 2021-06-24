@@ -1,16 +1,17 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.495 (c) Silas S. Brown 2012-2021.
+# Version 1.5 (c) Silas S. Brown 2012-2021.
 
-# Tested on Mac OS X versions 10.7 through 10.14.
-# NOT tested on macOS 10.15 (Catalina),
-# which defaults to zsh instead of bash (we may need to adjust).
+# Tested in zsh on macOS 11.4
+# and in bash on Mac OS X 10.7 through 10.14.
 
-# This script can go in your ~/.bashrc and/or ~/.bash_profile,
+# This script can go in your ~/.zshrc (10.15+)
+# or ~/.bashrc and/or ~/.bash_profile (older Macs)
 # for example:
 # curl http://ssb22.user.srcf.net/setup/maclinux.txt >> ~/.bash_profile
 # or if you prefer you can keep it in a separate file
-# and source it from your .bashrc and/or .bash_profile
+# and source it from your startup files
+# (put "source .maclinux" into .zshrc or .bashrc)
 
 # You might wish to also put it in BASH_ENV to ensure all
 # commands are copied to subshells, although commands without
@@ -38,50 +39,51 @@
 # and in China: https://gitee.com/ssb22/web-imap-etc
 # although some early ones are missing.
 
-if test -d /Volumes && test "$(uname -s)" == Darwin; then
+if test -d /Volumes && test "$(uname -s)" = Darwin; then
 # we're on a Mac
 
-export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV # avoid recursion
+# if in bash, avoid recursion:
+export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV
 
 # Check SMART status of primary hard disk:
-diskutil info disk0|grep SMART|grep -v 'Status: *Verified$' && echo "Hard disk failing: backup NOW" && echo
+diskutil info disk0|grep SMART|grep -v 'Status:\s*Verified$' && echo "Hard disk failing: backup NOW" && echo
 
 # Support installations of HomeBrew/MacTex/MacPorts/Fink:
 export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
 # (gnubin (from coreutils package) comes last so Mac versions take priority, just in case; coreutils has some commands not otherwise available e.g. factor, md5sum)
 export MANPATH=$MANPATH:/usr/local/opt/coreutils/libexec/gnuman
-if test -e /sw/bin/init.sh; then . /sw/bin/init.sh; fi
+if test "$SHELL" = /bin/bash && test -e /sw/bin/init.sh; then . /sw/bin/init.sh; fi
 
-if which -s brew; then
+if test "$SHELL" = /bin/bash && /usr/bin/which -s brew; then
   # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
-  brew () { BASH_ENV= $(which brew) "$@" ; } ; export -f brew
+  brew () { BASH_ENV= $(/usr/bin/which brew) "$@" ; } ; export -f brew
 fi
 
-if ! which -s wget; then
+if ! /usr/bin/which -s wget; then
   # Set wget to curl with appropriate options.  Useful
   # if you're in the habit of typing "wget".  Note that
   # it is not real wget however and it won't recognise
   # wget options like -c.
   wget () { curl -L --remote-name-all --compressed "$@" ; }
   # for older curl: alias wget="curl -OL"
-  export -f wget
+  export -f wget >/dev/null
 fi
 
-if ! which -s watch; then
+if ! /usr/bin/which -s watch; then
   # primitive emulation of the "watch" command
   watch () (while true; do clear; date; echo "$@"; echo; "$@"; sleep 2; done)
-  export -f watch
+  export -f watch >/dev/null
 fi
 
-if ! which -s pidof; then
+if ! /usr/bin/which -s pidof; then
   # primitive emulation of the "pidof" command
   pidof () (ps axwww|fgrep "$@"|fgrep -v "fgrep $@"|sed -e 's/^  *//' -e 's/ .*//')
-  export -f pidof
+  export -f pidof >/dev/null
 fi
 
-if ! which -s free; then
+if ! /usr/bin/which -s free; then
   free () { top -l 1 -s 0 | grep -m 1 PhysMem ; }
-  export -f free
+  export -f free >/dev/null
 fi
 alias do-i-need-more-ram='if test $((vm_stat|grep "^Page[io]"|sed -e "s/.*://" -e "s/\.$//";echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 11)) -lt 10; then echo Maybe; else echo Probably not; fi' # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
 alias battery-status='pmset -g batt' # for MacBook laptops
@@ -91,12 +93,12 @@ alias battery-status='pmset -g batt' # for MacBook laptops
 # it and commands like "man" will fail.  Hence the above
 # comment about BASH_ENV.
 
-if [ "$(python --version 2>&1|sed -e 's/.* //' -e 's/[.].*//')" == 2 ]; then
+if [ "$(python --version 2>&1|sed -e 's/.* //' -e 's/[.].*//')" = 2 ]; then
   export Python2=python # bundled with Mac OS X 10.14 and below
-elif which -s python2; then export Python2=python2 # usually there on 10.14 and below (unless someone removed it?)
-elif which -s python2.7; then export Python2=python2.7
-elif which -s python2.6; then export Python2=python2.6
-elif which -s python2.5; then export Python2=python2.5
+elif /usr/bin/which -s python2; then export Python2=python2 # usually there on 10.14 and below (unless someone removed it?)
+elif /usr/bin/which -s python2.7; then export Python2=python2.7
+elif /usr/bin/which -s python2.6; then export Python2=python2.6
+elif /usr/bin/which -s python2.5; then export Python2=python2.5
 else echo "maclinux: Cannot find Python 2 on this system: most of our application shortcuts will NOT be defined" 1>&2; fi
 
 # Define the /Applications as "open -a" commands so you
@@ -124,51 +126,51 @@ else echo "maclinux: Cannot find Python 2 on this system: most of our applicatio
 # the cache?  -newer /Applications?  with timeout?
 # just make an 'update-functions' cmd for use when wanted?
 if [ "$Python2" ] ; then
-DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 "$Python2" -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" \"$@\" ; } ; export -f "+Command'$'\n\n''print "\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:])' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
-DefineApps /Applications /usr/local/Cellar/emacs
-if declare -F xcode >/dev/null; then DefineApps "$(declare|grep -i '^ *open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
+DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 "$Python2" -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" \"$@\" ; } ; export -f "+Command+" >/dev/null"'$'\n\n''print "\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:])' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
+DefineApps /Applications /System/Applications /usr/local/Cellar/emacs
+if declare -f xcode >/dev/null; then DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
 unset DefineApps
 fi
 
 # One slight annoyance is if you use some Macs that
 # have bbedit installed but others that just have
 # TextWrangler.  Let's function-ify those edit commands:
-if which -s bbedit; then
+if /usr/bin/which -s bbedit; then
   edit () { bbedit "$@" ; }
-  export -f edit
-elif which -s edit; then
+  export -f edit >/dev/null
+elif /usr/bin/which -s edit; then
   bbedit () { edit "$@" ; }
-  export -f bbedit
+  export -f bbedit >/dev/null
 else
   edit () { open -e "$@" ; }
-  export -f edit # and leave bbedit undefined
+  export -f edit >/dev/null # and leave bbedit undefined
 fi
 
 if [ -e /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Resources/jsc ] ; then
   # command-line Javascript interpreter not in default PATH: might as well make this available
   jsc () { /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Resources/jsc "$@" ; }
-  if ! which -s node; then
+  if ! /usr/bin/which -s node; then
     # might as well alias it, in case you're in the
     # habit of typing "node" rather than "jsc" (it's
     # not the same, but near enough for simple tests)
     node () { jsc "$@" ; }
-    export -f node
+    export -f node >/dev/null
   fi
 fi
 
 # Ditto for mixed Mac/Linux environments where you
 # can type "jmacs" on the Linux terminal to get a
 # quick emacs-like editor:
-if ! which -s jmacs; then
-jmacs () { emacs -q "$@" ; } ; export -f jmacs ; fi
+if ! /usr/bin/which -s jmacs; then
+jmacs () { emacs -q "$@" ; } ; export -f jmacs >/dev/null ; fi
 
 # and make sure you can type "play" to play sound files
-if ! which -s play; then
-play () { afplay "$@" ; } ; export -f play ; fi
+if ! /usr/bin/which -s play; then
+play () { afplay "$@" ; } ; export -f play >/dev/null ; fi
 
 # and "umount" to eject auto-mounted USB sticks etc:
-umount () { diskutil umount "$@" ; } ; export -f umount
-eject () { drutil eject ; } ; export -f eject # for CDs
+umount () { diskutil umount "$@" ; } ; export -f umount >/dev/null
+eject () { drutil eject ; } ; export -f eject >/dev/null # for CDs
 
 # and the general "web browser" command used by some
 # scripts in Debian etc
@@ -185,45 +187,45 @@ alias gnome-open=open
 # If you do use ftpfs and the server is running it via
 # inetd then you might need to increase the connections/min
 # allowed in inetd.conf, e.g. "ftp stream tcp nowait.32767"
-if declare -F macfusion >/dev/null; then
-  export MF_Path="$(declare|grep -i '^ *open .*/Macfusion.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')" #' # (comment for some versions of Emacs syntax highlighting)
+if declare -f macfusion >/dev/null; then
+  export MF_Path="$(declare -f macfusion|grep -i '^\s*open .*/Macfusion.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')" #' # (comment for some versions of Emacs syntax highlighting)
   export sshfs_Path="$MF_Path/Contents/PlugIns/sshfs.mfplugin/Contents/Resources/sshfs-static"
   export curlftpfs_Path="$MF_Path/Contents/PlugIns/ftpfs.mfplugin/Contents/Resources/curlftpfs_static_mg"
   unset MF_Path
-  if ! which -s curlftpfs &&
+  if ! /usr/bin/which -s curlftpfs &&
     test -e "$curlftpfs_Path"; then
       curlftpfs () { "$curlftpfs_Path" -o uid="$(id -u)" "$@" ; }
       ftpfs () { curlftpfs "$@" ; } # might as well
-      export -f curlftpfs ftpfs
+      export -f curlftpfs ftpfs >/dev/null
   else unset curlftpfs_Path
   fi
-  if ! which -s sshfs &&
+  if ! /usr/bin/which -s sshfs &&
     test -e "$sshfs_Path"; then
       sshfs () { "$sshfs_Path" "$@" ; }
-      export -f sshfs
+      export -f sshfs >/dev/null
   else unset sshfs_Path
   fi
 fi
 
-if declare -F chmox >/dev/null && ! which -s kchmviewer; then
-  kchmviewer () { chmox "$@" ; } ; export -f kchmviewer
+if declare -f chmox >/dev/null && ! /usr/bin/which -s kchmviewer; then
+  kchmviewer () { chmox "$@" ; } ; export -f kchmviewer >/dev/null
   # kchmviewer is probably easier to auto-complete, as
   # chmox will suggest chmod also.
   # Intel binaries are included in chmox 0.4+
 fi
 
-if alias adobe-reader 2>/dev/null >/dev/null && ! which -s acroread; then
+if alias adobe-reader 2>/dev/null >/dev/null && ! /usr/bin/which -s acroread; then
   acroread () { open -W -a "$(alias adobe-reader|sed -e 's/[^"]*"//' -e 's/".*//')" "$@" ; } # must define it this way, not just by calling adobe-reader within the function, because our aliases might not be available in a subshell
-  export -f acroread
+  export -f acroread >/dev/null
 fi
 
 # If you have installed fuse-ext2 then might as well set
 # its mke2fs (although usually you'd use fuse-ext2 or
 # mount -t fuse-ext2)
-if ! which -s mke2fs && which -s fuse-ext2.mke2fs; then
+if ! /usr/bin/which -s mke2fs && /usr/bin/which -s fuse-ext2.mke2fs; then
   mke2fs () { fuse-ext2.mke2fs "$@" ; }
   e2fsmount () { fuse-ext2 "$@" ; }
-  export -f mke2fs e2fsmount
+  export -f mke2fs e2fsmount >/dev/null
 fi
 
 ulimit -n 1024 # allow programs to have more open files
@@ -237,7 +239,7 @@ volume () {
     osascript -e "output volume of (get volume settings)"
   else osascript -e "set volume output volume $1"; fi }
 # older Macs just had "set volume" with a number 0 to 7
-export -f volume
+export -f volume >/dev/null
 
 # might as well have some iTunes command-line access too -
 # here's a function that plays a track whose name contains
@@ -248,17 +250,17 @@ alias next-track='osascript -e "tell application \"iTunes\" to next track"'
 alias previous-track='osascript -e "tell application \"iTunes\" to previous track"'
 pause () { osascript -e "tell application \"iTunes\" to pause" ; } # resume from GUI for now (right-click on the dock)
 stop () { osascript -e "tell application \"iTunes\" to stop" ; }
-export -f pause stop
+export -f pause stop >/dev/null
 
 # we can also do the following without sudo, as long as a desktop session is running:
-halt () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to shut down") & ) ; exit ; }
+halt () { [ "$(jobs -s)" = "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to shut down") & ) ; exit ; }
 # (if the "exit" warns about stopped jobs, we won't do the shutdown)
 poweroff () { halt ; }
-reboot () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to restart") & ) ; exit ; }
-logout () { [ "$(jobs -s)" == "" ] && ( ( sleep 0.5 && osascript -e "tell application \"System Events\" to log out") & ) ; exit ; }
-sleepnow () { if ! pmset -g assertions|grep PreventSystemSleep|grep -v '^ *PreventSystemSleep *0$'; then (sleep 0.5; pmset sleepnow) & exit; else false; fi ; }
+reboot () { [ "$(jobs -s)" = "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to restart") & ) ; exit ; }
+logout () { [ "$(jobs -s)" = "" ] && ( ( sleep 0.5 && osascript -e "tell application \"System Events\" to log out") & ) ; exit ; }
+sleepnow () { if ! pmset -g assertions|grep PreventSystemSleep|grep -v '^\s*PreventSystemSleep\s*0$'; then (sleep 0.5; pmset sleepnow) & exit; else false; fi ; }
 alias suspend-mac=sleepnow
-export -f halt poweroff reboot logout sleepnow
+export -f halt poweroff reboot logout sleepnow >/dev/null
 # (the "exit"s at the end of the above are so the terminal doesn't stop it with "are you sure", unless there are other terminal sessions)
 
 # Spotlight is required by app-store, e.g. for XCode updates (otherwise can get misleading error messages about account sign-in).  But you might want Spotlight disabled at other times (especially when accessing removable media).
@@ -266,7 +268,7 @@ alias spotlight-disable="sudo launchctl unload -w /System/Library/LaunchDaemons/
 alias spotlight-enable="sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.metadata.mds.plist"
 
 updatedb () { sudo /usr/libexec/locate.updatedb ; }
-export -f updatedb
+export -f updatedb >/dev/null
 # note that updatedb does not look in any user directories
 # that are chmod'd to 700 (user only) - be sure to chmod
 # a+rx any dirs you want it to scan
@@ -309,7 +311,7 @@ _make_ramdisk () {
 alias make-ramdisk=_make_ramdisk
 _drop_ramdisk () { D="$(mount|grep "$(echo "$1"|sed -e 's,/$,,') "|sed -e 's/ .*//')" ; /sbin/umount "$1" ; hdiutil detach "$D" ; rmdir "$1" ; }
 alias drop-ramdisk=_drop_ramdisk
-export -f _make_ramdisk _drop_ramdisk # so can use from scripts (useful especially if have upgraded HDD to SSD and worried about excessive writes by script temp files)
+export -f _make_ramdisk _drop_ramdisk >/dev/null # so can use from scripts (useful especially if have upgraded HDD to SSD and worried about excessive writes by script temp files)
 
 # NOTE: for making HFS+ disk images that will interoperate
 # with Linux, it's really best to do this IN LINUX (use dd
@@ -318,24 +320,30 @@ export -f _make_ramdisk _drop_ramdisk # so can use from scripts (useful especial
 # that the Linux kernel refuses to mount for some reason.
 
 function xmanpage() { open x-man-page://$@ ; echo "To change appearance: Terminal / Preferences / Settings / Man page / (Text,Window)" ; }
-export -f xmanpage
-if ! which -s xman; then xman () { xmanpage "$@" ; } ; export -f xman; fi # (if X11 is present then xman should be installed, but it may fail to read all manpage sections and UTF-8 won't display)
+export -f xmanpage >/dev/null
+if ! /usr/bin/which -s xman; then xman () { xmanpage "$@" ; } ; export -f xman >/dev/null; fi # (if X11 is present then xman should be installed, but it may fail to read all manpage sections and UTF-8 won't display)
 function psmanpage() { man -t "$@" | open -f -a Preview ; } # will need Invert to change the colours of that
-export -f psmanpage
+export -f psmanpage >/dev/null
 alias man-terminal=xmanpage # for auto-complete "man"
 alias man-ps=psmanpage
 
 # Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
 if [ ! "$SSH_CLIENT" ]; then
   # simpler prompt for a local Mac (hostname can be a bit long)
-  export PS1='mac:\w\$ '
-elif test "$(hostname -s)" == mac || test "$(hostname -s)" == unknown; then
+  if test "$SHELL" = /bin/bash; then
+    export PS1='mac:\w\$ '
+  else export PS1='mac:%~%# '; fi
+elif test "$(hostname -s)" = mac || test "$(hostname -s)" = unknown; then
   # if hostname has been SET to mac, better make it different
   # to distinguish between a local one and one over SSH
-  export PS1='mac.ssh:\w\$ '
+  if test "$SHELL" = /bin/bash; then
+    export PS1='mac.ssh:\w\$ '
+  else export PS1='mac.ssh:%~%# '; fi
   case "$TERM" in xterm*) echo -n $'\033]0;mac ssh\007' ;; esac
 else
-  export PS1='\h:\w\$ '
+  if test "$SHELL" = /bin/bash; then
+    export PS1='\h:\w\$ '
+  else export PS1='%m:%~%# '; fi
   case "$TERM" in xterm*) echo -n $'\033]0;'"$(hostname -s)"$'\007' ;; esac
 fi
 
@@ -349,7 +357,7 @@ else # not on a Mac
     volume () {
     if [ ! "$1" ]; then amixer sget Master
     else amixer sset Master "$1%"; fi }
-    export -f volume
+    export -f volume >/dev/null
     if [ -n "$SSH_CLIENT" ]; then export DBUS_SESSION_BUS_ADDRESS=$(cat /proc/*/environ 2>/dev/null | tr '\0' '\n' | grep -m 1 DBUS_SESSION_BUS_ADDRESS | cut -d = -f2-); if ! [ -n "$DBUS_SESSION_BUS_ADDRESS" ]; then unset DBUS_SESSION_BUS_ADDRESS ; fi; fi
   fi
 fi # end of "not on a Mac" block
@@ -364,7 +372,7 @@ which unix2dos >/dev/null 2>/dev/null || alias unix2dos="perl -i -p -e 's|[\r\n]
 # between the XML markup).  catdocx_utf8 outputs UTF-8;
 # catdocx_cp1252 outputs "Windows 1252" as used on old
 # Psion PDAs etc.
-catdocx_utf8 () { while [ "$1" ]; do unzip -Cp "$1" word/[dfe]*[ts].xml; shift; done|perl -p -e 's/<w:p(\s[^>]*)?>/\n/g;s/<[^>]*>//g;s/  */ /g;s/&lt;/</g;s/&gt;/>/g'|grep -v '^ *$' ; } # (want to unzip document.xml, endnotes.xml and footnotes.xml but not emit warnings if missing and not match fontTable etc, hence the awkward file specification; perl rather than sed so as to avoid BSD sed / gsed differences re \n in replacement etc)
+catdocx_utf8 () { while [ "$1" ]; do unzip -Cp "$1" word/[dfe]*[ts].xml; shift; done|perl -p -e 's/<w:p(\s[^>]*)?>/\n/g;s/<[^>]*>//g;s/  */ /g;s/&lt;/</g;s/&gt;/>/g'|grep -v '^\s*$' ; } # (want to unzip document.xml, endnotes.xml and footnotes.xml but not emit warnings if missing and not match fontTable etc, hence the awkward file specification; perl rather than sed so as to avoid BSD sed / gsed differences re \n in replacement etc)
 catdocx_cp1252 () { catdocx_utf8 "$@" | iconv -c -f UTF8 -t CP1252//TRANSLIT ; } # --unicode-subst="[U+%04X]" instead of -c would be nice, but it's not available on all versions of iconv
 
 # Bonus command 2: cat a load of text files into a
