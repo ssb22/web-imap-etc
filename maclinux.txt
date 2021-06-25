@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.5 (c) Silas S. Brown 2012-2021.
+# Version 1.501 (c) Silas S. Brown 2012-2021.
 
 # Tested in zsh on macOS 11.4
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -11,7 +11,7 @@
 # curl http://ssb22.user.srcf.net/setup/maclinux.txt >> ~/.bash_profile
 # or if you prefer you can keep it in a separate file
 # and source it from your startup files
-# (put "source .maclinux" into .zshrc or .bashrc)
+# (put "source ~/.maclinux" into .zshrc or .bashrc)
 
 # You might wish to also put it in BASH_ENV to ensure all
 # commands are copied to subshells, although commands without
@@ -46,7 +46,7 @@ if test -d /Volumes && test "$(uname -s)" = Darwin; then
 export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV
 
 # Check SMART status of primary hard disk:
-diskutil info disk0|grep SMART|grep -v 'Status:\s*Verified$' && echo "Hard disk failing: backup NOW" && echo
+diskutil info disk0|grep SMART|grep -v 'Status:[^A-z]*Verified$' && echo "Hard disk failing: backup NOW" && echo
 
 # Support installations of HomeBrew/MacTex/MacPorts/Fink:
 export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
