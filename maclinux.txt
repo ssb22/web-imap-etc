@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.501 (c) Silas S. Brown 2012-2021.
+# Version 1.502 (c) Silas S. Brown 2012-2021.
 
 # Tested in zsh on macOS 11.4
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -162,7 +162,16 @@ fi
 # can type "jmacs" on the Linux terminal to get a
 # quick emacs-like editor:
 if ! /usr/bin/which -s jmacs; then
-jmacs () { emacs -q "$@" ; } ; export -f jmacs >/dev/null ; fi
+  if /usr/bin/which -s emacs; then
+jmacs () { emacs -q "$@" ; } ; export -f jmacs >/dev/null
+  else # emacs not present in macOS 11, but we might have it as an application:
+    if declare -f emacs >/dev/null; then
+      jmacs () { $(declare -f emacs|grep -i '^\s*open.*/Emacs.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/MacOS/Emacs -q -nw "$@" ; } ; export -f jmacs >/dev/null
+    elif declare -f aquamacs >/dev/null; then # TODO: not tested
+      jmacs () { $(declare -f emacs|grep -i '^\s*open.*/Aquamacs.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/MacOS/Aquamacs -q -nw "$@" ; } ; export -f jmacs >/dev/null
+    fi
+  fi
+fi
 
 # and make sure you can type "play" to play sound files
 if ! /usr/bin/which -s play; then
