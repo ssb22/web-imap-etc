@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.502 (c) Silas S. Brown 2012-2021.
+# Version 1.503 (c) Silas S. Brown 2012-2021.
 
 # Tested in zsh on macOS 11.4
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -130,6 +130,12 @@ DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find "$@" '(' -type d -o
 DefineApps /Applications /System/Applications /usr/local/Cellar/emacs
 if declare -f xcode >/dev/null; then DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
 unset DefineApps
+fi
+
+if test -e /Applications/MacPorts/VLC.app/Contents/MacOS/VLC; then
+  # override the above "open": might need its command line
+  # (but not everything listed by -H really works)
+  vlc () { /Applications/MacPorts/VLC.app/Contents/MacOS/VLC "$@" ; } ; export -f vlc >/dev/null
 fi
 
 # One slight annoyance is if you use some Macs that
@@ -286,7 +292,8 @@ export -f updatedb >/dev/null
 # Notes: (1) PATH might be incomplete, (2) this maclinux won't have been executed (unless you source it in the script),
 # (3) if the script starts any background processes, it MUST do a "wait" before finishing if you don't want launchctl to terminate its background processes
 _install_login_command () {
-  if ! test -e "/$1"; then echo "Syntax: install-login-command executable-full-path"; echo "(see comments in maclinux for caveats)"; return; fi
+  if ! [ -e "/$1" ]; then echo "Syntax: install-login-command executable-full-path"; echo "(see comments in maclinux for caveats)"; return; fi
+  mkdir -p "$HOME/Library/LaunchAgents"
   export L="$(echo "$1"|sed -e 's,.*/,,')"
   if [ -e "$HOME/Library/LaunchAgents/$L.plist" ] || [ ! "$L" ] || ! touch "$HOME/Library/LaunchAgents/$L.plist" 2>/dev/null; then
     # can't use executable name as plist name (exists or can't create), so make a generic one
