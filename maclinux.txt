@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.503 (c) Silas S. Brown 2012-2021.
+# Version 1.504 (c) Silas S. Brown 2012-2021.
 
 # Tested in zsh on macOS 11.4
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -152,9 +152,9 @@ else
   export -f edit >/dev/null # and leave bbedit undefined
 fi
 
-if [ -e /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Resources/jsc ] ; then
+if [ -e /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/*/jsc ] ; then
   # command-line Javascript interpreter not in default PATH: might as well make this available
-  jsc () { /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Resources/jsc "$@" ; }
+  jsc () { /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/*/jsc "$@" ; }
   if ! /usr/bin/which -s node; then
     # might as well alias it, in case you're in the
     # habit of typing "node" rather than "jsc" (it's
