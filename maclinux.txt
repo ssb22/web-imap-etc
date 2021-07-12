@@ -364,6 +364,7 @@ else
 fi
 
 export BASH_ENV="$__OldBashEnv"
+if test "$SHELL" = /bin/zsh; then setopt nohup nocheckjobs; fi
 
 else # not on a Mac
   if [ "$COLUMNS" ] && [ $COLUMNS -le 50 ] && wget --version 2>/dev/null|head -1|grep "Wget 1.17" >/dev/null; then alias wget="echo 'Doing wget -q to work around Debian bug #823891';wget -q" # non-Mac, but that bug affects the version of wget shipped with Ubuntu 16.04 LTS so I put this in for the Cambridge MCS remote GNU/Linux machines at the time
