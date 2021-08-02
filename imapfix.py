@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.5 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.501 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1384,7 +1384,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
             said = True
         msg = email.message_from_string(message)
         if msg.get("From","")==imapfix_name: # pre v1.5
-            msg['From'] = imapfix_From_line # K-9 5.8+
+            del msg['From'] ; msg['From'] = imapfix_From_line # K-9 5.8+
         old_date = msg.get("Date","")
         if old_date:
             def addOldDate(message):
