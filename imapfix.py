@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.501 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.51 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -149,6 +149,9 @@ logout_before_sleep = False # suggest set to True if using
 midnight_command = None
 # or, midnight_command = "system command to run at midnight"
 # (useful if you don't have crontab access on the machine)
+
+calendar_file = None # set to run 'calendar' command on it
+# and send output lines as messages
 
 postponed_foldercheck = False
 # if True, check for folders named YYYY-MM-DD according to
@@ -1408,6 +1411,16 @@ def do_postponed_foldercheck(dayToCheck="today"):
     if said: check_ok(imap.expunge())
     check_ok(imap.select()) ; do_delete(folder)
 
+def do_calendar():
+    for l in os.popen("calendar -A 0 -f \"%s\"" % calendar_file):
+        if not l.strip(): continue
+        subj = l.split()[1:]
+        if not subj: continue
+        if re.match("^[0-9*]*$",subj[0]): subj=subj[1:] # month day txt
+        subj = ' '.join(l.split()[2:])
+        if len(subj)>60: subj=subj[:57]+"..."
+        save_to(filtered_inbox,"From: "+imapfix_From_line.replace(imapfix_name,"calendar",1)+"\r\nSubject: "+subj+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n"+l+"\n")
+
 setAlarmAt = 0
 def checkAlarmDelay():
     global setAlarmAt
@@ -1461,6 +1474,7 @@ def mainloop():
     if not oldDay==newDay:
       oldDay=newDay
       if midnight_command: os.system(midnight_command)
+      if calendar_file: do_calendar()
       if postponed_foldercheck or postponed_daynames:
           do_postponed_foldercheck()
       if train_spamprobe_nightly: do_nightly_train()
