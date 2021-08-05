@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.511 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.512 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -597,18 +597,19 @@ def check(text,content,url,errmsg):
 def parseRSS(url,content,comment):
   from xml.parsers import expat
   parser = expat.ParserCreate()
-  items = [[[],[],[]]] ; curElem = [None]
+  items = [[[],[],[],[]]] ; curElem = [None]
   def StartElementHandler(name,attrs):
-    if name in ['item','entry']: items.append([[],[],[]])
+    if name in ['item','entry']: items.append([[],[],[],[]])
     if name=='title': curElem[0]=0
     elif name=='link': curElem[0]=1
     elif name in ['description','summary']: curElem[0]=2
+    elif name=='pubDate': curElem[0]=3
     else: curElem[0]=None
     if name=='link' and 'href' in attrs: # (note this isn't the ONLY way an href could get in: <link>http...</link> is also possible, and is handled by CharacterDataHandler below, hence EndElementHandler is important for separating links)
       items[-1][curElem[0]].append(attrs['href']+' ')
   def EndElementHandler(name):
     if name in ['item','entry']: # ensure any <link>s outside <item>s are separated
-      items.append([[],[],[]])
+      items.append([[],[],[],[]])
       curElem[0]=None
     elif name in ['description','summary','title','link']:
       if not curElem[0]==None: items[-1][curElem[0]].append(' ') # ensure any additional ones are space-separated
@@ -625,7 +626,7 @@ def parseRSS(url,content,comment):
   except expat.error as e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n(Check if this URL is still serving RSS?)\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
   for i in xrange(len(items)):
     items[i][1] = "".join(urlparse.urljoin(url,w) for w in "".join(items[i][1]).strip().split()).strip() # handle links relative to the RSS itself
-    for j in [0,2]: items[i][j]=u"".join(U(x) for x in items[i][j]).strip()
+    for j in [0,2,3]: items[i][j]=u"".join(U(x) for x in items[i][j]).strip()
   handleRSS(url,items,comment)
 def entityref(m):
   m=m.group()[1:-1] ; m2 = None
@@ -644,9 +645,11 @@ def paren(comment):
   else: return ""
 def handleRSS(url,items,comment,itemType="RSS/Atom"):
   newItems = [] ; pKeep = set()
-  for title,link,txt in items:
+  for title,link,txt,date in items:
     if not title: continue # valid entry must have title
-    k = (url,'seenItem',hashlib.md5(repr((title,link,re.sub("</?[A-Za-z][^>]*>","",txt))).encode("utf-8")).digest()) # (ignore HTML markup in RSS, since it sometimes includes things like renumbered IDs) TODO: option not to call hashlib, in case someone has the space and is concerned about the small probability of hash collisions?  (The Python2-only version of webcheck just used Python's built-in hash(), but in Python 3 that is no longer stable across sessions, so use md5)
+    if "??track-links-only?" in comment: hashTitle,hashTxt = date,"" # TODO: document this, it's for when text might change because for example we're fetching it through an add-annotation CGI that can change, but don't ignore if the publication date has changed due to an update (TODO: might be better to do this via a 'pipe to postprocessing' option instead?)
+    else: hashTitle,hashTxt = title,re.sub("</?[A-Za-z][^>]*>","",txt) # (ignore HTML markup in RSS, since it sometimes includes things like renumbered IDs)
+    k = (url,'seenItem',hashlib.md5(repr((hashTitle,link,hashTxt)).encode("utf-8")).digest()) # TODO: option not to call hashlib, in case someone has the space and is concerned about the small probability of hash collisions?  (The Python2-only version of webcheck just used Python's built-in hash(), but in Python 3 that is no longer stable across sessions, so use md5)
     pKeep.add(k)
     if k in previous_timestamps and not '--show-seen-rss' in sys.argv: continue # seen this one already
     previous_timestamps[k] = True
@@ -671,7 +674,7 @@ def extract(url,content,startEndMarkers,comment):
     j = content.find(end,i+len(start))
     if j==-1: break
     c = content[i+len(start):j].decode('utf-8').strip()
-    if c: items.append(('Auto-extracted text:','',c)) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
+    if c: items.append(('Auto-extracted text:','',c,"")) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
     i = j+len(end)
   if not items: print ("No items were extracted from "+url+" via "+start+"..."+end+" (check that site changes haven't invalidated this extraction rule)")
   handleRSS(url,items,comment,"extracted")
