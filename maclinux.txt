@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.51 (c) Silas S. Brown 2012-2021.
+# Version 1.52 (c) Silas S. Brown 2012-2021.
 
 # Tested in zsh on macOS 11.4
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -80,6 +80,14 @@ if ! /usr/bin/which -s pidof; then
   pidof () (ps axwww|fgrep "$@"|fgrep -v "fgrep $@"|sed -e 's/^  *//' -e 's/ .*//')
   export -f pidof >/dev/null
 fi
+
+top () { /usr/bin/top -stats $(if /usr/bin/top -l 1 -s 0 -stats mem >/dev/null 2>/dev/null; then echo pid,cpu,mem,uid,command; else echo pid,vsize,cpu,rsize,uid,command; fi) -o cpu $@ ; }
+# 11.x: -r with 'vsize' works but takes more CPU
+# 10.7: 'vsize' works w/out -r
+# 'state' works but takes more columns
+export -f top >/dev/null
+alias netstat-tl="lsof -iTCP -sTCP:LISTEN"
+alias netstat-t="lsof -iTCP -sTCP:ESTABLISHED"
 
 if ! /usr/bin/which -s free; then
   free () { top -l 1 -s 0 | grep -m 1 PhysMem ; }
