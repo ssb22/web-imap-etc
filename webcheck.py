@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.512 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.513 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -579,10 +579,7 @@ def check(text,content,url,errmsg):
     if ' #' in text: text,comment = text.split(' #',1) # TODO: document this (comments must be preceded by a space, otherwise interpreted as part of the text as this is sometimes needed in codes)
     else: comment = ""
     orig_comment = comment = comment.strip()
-    if comment:
-      if comment.startswith('(') or comment.endswith(')'): pass
-      else: comment = '('+comment+')'
-      comment="\n  "+comment
+    if comment: comment="\n  "+paren(comment)
     text = text.strip()
     assert text # or should have gone to parseRSS instead
     if text.startswith('{') and text.endswith('}') and '...' in text: extract(url,content,text[1:-1].split('...'),orig_comment)
@@ -592,7 +589,7 @@ def check(text,content,url,errmsg):
             sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
     elif not myFind(text,content): # alert if DOESN'T contain
         sys.stdout.write(linkify(url)+" no longer contains "+text+comment+errmsg+"\n")
-        if '??show?' in comment: getBuf(sys.stdout).write(content+B('\n')) # TODO: document this (for debugging cases where the text shown in Lynx is not the text shown to Webcheck, and Webcheck says "no longer contains" when it still does)
+        if '??show?' in orig_comment: getBuf(sys.stdout).write(content+B('\n')) # TODO: document this (for debugging cases where the text shown in Lynx is not the text shown to Webcheck, and Webcheck says "no longer contains" when it still does)
 
 def parseRSS(url,content,comment):
   from xml.parsers import expat
@@ -641,7 +638,10 @@ def entityref(m):
     else: return m2.encode('utf-8')
   return "&"+m+";"
 def paren(comment):
-  if comment: return " ("+comment+")"
+  comment = " ".join(comment.replace("??track-links-only?","").split())
+  if comment.startswith('(') and comment.endswith(')'): pass
+  else: comment = '('+comment+')'
+  if comment: return " "+comment
   else: return ""
 def handleRSS(url,items,comment,itemType="RSS/Atom"):
   newItems = [] ; pKeep = set()
