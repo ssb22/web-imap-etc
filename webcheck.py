@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.513 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.514 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -686,6 +686,17 @@ def myFind(text,content):
   return normalisePunc(text) in normalisePunc(content)
 def normalisePunc(t):
   "normalise apostrophes; collapse (but don't ignore) whitespace and &nbsp; ignore double-quotes because they might have been <Q> elements; fold case"
-  return re.sub(B(r"(\s)\s+"),B(r"\1"),t.replace(u"\u2019".encode('utf-8'),B("'")).replace(u"\u2018".encode('utf-8'),B("'")).replace(u"\u201C".encode('utf-8'),B("")).replace(u"\u201D".encode('utf-8'),B("")).replace(B('"'),B("")).replace(u"\u00A0".encode('utf-8'),B(" ")).replace(u"\uFEFF".encode('utf-8'),B("")).replace(u"\u200B".encode('utf-8'),B(""))).lower()
+  for s,r in [
+      (u"\u2013".encode('utf-8'),B("-")), # en-dash
+      (u"\u2019".encode('utf-8'),B("'")),
+      (u"\u2018".encode('utf-8'),B("'")),
+      (u"\u201C".encode('utf-8'),B("")),
+      (u"\u201D".encode('utf-8'),B("")),
+      (B('"'),B("")),
+      (u"\u00A0".encode('utf-8'),B(" ")),
+      (u"\uFEFF".encode('utf-8'),B("")),
+      (u"\u200B".encode('utf-8'),B(""))
+      ]: t=t.replace(s,r)
+  return re.sub(B(r"(\s)\s+"),B(r"\1"),t).lower()
 
 if __name__=="__main__": main()
