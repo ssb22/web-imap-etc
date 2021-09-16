@@ -639,10 +639,8 @@ def entityref(m):
   return "&"+m+";"
 def paren(comment):
   comment = " ".join(comment.replace("??track-links-only?","").split())
-  if comment.startswith('(') and comment.endswith(')'): pass
-  else: comment = '('+comment+')'
-  if comment: return " "+comment
-  else: return ""
+  if not comment or (comment.startswith('(') and comment.endswith(')')): return comment
+  else: return " ("+comment+")"
 def handleRSS(url,items,comment,itemType="RSS/Atom"):
   newItems = [] ; pKeep = set()
   for title,link,txt,date in items:
