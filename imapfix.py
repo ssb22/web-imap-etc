@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.51 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.511 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -854,7 +854,7 @@ def save_attachment_separately(msg):
     if not type(fname)==type(u""):
         try: fname = fname.decode('utf-8')
         except: pass
-    try: fname=fname.encode("unicode-escape").replace(r"\u","_").replace("/"," ")
+    try: fname=fname.encode("unicode-escape").replace(r"\u","_").replace("/"," ").replace("\\"," ")
     except: fname="illegal-filename-B"
     fname = re.sub(r'\s+',' ',fname)
     if '.' in fname: fext = fname[fname.rindex('.'):]
