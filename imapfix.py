@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.511 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.512 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -694,7 +694,7 @@ def process_imap_inbox():
                 if pdf_convert: changed2 = add_pdf(msg) or changed2
                 changed = changed2 or changed
                 if changed2: message = myAsString(msg)
-            if seenFlag: copyWorked = False # TODO: unless we can get copy_to to set the Seen flag on the copy
+            if seenFlag: copyWorked = False # unless we can get copy_to to set the Seen flag on the copy, which means the IMAP server must have an extension that causes COPY to return the new ID unless we want to search for it
             elif not changed and saveImap == imap:
                 debug("Copying unchanged message to "+box)
                 copyWorked = copy_to(box, msgID)
@@ -989,7 +989,7 @@ def do_copyself_to_copyself():
             globalise_charsets(msg,imap_8bit)
             if copyself_delete_attachments:
                 delete_attachments(msg)
-            save_to(copyself_folder_name,myAsString(msg),"\\Seen") # TODO: or copy_to, if msg hasn't changed and we can get copy_to to set the Seen flag on the copy.  Low priority if copyself_delete_attachments is set, because the current save_to()-based implementation will be dealing with only small messages.
+            save_to(copyself_folder_name,myAsString(msg),"\\Seen") # can't use copy_to even if msg hasn't changed, because we can't get copy_to to set the Seen flag on the copy (unless an IMAP extension that can help us do that is installed)
             imap.store(msgID, '+FLAGS', '\\Deleted')
         if said: check_ok(imap.expunge())
 
@@ -1325,7 +1325,7 @@ def add_tnef0(message,accum):
     outdir = "tnefout-%d" % (os.getpid(),)
     os.mkdir(outdir)
     os.popen("tnef -C "+outdir+" --number-backups --unix-paths --save-body --ignore-checksum --ignore-encode --ignore-cruft","wb").write(payload)
-    for f in os.listdir(outdir):
+    for f in listdir(outdir):
         debug("Adding "+repr(f))
         origF,f = f,outdir+os.sep+f ; mimeType = "application/binary"
         if os.sep in f:
