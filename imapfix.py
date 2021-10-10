@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.512 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.52 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -25,7 +25,11 @@ filtered_inbox = "in" # or =None if you don't want to do
 # but just use maildirs_to_imap or maildir_to_copyself,
 # e.g. because you're on an auxiliary machine (which does
 # not have your spamprobe database etc) but still want to
-# use maildir_to_copyself for mutt (see notes below)
+# use maildir_to_copyself for mutt (see notes below).
+
+# If you want to keep your filtered_inbox on local maildir
+# instead of IMAP server, set it to a tuple with the first
+# item being "maildir": ("maildir","path/to/maildir")
 
 leave_note_in_inbox = True # for "new mail" indicators
 
@@ -78,13 +82,20 @@ header_rules = [
     # "inbox" = change to filtered_inbox;
     # "spam" = change to spam_folder;
     # start with a * if this folder does not need any
-    # notification in newmail_directory
+    # notification in newmail_directory, e.g. "*boxname"
+
+    # For saving to local maildir instead of IMAP, set
+    # folder name to ("maildir","path/to/maildir")
+    # or to skip newmail_directory notification also,
+    # set it to ("*",("maildir","path/to/maildir"))
+    
 ]
 
 def extra_rules(message_as_string): return False
 # you can override this to any function you want, which
-# returns the name of a folder, or None to delete the
-# message, or False = no decision
+# returns the name of a folder (with or without a *), or
+# None to delete the message, or False = no decision,
+# or ("maildir","path/to/maildir") or ("*",("maildir"...))
 catch_extraRules_errors = True
 
 def handle_authenticated_message(subject,firstPart,attach):
@@ -92,8 +103,9 @@ def handle_authenticated_message(subject,firstPart,attach):
 # - you can override this to any function you want, which
 # does anything you want in response to messages that are
 # SSL-authenticated as coming from yourself (see below).
-# Returns the name of a folder, or None to delete the
-# message, or False = undecided (normal rules will apply).
+# Returns the name of a folder (or maildir as above), or
+# None to delete the message, or False = undecided (normal
+# rules will apply).
 # If folder name starts with *, mail will be marked 'seen'.
 # firstPart is a UTF-8 copy of the first part of the body
 # (which will typically contain plain text even if you
@@ -183,6 +195,12 @@ postponed_daynames = False
 # You can set postponed_foldercheck and postponed_daynames in
 # any combination.
 
+postponed_maildir = None # or "path/to/maildir", will
+# result in the above postponed_ options checking
+# subfolders of this maildir as well as the IMAP server,
+# and authenticated messages for postponing being written
+# to subfolders of this maildir instead of the server
+
 quiet = True # False = print messages (including quota)
 # If you set quiet = 2, will be quiet if and only if the
 # standand output is not connected to a terminal
@@ -202,7 +220,14 @@ copyself_delete_attachments = False # if True, attachments
 # are DELETED when moving from maildir_to_copyself to the
 # IMAP folder (but a record is still kept of what was
 # attached, unlike the fcc_attach='no' setting in Mutt 1.5)
+
 copyself_folder_name = "Sent Items"
+# If you want to keep this on a local maildir instead, you
+# can set it to ("maildir","path/to/maildir")
+# (in which case also setting maildir_to_copyself will
+# result in messages being moved from one maildir to
+# another, with copyself_delete_attachments still applied)
+
 copyself_alt_folder = None # or the name of an IMAP folder
 # - any messages found in here (if folder exists) will be
 # moved to copyself_folder_name, with their attachments
@@ -221,6 +246,8 @@ archive_rules = [
     # These rules are used when you run with --archive
     # Each rule is: ("folder-name", max-age (days), spamprobe-action)
     # If max-age is not None, older messages will be archived (so you can set it to 0 to archive all messages).  Independently of this, spamprobe-action (if specified) will be run on all messages.
+    # Folder name can be ("maildir","path/to/maildir") if
+    # you also want to archive from local maildirs to mbox
     ("spam-confirmed", 30, "train-spam"),
     ("some-folder", 90, None),
     ("some-other-folder", None, "train-good"),
@@ -368,6 +395,7 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # in that it doesn't decode MIME attachments etc
 # (TODO: implement more thorough search, with regexps, but
 # it would have to download all messages from the server)
+# TODO: this does not yet search local maildirs
 
 # Run with --delete (folder name) to delete a folder
 # --delete-secondary to do it on secondary_imap_hostname
@@ -480,8 +508,9 @@ if image_size:
     from PIL import Image
     import imghdr
 
-def debug(msg):
-    if not quiet: print (msg)
+def debug(*args):
+    if not quiet:
+        print (reduce((lambda a,b:a+str(b)), args, ""))
     
 def check_ok(r):
     "Checks that the return value of an IMAP call 'r' is OK, raises exception if not"
@@ -512,7 +541,10 @@ def process_header_rules(header):
         except StopIteration: continue
         if box:
             if box[0]=='*': box=box[1:] # just save it without indication
-            elif newmail_directory: open(newmail_directory+os.sep+box,'a')
+            elif newmail_directory:
+                if type(box)==tuple: bStr=box[1]
+                else: bStr = box
+                open(newmail_directory+os.sep+bStr,'a')
         return rename_folder(box)
   return False
 
@@ -552,7 +584,9 @@ def authenticated_wrapper(subject,firstPart,attach={}):
         if not newSubj: # oops, subject contained only the date and nothing else: take from 1st line of text instead
             newSubj = firstPart.lstrip().split('\n')[0]
             if len(newSubj) > 60: newSubj = newSubj[:57] + "..." # TODO: configurable abbreviation length?
-        return subject[:mLen], newSubj # don't resolve weekday/month names to a date here, because user might actually rely on the "doesn't check for past days on startup" behaviour to postpone to after a trip or something
+        if postponed_maildir: box=('maildir',postponed_maildir+os.sep+subject[:mLen])
+        else: box=subject[:mLen] # don't resolve weekday/month names to a date here, because user might actually rely on the "doesn't check for past days on startup" behaviour to postpone to after a trip or something
+        return box, newSubj
     try: r=handle_authenticated_message(subject,firstPart,attach)
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
@@ -695,13 +729,14 @@ def process_imap_inbox():
                 changed = changed2 or changed
                 if changed2: message = myAsString(msg)
             if seenFlag: copyWorked = False # unless we can get copy_to to set the Seen flag on the copy, which means the IMAP server must have an extension that causes COPY to return the new ID unless we want to search for it
+            elif type(box)==tuple: copyWorked = False # e.g. imap to maildir
             elif not changed and saveImap == imap:
-                debug("Copying unchanged message to "+box)
+                debug("Copying unchanged message to ",box)
                 copyWorked = copy_to(box, msgID)
                 if not copyWorked: debug("... failed; falling back to re-upload")
             else: copyWorked = False
             if not copyWorked:
-                debug("Saving message to "+box)
+                debug("Saving message to ",box)
                 save_to(box, message, seenFlag)
             if box==filtered_inbox: newMail = True
         else: debug("Deleting message")
@@ -715,7 +750,7 @@ def process_imap_inbox():
         # un-"seen" it (in case the IMAP server treats our fetching it as "seen"); TODO what if the client really read it but didn't delete?
         imap.store(imapMsgid, '-FLAGS', '\\Seen')
     check_ok(imap.expunge())
-  if (not quiet) and imap==saveImap: debug("Quota "+repr(imap.getquotaroot(filtered_inbox)[1])) # RFC 2087 "All mailboxes that share the same named quota root share the resource limits of the quota root" - so if the IMAP server has been set up in a typical way with just one limit, this command should print the current and max values for that shared limit.  (STORAGE = size in Kb, MESSAGE = number)
+  if (not quiet) and imap==saveImap and not type(filtered_inbox)==tuple: debug("Quota ",repr(imap.getquotaroot(filtered_inbox)[1])) # RFC 2087 "All mailboxes that share the same named quota root share the resource limits of the quota root" - so if the IMAP server has been set up in a typical way with just one limit, this command should print the current and max values for that shared limit.  (STORAGE = size in Kb, MESSAGE = number)
 
 def authenticates(msg):
     if not trusted_domain or not smtps_auth: return
@@ -743,7 +778,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
     if not age==None:
       if spamprobe_action: extra = ", spamprobe="+spamprobe_action
       else: extra = ""
-      toDbg="Archiving from "+foldername+" to "+mboxpath+extra+"..."
+      toDbg="Archiving from "+str(foldername)+" to "+str(mboxpath)+extra+"..."
       suf = "" ; sc = 0
       while os.path.exists(mboxpath+suf+compression_ext):
         sc += 1 ; suf = "."+str(sc)
@@ -756,17 +791,32 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         sc -= 1
       mbox = mailbox.mbox(mboxpath) # will compress below
     else:
-      toDbg = "Processing "+foldername+"..."
+      toDbg = "Processing "+str(foldername)+"..."
       mbox = None
-    make_sure_logged_in() ; debug(toDbg)
-    typ, data = imap.select(foldername)
-    if not typ=='OK': return # couldn't select that folder
-    for msgID,flags,message in yield_all_messages():
+    is_maildir = type(foldername)==tuple and foldername[0]=='maildir'
+    if is_maildir:
+        try: maildir = mailbox.Maildir(foldername[1],None)
+        except: return # couldn't select that folder
+        debug(toDbg)
+        def generator():
+            for m in maildir.iteritems():
+                k,v = m
+                yield k,v.get_flags(),v
+        toDel = []
+    else:
+        make_sure_logged_in() ; debug(toDbg)
+        typ, data = imap.select(foldername)
+        if not typ=='OK': return # couldn't select folder
+        generator = yield_all_messages
+    for msgID,flags,message in generator():
         if spamprobe_action:
             # TODO: combine multiple messages first?
             run_spamprobe(spamprobe_action, message)
         if age==None: continue
-        msg = email.message_from_string(message)
+        if type(message)==type(''):
+            msg = email.message_from_string(message)
+        else: # maildir returns it as a Message etc
+            msg,message = message,myAsString(message)
         try: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
         except: t = time.time() # undated message or invalid date (sometimes happens in spam for example)
         if t >= time.time() - age: continue
@@ -784,7 +834,8 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         globalise_charsets(msg,archive_8bit) # in case wasn't done on receive (this also makes sure UTF-8 is quopri if it would be shorter, which can make archives easier to search)
         if archived_attachments_path and (save_attachments_for_confirmed_spam_too or not spamprobe_action or not "spam" in spamprobe_action): save_attachments_separately(msg)
         mbox.add(msg) # TODO: .set_flags A=answered R=read ?  (or doesn't it matter so much for old-message archiving; flags aren't always right anyway as you might have answered some using another method)
-        imap.store(msgID, '+FLAGS', '\\Deleted')
+        if is_maildir: toDel.append(msgID)
+        else: imap.store(msgID, '+FLAGS', '\\Deleted')
     if mbox:
         mbox.close()
         if not os.stat(mboxpath).st_size: tryRm(mboxpath) # ended up with an empty file - delete it
@@ -797,7 +848,9 @@ def archive(foldername, mboxpath, age, spamprobe_action):
             open_compressed(mboxpath,'wb').write(open(mboxpath,'rb').read()) # will write a .bz2 etc
             tryRm(mboxpath)
     # don't do this until got here without error:
-    check_ok(imap.expunge())
+    if is_maildir: # (don't del during iteritems)
+        for msgID in toDel: del maildir[msgID]
+    else: check_ok(imap.expunge())
 
 def fix_archives_written_by_imapfix_v1_308():
     for f in listdir(archive_path):
@@ -885,6 +938,15 @@ def delete_attachment(msg):
     if msg.get_filename(): msg.set_payload("")
 
 def nightly_train(foldername, spamprobe_action):
+    if type(foldername)==tuple:
+        try: maildir = mailbox.Maildir(foldername[1],None,False)
+        except: return
+        timeYesterday = time.time()-24*3600
+        for msgID,msg in maildir.iteritems():
+            try: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
+            except: t = 0
+            if t >= timeYesterday: run_spamprobe(spamprobe_action, myAsString(msg)) # TODO: combine multiple messages first?
+        return
     make_sure_logged_in()
     typ, data = imap.select(foldername)
     if not typ=='OK': return # couldn't select that folder
@@ -920,12 +982,21 @@ def maybe_create(mailbox):
         already_created.add(mailbox)
 def save_to(mailbox, message_as_string, flags=""):
     "Saves message to a mailbox on the saveImap connection, creating the mailbox if necessary"
+    if type(mailbox)==tuple and mailbox[0]=='maildir': return save_to_maildir(mailbox[1],message_as_string,flags)
     make_sure_logged_in() ; maybe_create(mailbox)
     msg = email.message_from_string(message_as_string)
     if 'Date' in msg: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
     else: imap_timestamp = time.time() # undated message ? (TODO: could parse Received lines)
     if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check the "Content-Transfer-Encoding" is in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(imap_timestamp), message_as_string))
+
+def save_to_maildir(maildir_path, message_as_string, flags=""):
+    mailbox.Maildir.colon = maildir_colon
+    m = mailbox.Maildir(maildir_path,None)
+    if re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check this works if calling message_from_string
+    msg = mailbox.MaildirMessage(email.message_from_string(message_as_string))
+    msg.set_flags(maildir_flags_from_imap(flags))
+    m.add(msg)
 
 def rename_folder(folder):
     if not isinstance(folder,str): return folder
@@ -943,18 +1014,31 @@ def do_maildirs_to_imap():
         if not os.path.exists(d2+os.sep+"cur"):
             continue # not a maildir
         to = rename_folder(d)
-        debug("Moving messages from maildir "+d+" to imap "+to)
+        debug("Moving messages from maildir ",d," to imap ",to)
         m = mailbox.Maildir(d2,None)
         for k,msg in m.items():
             globalise_charsets(msg,imap_8bit)
             save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg))
             del m[k]
-        newcurtmp = ["new","cur","tmp"]
-        if not any(listdir(d2+os.sep+ntc) for ntc in newcurtmp): # folder is now empty: remove it
-            for nct in newcurtmp: os.rmdir(d2+os.sep+nct)
-            os.rmdir(d2)
+        clean_empty_maildir(d2)
+def clean_empty_maildir(d2):
+    try: mailbox.Maildir(d2,None).clean()
+    except: pass
+    newcurtmp = ["new","cur","tmp"]
+    if not any(listdir(d2+os.sep+ntc) for ntc in newcurtmp):
+        # folder is now empty: remove it
+        for nct in newcurtmp: os.rmdir(d2+os.sep+nct)
+        try: os.rmdir(d2)
+        except: pass
 
 def imap_flags_from_maildir_msg(msg): return " ".join(" ".join({'S':r'\Seen','D':r'\Deleted','R':r'\Answered','F':r'\Flagged'}.get(flag,"") for flag in msg.get_flags()).split())
+def maildir_flags_from_imap(flags):
+    r = ""
+    if r"\Deleted" in flags: r += 'D'
+    if r"\Flagged" in flags: r += 'F'
+    if r"\Answered" in flags: r += 'R'
+    if r"\Seen" in flags: r += 'S'
+    return r
 
 def do_maildir_to_copyself():
     mailbox.Maildir.colon = maildir_colon
@@ -962,28 +1046,30 @@ def do_maildir_to_copyself():
     said = False
     for k,msg in m.items():
         if not said:
-            debug("Moving messages from "+maildir_to_copyself+" to imap "+copyself_folder_name)
+            debug("Moving messages from ",maildir_to_copyself," to imap ",copyself_folder_name)
             said = True
         globalise_charsets(msg,imap_8bit)
         if copyself_delete_attachments:
             delete_attachments(msg)
         save_to(copyself_folder_name,myAsString(msg),imap_flags_from_maildir_msg(msg))
         del m[k]
+    m.clean()
+assert not copyself_folder_name == ('maildir', maildir_to_copyself), "this can lead to loops"
 
 def do_copyself_to_copyself():
     for folder in copyself_alt_folder.split(","):
         if folder==copyself_folder_name:
-            debug("Cannot specify copyself_folder_name in copyself_alt_folder: skipping "+folder)
+            debug("Cannot specify copyself_folder_name in copyself_alt_folder: skipping ",folder)
             continue
         make_sure_logged_in()
         typ, data = imap.select(folder)
         if not typ=='OK':
-            debug("Skipping non-selectable folder "+folder)
+            debug("Skipping non-selectable folder ",folder)
             continue
         said = False
         for msgID,flags,message in yield_all_messages():
             if not said: # don't say until we know there's at least some messages in the folder
-                debug("Moving messages from "+folder+" to "+copyself_folder_name)
+                debug("Moving messages from ",folder," to ",copyself_folder_name)
                 said = True
             msg = email.message_from_string(message)
             globalise_charsets(msg,imap_8bit)
@@ -998,12 +1084,12 @@ def do_auto_delete():
         make_sure_logged_in()
         typ, data = imap.select(folder)
         if not typ=='OK':
-            debug("Skipping non-selectable folder "+folder)
+            debug("Skipping non-selectable folder ",folder)
             continue
         said = False
         for msgID,flags,message in yield_all_messages():
             if not said:
-                debug("Deleting messages from "+folder)
+                debug("Deleting messages from ",folder)
                 said = True
             imap.store(msgID, '+FLAGS', '\\Deleted')
         if said: check_ok(imap.expunge())
@@ -1019,7 +1105,7 @@ def header_to_u8(match):
         else: text = base64.decodestring(text)
         text = text.decode(charset)
     except:
-        debug("Bad header line: exception decoding "+repr(text)+" in "+charset+", leaving unchanged")
+        debug("Bad header line: exception decoding ",repr(text)," in ",charset,", leaving unchanged")
         return match.group()
     return text.encode('utf-8')
 def globalise_header_charset(match):
@@ -1082,7 +1168,7 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         l = l.replace(" ?utf-8?q?"," =?utf-8?q?") # bug observed in mail generated by "SOGoMail 2.3.23"
         l2 = re.sub(header_charset_regex,globalise_header_charset,l,flags=re.DOTALL).replace('\n',' ').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
         if l==l2: continue
-        # debug("Changing "+line+" from "+l+" to "+l2)
+        # debug("Changing ",line," from ",l," to ",l2)
         # message["X-Imapfix-Old-"+line] = l
         del message[line]
         message[line] = l2
@@ -1263,7 +1349,7 @@ def add_office0(message,accum):
     infile = "tmpdoc-%d%s" % (os.getpid(),ext)
     outfile = "tmpdoc-%d.%s"%(os.getpid(),office_convert)
     open(infile,"wb").write(payload)
-    debug("Running soffice to get "+office_convert)
+    debug("Running soffice to get ",office_convert)
     if os.system("soffice --convert-to %s %s" % (office_convert, infile)): # conversion error, or soffice not found
         debug("soffice run returned failure")
         clean_tmpdoc() ; return False
@@ -1326,7 +1412,7 @@ def add_tnef0(message,accum):
     os.mkdir(outdir)
     os.popen("tnef -C "+outdir+" --number-backups --unix-paths --save-body --ignore-checksum --ignore-encode --ignore-cruft","wb").write(payload)
     for f in listdir(outdir):
-        debug("Adding "+repr(f))
+        debug("Adding ",repr(f))
         origF,f = f,outdir+os.sep+f ; mimeType = "application/binary"
         if os.sep in f:
             _,ext = f.rsplit(os.sep)
@@ -1341,7 +1427,7 @@ def add_tnef0(message,accum):
         encoders.encode_base64(b)
         to_attach.append(b) ; accum[0] += 1 ; ret = True
     try: os.rmdir(outdir)
-    except: debug("Could not remove "+outdir)
+    except: debug("Could not remove ",outdir)
     if ret: message.set_payload("") # no point keeping the winmail.dat itself if we successfully got its contents out
     return ret
 
@@ -1370,7 +1456,9 @@ def do_postponed_foldercheck(dayToCheck="today"):
             # If we restarted less than half an hour after midnight, check dayname folders on startup (because it might not have happened if we were in the middle of a 29-minute imap idle when the server rebooted)
             check_todays_dayname()
         # and regardless of what time of day we are doing this (re)start, check for dated folders of today and older
-        for f in folderList():
+        if postponed_maildir: mList=os.listdir(postponed_maildir)
+        else: mList = []
+        for f in folderList()+mList:
             if re.match(isoDate+'$',f) and f <= today: # TODO: Y10K (lexicographic comparison)
                 do_postponed_foldercheck(f)
         return
@@ -1378,38 +1466,61 @@ def do_postponed_foldercheck(dayToCheck="today"):
         check_todays_dayname()
         if postponed_foldercheck: dayToCheck = today
         else: return
+    if postponed_maildir:
+        try: maildir = mailbox.Maildir(postponed_maildir+os.sep+dayToCheck,None,False) # don't create if not exist
+        except: maildir = None
+        if maildir:
+            said = False ; toDel = []
+            for msgID,msg in maildir.iteritems():
+                if not said:
+                    debug("Moving messages from maildir ",postponed_maildir+os.sep+dayToCheck," to ",filtered_inbox)
+                    said = True
+                old_date = msg.get("Date","")
+                if old_date:
+                    if msg.get('From','')==imapfix_From_line: pass # no need to add old date if it's a --note or --multinote
+                    elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
+                    else: walk_msg(msg,addOldDateFunc(old_date))
+                    del msg['Date']
+                msg['Date'] = email.utils.formatdate(localtime=True)
+                save_to(filtered_inbox,myAsString(msg))
+                toDel.append(msgID)
+            for msgID in toDel: del maildir[msgID]
+            clean_empty_maildir(postponed_maildir+os.sep+dayToCheck)
     f = folderList(dayToCheck)
     if not len(f)==1: return # no folder of that name
     folder = f[0] ; imap.select(folder) ; said = False
     for msgID,flags,message in yield_all_messages():
         if not said:
-            debug("Moving messages from "+folder+" to "+filtered_inbox)
+            debug("Moving messages from ",folder," to ",filtered_inbox)
             said = True
         msg = email.message_from_string(message)
         if msg.get("From","")==imapfix_name: # pre v1.5
             del msg['From'] ; msg['From'] = imapfix_From_line # K-9 5.8+
         old_date = msg.get("Date","")
         if old_date:
-            def addOldDate(message):
-                newPara = ""
-                if 'Content-Type' in message:
-                    if not message["Content-Type"].startswith("text/"): return False
-                    if message["Content-Type"].startswith("text/html"): newPara = "<p>" # TODO: might end up being before the HTML tag; depends which browser you use
-                if 'Content-Disposition' in message and message['Content-Disposition'].startswith('attachment'): return False
-                changed = globalise_charsets(message, imap_8bit) # just in case
-                dateIntro = imapfix_name+": original Date: "
-                if message.get_payload(decode=True).startswith(dateIntro): return changed
-                if not changed: globalise_charsets(message, imap_8bit, True) # ensure set up for:
-                return setPayload(message,dateIntro + old_date + newPara + "\n\n" + message.get_payload(decode=True),'utf-8') # Fixed in v1.498: postponing a message previously caused quopri to be decoded but still declared, invalidating URLs that had = followed by hex code in them, breaking links on commercial mailing-list trackers like MailChimp
             if msg.get('From','')==imapfix_From_line: pass # no need to add old date if it's a --note or --multinote
             elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
-            else: walk_msg(msg,addOldDate)
+            else: walk_msg(msg,addOldDateFunc(old_date))
             del msg['Date']
         msg['Date'] = email.utils.formatdate(localtime=True)
         save_to(filtered_inbox,myAsString(msg))
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if said: check_ok(imap.expunge())
     check_ok(imap.select()) ; do_delete(folder)
+
+def addOldDateFunc(old_date):
+    def addOldDate(message):
+        newPara = ""
+        if 'Content-Type' in message:
+            if not message["Content-Type"].startswith("text/"): return False
+            if message["Content-Type"].startswith("text/html"): newPara = "<p>" # TODO: might end up being before the HTML tag; depends which browser you use
+        if 'Content-Disposition' in message and message['Content-Disposition'].startswith('attachment'): return False
+        changed = globalise_charsets(message, imap_8bit) # just in case
+        dateIntro = imapfix_name+": original Date: "
+        if message.get_payload(decode=True).startswith(dateIntro): return changed
+        if not changed: globalise_charsets(message, imap_8bit, True) # ensure set up for:
+        return setPayload(message,dateIntro + old_date + newPara + "\n\n" + message.get_payload(decode=True),'utf-8') # Fixed in v1.498: postponing a message previously caused quopri to be decoded but still declared, invalidating URLs that had = followed by hex code in them, breaking links on commercial mailing-list trackers like MailChimp
+    return addOldDate
 
 def do_calendar():
     for l in os.popen("calendar -A 0 -f \"%s\"" % calendar_file):
@@ -1454,7 +1565,7 @@ def mainloop():
         fiO = filtered_inbox
         if not filtered_inbox:
             make_sure_logged_in()
-            filtered_inbox=""
+            filtered_inbox="" # rather than None
         process_secondary_imap()
         filtered_inbox = fiO
         secondary_imap_due = time.time() + secondary_imap_delay
@@ -1467,7 +1578,7 @@ def mainloop():
         debug("Waiting for IMAP event") ; imap.idle()
         # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
     else:
-        debug("Sleeping for "+str(poll_interval)+" seconds")
+        debug("Sleeping for ",poll_interval," seconds")
         time.sleep(poll_interval)
          # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
     newDay = time.localtime()[:3]
@@ -1499,7 +1610,7 @@ if secondary_imap_hostname:
     else: assert len(secondary_imap_hostname) == len(secondary_imap_username) == len(secondary_imap_password), "secondary_imap lists have differing lengths"
 
 def get_logged_in_imap(host,user,pwd,insecureFirst=False):
-    debug("Logging in to "+host)
+    debug("Logging in to ",host)
     if host in insecure_login: # expect no SSL
         order = [imaplib.IMAP4, imaplib.IMAP4_SSL]
     else: order = [imaplib.IMAP4_SSL,imaplib.IMAP4]
@@ -1535,7 +1646,9 @@ def do_archive():
     except: pass # no error if exists
     for foldername,age,action in archive_rules:
         if not age==None: age = age*24*3600
-        archive(foldername, archive_path+os.sep+foldername, age, action)
+        if type(foldername)==tuple: bStr=foldername[1]
+        else: bStr = foldername
+        archive(foldername, archive_path+os.sep+bStr, age, action)
 
 def do_nightly_train():
     for foldername,age,action in archive_rules:
@@ -1572,14 +1685,14 @@ def multinote(filelist,to_real_inbox,use_filename=False):
             multinote([(f+os.sep+g) for g in listdir(f)],to_real_inbox,use_filename)
             continue
         if not os.path.isfile(f):
-            debug("Ignoring non-file non-directory "+f)
+            debug("Ignoring non-file non-directory ",f)
             continue
         if not f.endswith('~'):
             if use_filename:
                 subj = f
                 if os.sep in subj: subj=subj[subj.rindex(os.sep)+1:]
             else: subj = None
-            if do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj): debug("Uploaded "+f)
+            if do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj): debug("Uploaded ",f)
         tryRm(f)
 
 def tryRm(f):
@@ -1685,7 +1798,7 @@ def do_copy(foldername):
         else:
             imap.store(msgID, '+FLAGS', '\\Deleted')
             rm += 1
-    debug("... %d of %d removed" % (rm,tot))
+    debug("... ",rm," of ",tot," removed")
     imap,_saveImap = None,imap
     make_sure_logged_in() ; saveImap=_saveImap
     debug("Copying new messages to secondary")
@@ -1701,7 +1814,7 @@ def do_copy(foldername):
             # Not sure if all secondary IMAPs will understand \Flagged (called "star" in some clients e.g. K9 Mail; mutt default keybindings set with w ! and clear with W ! )
             flags = " ".join(flags2)
             save_to(foldername,message,flags) ; cp += 1
-    debug("... %d of %d added" % (cp,tot))
+    debug("... ",cp," of ",tot," added")
     check_ok(saveImap.expunge())
 
 def do_quicksearch(s):
@@ -1714,7 +1827,7 @@ def do_quicksearch(s):
     if not archive_path: return
     try: dirlist = listdir(archive_path)
     except:
-        debug("Can't open "+archive_path+", omitting")
+        debug("Can't open ",archive_path,", omitting")
         dirlist = []
     for f in dirlist:
         f = archive_path+os.sep+f
@@ -1775,9 +1888,9 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
     global callSMTP_time
     if callSMTP_time:
         toSleep = max(0,callSMTP_time-time.time())
-        if toSleep: debug("Sleeping for another %d seconds before reconnecting to SMTP" % toSleep)
+        if toSleep: debug("Sleeping for another ",toSleep," seconds before reconnecting to SMTP")
         time.sleep(toSleep)
-    debug("SMTP to "+repr(to_u8))
+    debug("SMTP to ",repr(to_u8))
     msg = email.mime.text.MIMEText(re.sub('\r?\n','\r\n',txt),ttype,charset) # RFC 2822 says MUST use CRLF; some mail clients get confused by just \n (e.g. some versions of MPro on RISC OS when replying with quote)
     if attachment_filenames:
         from email.mime.multipart import MIMEMultipart
@@ -1799,7 +1912,7 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
     import smtplib
     s = smtplib.SMTP_SSL(smtp_host)
     if smtp_user: s.login(smtp_user, smtp_password)
-    ret = s.sendmail(smtp_fromAddr,to_u8,msg.as_string())
+    ret = s.sendmail(smtp_fromAddr,to_u8,myAsString(msg))
     assert len(ret)==0, "Some (but not all) recipients were refused: "+repr(ret)
     s.quit()
     if smtp_delay: callSMTP_time = time.time()+smtp_delay
