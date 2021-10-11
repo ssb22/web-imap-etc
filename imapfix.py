@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.52 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.53 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -210,6 +210,17 @@ maildirs_to_imap = None # or path to a local directory of
 # folders on IMAP (renaming inbox to filtered_inbox
 # and spam to spam_folder, and converting character sets)
 maildir_colon = ':'
+
+imap_to_maildirs = None # or path to a local directory of
+# maildirs; messages will be moved from IMAP folders to
+# subfolders of these maildirs, converting character sets,
+# except for filtered_inbox and spam_folder if these are
+# on IMAP.  If you're using the 'postponed' options, you
+# should set postponed_maildir above to the same value as
+# imap_to_maildirs.
+
+imap_maildir_exceptions = [] # or list folders like Drafts
+# that should not be moved to maildirs
 
 maildir_to_copyself = None # or path to a maildir whose
 # messages should be moved to imap's copyself (for example if
@@ -1055,6 +1066,7 @@ def do_maildir_to_copyself():
         del m[k]
     m.clean()
 assert not copyself_folder_name == ('maildir', maildir_to_copyself), "this can lead to loops"
+assert not maildirs_to_imap == imap_to_maildirs, "loop"
 
 def do_copyself_to_copyself():
     for folder in copyself_alt_folder.split(","):
@@ -1435,7 +1447,7 @@ def folderList(pattern="*"):
     make_sure_logged_in()
     typ,data = imap.list(pattern=pattern)
     if not typ=='OK': return []
-    return [re.sub('.*"/" ','',i) for i in data if i]
+    return [re.sub('.*"." ','',i) for i in data if i]
 
 isoDate = "[1-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]"
 if postponed_daynames:
@@ -1558,6 +1570,7 @@ def mainloop():
     if maildir_to_copyself: do_maildir_to_copyself()
     if copyself_alt_folder: do_copyself_to_copyself()
     if auto_delete_folder: do_auto_delete()
+    if imap_to_maildirs: do_imap_to_maildirs()
     global filtered_inbox
     if filtered_inbox:
         process_imap_inbox()
@@ -1767,6 +1780,31 @@ def do_backup():
                 msg.set_flags(newFlags)
                 mbox[k] = msg
         mbox.close()
+
+def do_imap_to_maildirs():
+    mailbox.Maildir.colon = maildir_colon
+    for foldername in folderList():
+        if foldername in ["","INBOX",filtered_inbox,
+                          spam_folder,
+                          auto_delete_folder,
+                          copyself_alt_folder]+imap_maildir_exceptions: continue
+        typ, data = imap.select(foldername)
+        if not typ=='OK': continue
+        m = None
+        for msgID,flags,message in yield_all_messages():
+            if m == None:
+                debug("Moving ",foldername+" to ",imap_to_maildirs)
+                m = mailbox.Maildir(imap_to_maildirs+os.sep+foldername,None)
+            msg = email.message_from_string(message)
+            globalise_charsets(msg,imap_8bit)
+            msg = mailbox.MaildirMessage(msg)
+            msg.set_flags(maildir_flags_from_imap(flags))
+            m.add(msg)
+            imap.store(msgID, '+FLAGS', '\\Deleted')
+        if not m==None: check_ok(imap.expunge())
+        if not foldername in [copyself_folder_name]+[f[0] for f in archive_rules]: # (no point deleting THOSE folders, even if empty, if on imap: will be re-used soon enough)
+            check_ok(imap.select())
+            do_delete(foldername)
 
 def do_copy(foldername):
     foldername = foldername.strip()
