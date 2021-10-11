@@ -1066,7 +1066,7 @@ def do_maildir_to_copyself():
         del m[k]
     m.clean()
 assert not copyself_folder_name == ('maildir', maildir_to_copyself), "this can lead to loops"
-assert not maildirs_to_imap == imap_to_maildirs, "loop"
+#assert not maildirs_to_imap == imap_to_maildirs, "loop"
 
 def do_copyself_to_copyself():
     for folder in copyself_alt_folder.split(","):
