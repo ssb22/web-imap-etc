@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.53 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.54 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1066,7 +1066,7 @@ def do_maildir_to_copyself():
         del m[k]
     m.clean()
 assert not copyself_folder_name == ('maildir', maildir_to_copyself), "this can lead to loops"
-#assert not maildirs_to_imap == imap_to_maildirs, "loop"
+assert not (maildirs_to_imap and maildirs_to_imap == imap_to_maildirs), "loop"
 
 def do_copyself_to_copyself():
     for folder in copyself_alt_folder.split(","):
@@ -1447,7 +1447,7 @@ def folderList(pattern="*"):
     make_sure_logged_in()
     typ,data = imap.list(pattern=pattern)
     if not typ=='OK': return []
-    return [re.sub('.*"." ','',i) for i in data if i]
+    return [re.sub('.*"." ','',i).replace('"','') for i in data if i and not r"\Noselect" in i]
 
 isoDate = "[1-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]"
 if postponed_daynames:
@@ -1736,7 +1736,7 @@ def do_delete(foldername):
         return
     make_sure_logged_in()
     print ("Deleting folder "+repr(foldername))
-    check_ok(imap.delete(foldername))
+    imap.delete(foldername) # no error if not OK (e.g. imap server disallows this folder to be deleted)
 
 def secondary_security(message_as_string):
     oms = message_as_string
@@ -1756,7 +1756,7 @@ addr_regex = re.compile("".join([
 def do_backup():
     for foldername in folderList():
         check_ok(imap.select(foldername))
-        fname = foldername.replace("/","-")+"-backup.mbox"
+        fname = foldername.replace("/","-").replace('"','')+"-backup.mbox"
         if os.path.exists(fname): # must create new
             os.rename(fname,fname+"~")
         mbox = mailbox.mbox(fname)
@@ -1794,7 +1794,7 @@ def do_imap_to_maildirs():
         for msgID,flags,message in yield_all_messages():
             if m == None:
                 debug("Moving ",foldername+" to ",imap_to_maildirs)
-                m = mailbox.Maildir(imap_to_maildirs+os.sep+foldername,None)
+                m = mailbox.Maildir(imap_to_maildirs+os.sep+foldername.replace(os.sep,'-'),None)
             msg = email.message_from_string(message)
             globalise_charsets(msg,imap_8bit)
             msg = mailbox.MaildirMessage(msg)
