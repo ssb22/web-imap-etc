@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.54 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.55 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -156,7 +156,9 @@ poll_interval = 4*60
 # sed -e s/__debug__/False/g < imaplib2.py > i && mv i imaplib2.py
 
 logout_before_sleep = False # suggest set to True if using
-# a long poll_interval, or if filtered_inbox=None
+# a long poll_interval (not "idle"), or if
+# filtered_inbox=None, or if the server can't take more
+# than one connection at a time
 
 midnight_command = None
 # or, midnight_command = "system command to run at midnight"
@@ -221,6 +223,12 @@ imap_to_maildirs = None # or path to a local directory of
 
 imap_maildir_exceptions = [] # or list folders like Drafts
 # that should not be moved to maildirs
+
+sync_command = None # or command to run after every cycle,
+# e.g. "mbsync -a" if you want to maintain BOTH maildirs
+# and remote IMAP folders in the same state
+# (if poll_interval is "idle" this can wait for the next
+# change on the _remote_ side before it runs)
 
 maildir_to_copyself = None # or path to a maildir whose
 # messages should be moved to imap's copyself (for example if
@@ -1554,7 +1562,7 @@ def checkAlarmDelay():
 
 def mainloop():
   newDay = oldDay = time.localtime()[:3] # for midnight
-  done_spamprobe_cleanup = False
+  done_spamprobe_cleanup_today = False
   secondary_imap_due = 0
   if exit_if_imapfix_config_py_changes:
     if exit_if_imapfix_config_py_changes=="stamp":
@@ -1583,10 +1591,11 @@ def mainloop():
         filtered_inbox = fiO
         secondary_imap_due = time.time() + secondary_imap_delay
     if logout_before_sleep: make_sure_logged_out()
-    if not poll_interval: break
-    if not done_spamprobe_cleanup:
+    if sync_command: os.system(sync_command) # might make a separate login, hence after logout_before_sleep
+    if not poll_interval: break # --once
+    if not done_spamprobe_cleanup_today:
         spamprobe_cleanup()
-        done_spamprobe_cleanup = True
+        done_spamprobe_cleanup_today = True
     if poll_interval=="idle":
         debug("Waiting for IMAP event") ; imap.idle()
         # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
@@ -1602,7 +1611,7 @@ def mainloop():
       if postponed_foldercheck or postponed_daynames:
           do_postponed_foldercheck()
       if train_spamprobe_nightly: do_nightly_train()
-      done_spamprobe_cleanup = False
+      done_spamprobe_cleanup_today = False
     if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime): break
   finally: make_sure_logged_out()
 
@@ -1736,7 +1745,9 @@ def do_delete(foldername):
         return
     make_sure_logged_in()
     print ("Deleting folder "+repr(foldername))
-    imap.delete(foldername) # no error if not OK (e.g. imap server disallows this folder to be deleted)
+    typ, data = imap.delete(foldername)
+    if not typ=='OK': # some folders can't be deleted, so just log
+        print("Ignoring failed folder delete: "+str(typ)+' '+repr(data))
 
 def secondary_security(message_as_string):
     oms = message_as_string

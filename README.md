@@ -105,9 +105,9 @@ ImapFix
 
 From http://ssb22.user.srcf.net/setup/imapfix.html (also mirrored at http://ssb22.gitlab.io/setup/imapfix.html just in case)
 
-ImapFix is a filter/fixer for IMAP mailboxes.  Requires Python 2 (*not* compatible with Python 3).
+ImapFix is a filter/fixer for IMAP mailboxes.  It requires Python 2 and is *not* compatible with Python 3.
 
-You can leave it running on a server somewhere and connect to your IMAP account from different machines/devices. Processed messages are moved from the inbox to a folder called in unless otherwise directed by your filters.
+You can leave it running on a server somewhere and connect to your IMAP account from different machines/devices. Processed messages are moved from the inbox to a folder called `in` unless otherwise directed by your filters.
 
 Selected features: (see program for a full list)
 
@@ -116,7 +116,7 @@ Selected features: (see program for a full list)
   * Move very large message bodies into attachments, to work around display problems on some devices
   * Create “thumbnails” of large images so they can be previewed on low-bandwidth connections
   * Can use tnef and soffice to unpack winmail.dat and add HTML or PDF versions of office documents, so you can view these on devices that don’t support them natively
-  * Upload mail from local Maildirs
+  * Move mail between IMAP and local Maildirs
   * Move old mail to compressed archives, saving attachments separately and merging duplicates; archives can be searched along with current mail
   * Periodically check additional IMAP accounts and process their mail as if it had been sent to the first
   * Rewrite delivery failure reports, adding the failed address to the Subject when possible
