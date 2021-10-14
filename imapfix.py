@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.55 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.56 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -145,6 +145,7 @@ smtp_delay = 60 # seconds between each message
 
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
+# you can also set this to a local maildir: ("maildir","path/to/spam")
 
 poll_interval = 4*60
 # Note: set poll_interval=False if you want just one run,
@@ -280,6 +281,27 @@ train_spamprobe_nightly = False # if true, will also run
 # spamprobe training commands on yesterday's messages in
 # these folders every midnight, not just during --archive,
 # to catch any message-filing done the previous day
+
+additional_inbox = None
+# If you're using an IMAP server that runs its own spam
+# filtering, but you want to replace this with yours, you
+# can set additional_inbox to their spam folder to treat
+# their spam folder as an extra inbox to be reclassified.
+# Make sure additional_inbox does not equal spam_folder.
+# Alternatively, you can leave additional_inbox at None
+# and set spam_folder to match their spam folder to have
+# 'or'-logic spam detection, but then you'd have to make
+# any manual reviews / saves to spam-confirmed are done
+# on the timetable set by the IMAP server (typically
+# every 30 days will suffice), plus it may help to keep
+# spam-confirmed off-IMAP to avoid accidentally telling
+# their system that these messages are non-spam for you.
+
+additional_inbox_train_spam = False # setting this
+# to True is another way to get the 'or'-logic if you'd
+# rather keep all spam elsewhere e.g. spam_folder is a
+# local maildir.  header_rules and extra_rules still
+# override this.
 
 forced_names = {} # you can set this to a dictionary
 # mapping email address to From name, and whatever other
@@ -536,8 +558,11 @@ def check_ok(r):
     typ, data = r
     if not typ=='OK': raise Exception(typ+' '+repr(data))
 
-def spamprobe_rules(message):
-  if run_spamprobe("train",message).startswith("SPAM"): return spam_folder # "train" = classify + maybe update database if wasn't already confident ("receive" = always update database); TODO: if using "train"/"receive" instead of "score", need a way to quickly recover from the effect of misclassifications before the next archive, e.g. regularly train-spam on the spam-confirmed folder (with spamprobe_cleanup?) (or do we rely on the user to copy messages to a file and run train-spam manually? and sort out false positives too ???)
+def spamprobe_rules(message,already_spam=False):
+  if already_spam: # additional_inbox_train_spam
+      run_spamprobe("train-spam",message) # might help our own classifier to spot other features that weren't what the IMAP server's classifier picked up on (as long as we train-good if it wasn't)
+      return spam_folder # (if JUST doing this, rename additional_inbox_train_spam to additional_inbox_direct_to_spam or something)
+  elif run_spamprobe("train",message).startswith("SPAM"): return spam_folder # "train" = classify + maybe update database if wasn't already confident ("receive" = always update database)
   else: return filtered_inbox
 
 def run_spamprobe(action,message):
@@ -693,11 +718,15 @@ def process_imap_inbox():
   make_sure_logged_in()
   doneSomething = True
   while doneSomething:
-    doneSomething = False # if we do something on 1st loop, we'll loop again before handing control back to the delay or IMAP-event wait.  This is to catch the case where new mail comes in WHILE we are processing the last batch of mail (e.g. another imapfix is running with --multinote and some of the processing calls send_mail() with a callSMTP_time delay: we don't want the rest of the notes to be delayed 29 minutes for the next IMAP-wait to time out)
-    check_ok(imap.select()) # the inbox
+   doneSomething = False # if we do something on 1st loop, we'll loop again before handing control back to the delay or IMAP-event wait.  This is to catch the case where new mail comes in WHILE we are processing the last batch of mail (e.g. another imapfix is running with --multinote and some of the processing calls send_mail() with a callSMTP_time delay: we don't want the rest of the notes to be delayed 29 minutes for the next IMAP-wait to time out)
+   for is_additional in [False,True]:
+    if is_additional:
+        if not additional_inbox: break
+        check_ok(imap.select(additional_inbox))
+    else: check_ok(imap.select()) # the inbox
     imapMsgid = None ; newMail = False
     for msgID,flags,message in yield_all_messages():
-        if leave_note_in_inbox and imap==saveImap and isImapfixNote(message):
+        if not is_additional and leave_note_in_inbox and imap==saveImap and isImapfixNote(message):
             if imapMsgid: # somehow ended up with 2, delete one
                 imap.store(imapMsgid, '+FLAGS', '\\Deleted')
             imapMsgid = msgID ; continue
@@ -737,7 +766,7 @@ def process_imap_inbox():
                 o = StringIO() ; traceback.print_exc(None,o)
                 save_to(filtered_inbox,"From: "+imapfix_From_line+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(localtime=True),o.getvalue()))
                 box = filtered_inbox
-            if box==False: box = spamprobe_rules(message)
+            if box==False: box = spamprobe_rules(message,is_additional and additional_inbox_train_spam)
         if box:
             if not box==spam_folder:
                 changed2 = False
@@ -760,7 +789,7 @@ def process_imap_inbox():
             if box==filtered_inbox: newMail = True
         else: debug("Deleting message")
         imap.store(msgID, '+FLAGS', '\\Deleted')
-    if leave_note_in_inbox and imap==saveImap:
+    if not is_additional and leave_note_in_inbox and imap==saveImap:
       if newMail:
         if imapMsgid: # delete the old one
             imap.store(imapMsgid, '+FLAGS', '\\Deleted')
@@ -1796,6 +1825,7 @@ def do_imap_to_maildirs():
     mailbox.Maildir.colon = maildir_colon
     for foldername in folderList():
         if foldername in ["","INBOX",filtered_inbox,
+                          additional_inbox,
                           spam_folder,
                           auto_delete_folder,
                           copyself_alt_folder]+imap_maildir_exceptions: continue
@@ -1813,7 +1843,7 @@ def do_imap_to_maildirs():
             m.add(msg)
             imap.store(msgID, '+FLAGS', '\\Deleted')
         if not m==None: check_ok(imap.expunge())
-        if not foldername in [copyself_folder_name]+[f[0] for f in archive_rules]: # (no point deleting THOSE folders, even if empty, if on imap: will be re-used soon enough)
+        if not foldername in [copyself_folder_name]+[f[0] for f in header_rules]: # (no point deleting THOSE folders, even if empty, if on imap: will be re-used soon enough)
             check_ok(imap.select())
             do_delete(foldername)
 
