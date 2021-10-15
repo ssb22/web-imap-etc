@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.56 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.57 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -586,7 +586,7 @@ def process_header_rules(header):
         if box:
             if box[0]=='*': box=box[1:] # just save it without indication
             elif newmail_directory:
-                if type(box)==tuple: bStr=box[1]
+                if type(box)==tuple: bStr=re.sub(".*/","",box[1])
                 else: bStr = box
                 open(newmail_directory+os.sep+bStr,'a')
         return rename_folder(box)
@@ -594,6 +594,7 @@ def process_header_rules(header):
 
 def myAsString(msg):
     message = msg.as_string()
+    if not "\r" in message: message=message.replace("\n","\r\n") # in case it came in from Maildir and the library didn't add the CRs back in
     if not "\r\n\r\n" in message or ("\n\n" in message and message.index("\n\n")<message.index("\r\n\r\n")):
         # oops, broken library?
         message=message.replace("\n\n","\r\n\r\n",1)
@@ -1042,7 +1043,7 @@ def save_to_maildir(maildir_path, message_as_string, flags=""):
     mailbox.Maildir.colon = maildir_colon
     m = mailbox.Maildir(maildir_path,None)
     if re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check this works if calling message_from_string
-    msg = mailbox.MaildirMessage(email.message_from_string(message_as_string))
+    msg = mailbox.MaildirMessage(email.message_from_string(message_as_string.replace("\r\n","\n")))
     msg.set_flags(maildir_flags_from_imap(flags))
     m.add(msg)
 
