@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.52 (c) Silas S. Brown 2012-2021.
+# Version 1.53 (c) Silas S. Brown 2012-2021.
 
 # Tested in zsh on macOS 11.4
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -53,6 +53,8 @@ export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local
 # (gnubin (from coreutils package) comes last so Mac versions take priority, just in case; coreutils has some commands not otherwise available e.g. factor, md5sum)
 export MANPATH=$MANPATH:/usr/local/opt/coreutils/libexec/gnuman
 if test "$SHELL" = /bin/bash && test -e /sw/bin/init.sh; then . /sw/bin/init.sh; fi
+
+for N in "$HOME"/Library/Python/*/bin; do test -e "$N" && export PATH="$PATH:$N"; done # for pip install --user (without --user it's /usr/local/bin)
 
 if test "$SHELL" = /bin/bash && /usr/bin/which -s brew; then
   # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
