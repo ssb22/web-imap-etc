@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.57 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.58 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -213,6 +213,8 @@ maildirs_to_imap = None # or path to a local directory of
 # folders on IMAP (renaming inbox to filtered_inbox
 # and spam to spam_folder, and converting character sets)
 maildir_colon = ':'
+maildir_delete_emacs_backup_files = True # in case need to
+# edit any (e.g. postponed notes) directly in maildir
 
 imap_to_maildirs = None # or path to a local directory of
 # maildirs; messages will be moved from IMAP folders to
@@ -823,6 +825,15 @@ def imapfixNote(): return "From: "+imapfix_From_line+"\r\nSubject: Folder "+repr
 # (and don't put a date in the Subject line: the message's date is usually displayed anyway, and screen space might be in short supply)
 def isImapfixNote(msg): return ("From: "+imapfix_name) in msg and ("Subject: Folder "+repr(filtered_inbox)+" has new mail") in msg
 
+def get_maildir(dirName,create=True):
+    if maildir_delete_emacs_backup_files:
+      for c in ['cur','new']:
+        try: l=os.listdir(dirName+os.sep+c)
+        except: l = []
+        for f in l:
+            if f.endswith('~'): tryRm(dirName+os.sep+c+os.sep+f)
+    return mailbox.Maildir(dirName,None,create)
+
 def archive(foldername, mboxpath, age, spamprobe_action):
     if not age==None:
       if spamprobe_action: extra = ", spamprobe="+spamprobe_action
@@ -844,7 +855,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
       mbox = None
     is_maildir = type(foldername)==tuple and foldername[0]=='maildir'
     if is_maildir:
-        try: maildir = mailbox.Maildir(foldername[1],None)
+        try: maildir = get_maildir(foldername[1])
         except: return # couldn't select that folder
         debug(toDbg)
         def generator():
@@ -988,7 +999,7 @@ def delete_attachment(msg):
 
 def nightly_train(foldername, spamprobe_action):
     if type(foldername)==tuple:
-        try: maildir = mailbox.Maildir(foldername[1],None,False)
+        try: maildir = get_maildir(foldername[1],False)
         except: return
         timeYesterday = time.time()-24*3600
         for msgID,msg in maildir.iteritems():
@@ -1064,7 +1075,7 @@ def do_maildirs_to_imap():
             continue # not a maildir
         to = rename_folder(d)
         debug("Moving messages from maildir ",d," to imap ",to)
-        m = mailbox.Maildir(d2,None)
+        m = get_maildir(d2)
         for k,msg in m.items():
             globalise_charsets(msg,imap_8bit)
             save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg))
@@ -1091,7 +1102,7 @@ def maildir_flags_from_imap(flags):
 
 def do_maildir_to_copyself():
     mailbox.Maildir.colon = maildir_colon
-    m = mailbox.Maildir(maildir_to_copyself,None)
+    m = get_maildir(maildir_to_copyself)
     said = False
     for k,msg in m.items():
         if not said:
@@ -1517,7 +1528,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
         if postponed_foldercheck: dayToCheck = today
         else: return
     if postponed_maildir:
-        try: maildir = mailbox.Maildir(postponed_maildir+os.sep+dayToCheck,None,False) # don't create if not exist
+        try: maildir = get_maildir(postponed_maildir+os.sep+dayToCheck,False) # don't create if not exist
         except: maildir = None
         if maildir:
             said = False ; toDel = []
@@ -1836,10 +1847,17 @@ def do_imap_to_maildirs():
         for msgID,flags,message in yield_all_messages():
             if m == None:
                 debug("Moving ",foldername+" to ",imap_to_maildirs)
-                m = mailbox.Maildir(imap_to_maildirs+os.sep+foldername.replace(os.sep,'-'),None)
+                foldr = foldername.replace(os.sep,'-')
+                # case-remembering, in case IMAP server changes capitalisation:
+                for f in os.listdir(imap_to_maildirs):
+                    if f.lower() == foldr.lower():
+                        foldr = f ; break
+                m = mailbox.Maildir(imap_to_maildirs+os.sep+foldr,None)
             msg = email.message_from_string(message)
             globalise_charsets(msg,imap_8bit)
             msg = mailbox.MaildirMessage(msg)
+            if re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check this works if calling message_from_string
+            msg = mailbox.MaildirMessage(email.message_from_string(myAsString(msg).replace("\r\n","\n")))
             msg.set_flags(maildir_flags_from_imap(flags))
             m.add(msg)
             imap.store(msgID, '+FLAGS', '\\Deleted')
