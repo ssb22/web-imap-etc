@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.58 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.59 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1053,7 +1053,7 @@ def save_to(mailbox, message_as_string, flags=""):
 def save_to_maildir(maildir_path, message_as_string, flags=""):
     mailbox.Maildir.colon = maildir_colon
     m = mailbox.Maildir(maildir_path,None)
-    if re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check this works if calling message_from_string
+    if re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string)
     msg = mailbox.MaildirMessage(email.message_from_string(message_as_string.replace("\r\n","\n")))
     msg.set_flags(maildir_flags_from_imap(flags))
     m.add(msg)
@@ -1124,9 +1124,7 @@ def do_copyself_to_copyself():
             continue
         make_sure_logged_in()
         typ, data = imap.select(folder)
-        if not typ=='OK':
-            debug("Skipping non-selectable folder ",folder)
-            continue
+        if not typ=='OK': continue # skip non-selectable folder, without output: it may appear later if the relevant MUA is used
         said = False
         for msgID,flags,message in yield_all_messages():
             if not said: # don't say until we know there's at least some messages in the folder
@@ -1855,9 +1853,9 @@ def do_imap_to_maildirs():
                 m = mailbox.Maildir(imap_to_maildirs+os.sep+foldr,None)
             msg = email.message_from_string(message)
             globalise_charsets(msg,imap_8bit)
-            msg = mailbox.MaildirMessage(msg)
-            if re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check this works if calling message_from_string
-            msg = mailbox.MaildirMessage(email.message_from_string(myAsString(msg).replace("\r\n","\n")))
+            msg = myAsString(msg)
+            if re.search("(?i)Content-Transfer-Encoding: quoted-printable",msg): msg = quopri_to_u8_8bitOnly(msg)
+            msg = mailbox.MaildirMessage(email.message_from_string(msg.replace("\r\n","\n")))
             msg.set_flags(maildir_flags_from_imap(flags))
             m.add(msg)
             imap.store(msgID, '+FLAGS', '\\Deleted')
