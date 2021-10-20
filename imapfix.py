@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.59 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.6 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -250,8 +250,8 @@ copyself_folder_name = "Sent Items"
 # result in messages being moved from one maildir to
 # another, with copyself_delete_attachments still applied)
 
-copyself_alt_folder = None # or the name of an IMAP folder
-# - any messages found in here (if folder exists) will be
+copyself_alt_folder = "Sent" # None or the name of an IMAP
+# folder, any messages found (if folder exists) will be
 # moved to copyself_folder_name, with their attachments
 # deleted if copyself_delete_attachments is True.  You can
 # specify more than one folder by separating them with a
@@ -443,6 +443,14 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # Run with --delete (folder name) to delete a folder
 # --delete-secondary to do it on secondary_imap_hostname
 # (if there's more than one secondary, the first is used)
+
+# --create (folder name) to create an empty folder
+# (e.g. "Sent", some Android apps e.g. K-9 Mail require the
+# folder to already exist before they can save messages to it
+# (if the folder has been deleted, to get the functionality
+# back do Manage folders / Refresh folder list, and Account
+# Settings / Folders / Sent folder - set it to Sent)
+# --create-secondary to do this on secondary_imap_hostname
 
 # Run with --backup to take a full backup of ALL folders to local .mbox files
 # without separating off attachments.  Use this for example if your account is
@@ -1788,6 +1796,15 @@ def do_delete(foldername):
     if not typ=='OK': # some folders can't be deleted, so just log
         print("Ignoring failed folder delete: "+str(typ)+' '+repr(data))
 
+def do_create(foldername):
+    foldername = foldername.strip()
+    if not foldername:
+        print ("No folder name specified")
+        return
+    make_sure_logged_in()
+    print ("Creating folder "+repr(foldername))
+    check_ok(imap.create(foldername))
+
 def secondary_security(message_as_string):
     oms = message_as_string
     if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # because saveTo will do this (same TODO as there) so normalise for comparing across servers
@@ -1860,7 +1877,9 @@ def do_imap_to_maildirs():
             m.add(msg)
             imap.store(msgID, '+FLAGS', '\\Deleted')
         if not m==None: check_ok(imap.expunge())
-        if not foldername in [copyself_folder_name]+[f[0] for f in header_rules]: # (no point deleting THOSE folders, even if empty, if on imap: will be re-used soon enough)
+        folders_to_keep = [copyself_folder_name]+[f[0] for f in header_rules] # (no point deleting THOSE folders, even if empty, if on imap: will be re-used soon enough)
+        if copyself_alt_folder: folders_to_keep += copyself_alt_folder.split(',') # deleting these could result in some applications failing to save sent mail
+        if not foldername in folders_to_keep:
             check_ok(imap.select())
             do_delete(foldername)
 
@@ -2026,6 +2045,10 @@ if __name__ == "__main__":
   elif '--delete-secondary' in sys.argv:
       hostname,username,password = secondary_imap_hostname[0],secondary_imap_username[0],secondary_imap_password[0]
       do_delete(' '.join(sys.argv[sys.argv.index('--delete-secondary')+1:]))
+  elif '--create' in sys.argv: do_create(' '.join(sys.argv[sys.argv.index('--create')+1:]))
+  elif '--create-secondary' in sys.argv:
+      hostname,username,password = secondary_imap_hostname[0],secondary_imap_username[0],secondary_imap_password[0]
+      do_create(' '.join(sys.argv[sys.argv.index('--create-secondary')+1:]))
   elif '--copy' in sys.argv: do_copy(' '.join(sys.argv[sys.argv.index('--copy')+1:]))
   elif '--backup' in sys.argv: do_backup()
   elif '--note' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]))
