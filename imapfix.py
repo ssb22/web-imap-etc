@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.6 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.61 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -87,7 +87,7 @@ header_rules = [
     # For saving to local maildir instead of IMAP, set
     # folder name to ("maildir","path/to/maildir")
     # or to skip newmail_directory notification also,
-    # set it to ("*",("maildir","path/to/maildir"))
+    # set it to ("*","maildir","path/to/maildir")
     
 ]
 
@@ -95,7 +95,7 @@ def extra_rules(message_as_string): return False
 # you can override this to any function you want, which
 # returns the name of a folder (with or without a *), or
 # None to delete the message, or False = no decision,
-# or ("maildir","path/to/maildir") or ("*",("maildir"...))
+# or ("maildir","path/to/maildir") or ("*","maildir"...)
 catch_extraRules_errors = True
 
 def handle_authenticated_message(subject,firstPart,attach):
@@ -1046,6 +1046,7 @@ def copy_to(mailbox, message_id):
 already_created = set()
 def maybe_create(mailbox):
     if mailbox and not mailbox in already_created:
+        assert not type(mailbox)==tuple, "maybe_create should not be called with a maildir mailbox"
         saveImap.create(mailbox) # error if exists OK
         already_created.add(mailbox)
 def save_to(mailbox, message_as_string, flags=""):
