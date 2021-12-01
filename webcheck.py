@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.515 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.516 (c) 2014-21 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,6 +52,8 @@ except ImportError: # Python 3
   from html.parser import HTMLParser as _HTMLParser
   class HTMLParser(_HTMLParser):
     def __init__(self): _HTMLParser.__init__(self,convert_charrefs=False)
+try: from commands import getoutput
+except: from subprocess import getoutput
 try: import urlparse # Python 2
 except ImportError: import urllib.parse as urlparse # Python 3
 try: from StringIO import StringIO # Python 2
@@ -278,11 +280,16 @@ def worker_thread(*args):
               textContent = content
           elif url.startswith("e://"): # run edbrowse
               from subprocess import Popen,PIPE
-              try: child = Popen(["edbrowse","-e"],-1,stdin=PIPE,stdout=PIPE,stderr=PIPE)
+              edEnv=os.environ.copy() ; edEnv["TMPDIR"]=getoutput("(TMPDIR=/dev/shm mktemp -d -t ed || mktemp -d -t ed) 2>/dev/null") # ensure unique cache dir if we're running several threads (TODO: what about edbrowse 3.7.6 and below, which hard-codes a single cache dir in /tmp: had we better ensure only one of these is run at a time, just in case?  3.7.7+ honours TMPDIR)
+              try: child = Popen(["edbrowse","-e"],-1,stdin=PIPE,stdout=PIPE,stderr=PIPE,env=edEnv)
               except OSError:
                 print ("webcheck misconfigured: couldn't run edbrowse")
                 continue # no need to update last_fetch_finished
               u,(content,stderr) = None,child.communicate(B("b "+url[4:].replace('\\','\n')+"\n,p\nqt\n")) # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
+              try:
+                import shutil
+                shutil.rmtree(edEnv["TMPDIR"])
+              except: pass
               if child.returncode:
                 print ("edbrowse failed on "+url)
                 # Most likely the failure was some link didn't exist when it should have, so show the output for debugging
@@ -292,8 +299,6 @@ def worker_thread(*args):
               textContent = content.replace(B('{'),B(' ')).replace(B('}'),B(' ')) # edbrowse uses {...} to denote links
               url = url[4:].split('\\',1)[0] # for display
           elif url.startswith("c://"): # run command
-              try: from commands import getoutput
-              except: from subprocess import getoutput
               content = getoutput(url[len("c://"):])
               u = textContent = None
           elif url.startswith("blocks-lynx://"):
