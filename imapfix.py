@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.61 (c) 2013-21 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.62 (c) 2013-21 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -304,6 +304,13 @@ additional_inbox_train_spam = False # setting this
 # rather keep all spam elsewhere e.g. spam_folder is a
 # local maildir.  header_rules and extra_rules still
 # override this.
+
+check_additional_inbox_on_secondary_too = False
+# (see secondary_imap below)
+
+additional_inbox_might_not_exist = False # set to True if
+# the folder does not appear when it's empty, in which
+# case folder not existing will not be treated as an error
 
 forced_names = {} # you can set this to a dictionary
 # mapping email address to From name, and whatever other
@@ -733,7 +740,10 @@ def process_imap_inbox():
    for is_additional in [False,True]:
     if is_additional:
         if not additional_inbox: break
-        check_ok(imap.select(additional_inbox))
+        if additional_inbox_might_not_exist:
+            typ, data = imap.select(additional_inbox)
+            if not typ=='OK': break
+        else: check_ok(imap.select(additional_inbox))
     else: check_ok(imap.select()) # the inbox
     imapMsgid = None ; newMail = False
     for msgID,flags,message in yield_all_messages():
@@ -1645,6 +1655,7 @@ def mainloop():
         spamprobe_cleanup()
         done_spamprobe_cleanup_today = True
     if poll_interval=="idle":
+        make_sure_logged_in() ; imap.select()
         debug("Waiting for IMAP event") ; imap.idle()
         # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
     else:
@@ -1708,7 +1719,13 @@ def process_secondary_imap():
             imap = saveImap # for make_sure_logged_in
             save_to(filtered_inbox,"From: "+imapfix_From_line+"\r\nSubject: imapfix_config secondary_imap problem or server down\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),msg))
         imap = None
-    if imap: process_imap_inbox()
+    if imap:
+        global additional_inbox
+        oAI = additional_inbox
+        if not check_additional_inbox_on_secondary_too:
+            additional_inbox = None
+        process_imap_inbox()
+        additional_inbox = oAI
   imap = saveImap
 
 def do_archive():
