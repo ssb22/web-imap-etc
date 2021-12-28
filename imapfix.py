@@ -117,7 +117,8 @@ def handle_authenticated_message(subject,firstPart,attach):
 # in case your configuration does end up with a loophole
 # or a trusted IMAP server gets compromised.  The expected
 # use of handle_authenticated_message is to save it in a
-# folder it specifies, or add something to a database etc.
+# folder it specifies, or add something to a database, or
+# trigger a preconfigured build script, etc.
 trusted_domain = None # or e.g. ".example.org" specifying
 # the domain of "our" network whose Received headers we
 # can trust for SMTPS authentication (below).  You may
