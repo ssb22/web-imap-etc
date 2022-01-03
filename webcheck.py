@@ -581,7 +581,7 @@ def tryGzip(t):
     except: return t
 
 def check(text,content,url,errmsg):
-    if ' #' in text: text,comment = text.split(' #',1) # TODO: document this (comments must be preceded by a space, otherwise interpreted as part of the text as this is sometimes needed in codes)
+    if ' #' in text: text,comment = text.split(' #',1) # (comments must be preceded by a space, otherwise interpreted as part of the text as this is sometimes needed in codes)
     else: comment = ""
     orig_comment = comment = comment.strip()
     if comment: comment="\n  "+paren(comment)

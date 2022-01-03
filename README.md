@@ -12,7 +12,7 @@ WebCheck runs from the command line, usually from a cron job or similar, and wri
 
 ## webcheck.list
 
-The list of sites to check is in a text file called `webcheck.list`.  Each line (apart from blank lines and comments) specifies a URL to fetch and some text to check, optionally followed by a comment. For example:
+The list of sites to check is in a text file called `webcheck.list`.  Each line (apart from blank lines and comments) specifies a URL to fetch and some text to check, optionally followed by a comment (which starts with a space and a `#`). For example:
 
     http://nice-program.example.com The latest version is 1.0
 
