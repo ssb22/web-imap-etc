@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.64 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.65 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -32,6 +32,15 @@ filtered_inbox = "in" # or =None if you don't want to do
 # item being "maildir": ("maildir","path/to/maildir")
 
 leave_note_in_inbox = True # for "new mail" indicators
+
+change_message_id = False # set this to True for
+# providers like Gmail that refuse to accept new
+# versions of messages with the same Message-ID.  Adds
+# an extra digit to Message-ID (if present) when saving
+# a changed version of the message to the same imap.
+# This may result in a breakage of "In-Reply-To" (unless
+# you edit the extra character out on the client side),
+# but might be a necessary loss if you're using Gmail.
 
 newmail_directory = None
 # or newmail_directory = "/path/to/a/directory"
@@ -798,6 +807,7 @@ def process_imap_inbox():
          changed = rewrite_importance(msg) or changed
          if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
          if changed: message = myAsString(msg)
+         changed0 = changed # for change_message_id
          if box==False:
           header = message[:message.find("\r\n\r\n")]
           box = process_header_rules(header)
@@ -816,7 +826,7 @@ def process_imap_inbox():
                 if image_size: changed2 = add_previews(msg) or changed2
                 if office_convert: changed2 = add_office(msg) or changed2
                 if pdf_convert: changed2 = add_pdf(msg) or changed2
-                changed = changed2 or changed
+                changed = changed2 or changed # don't need to alter changed0 here, since if the only change is adding parts then change_message_id does not need to take effect (at least, not with Gmail January 2022)
                 if changed2: message = myAsString(msg)
             if seenFlag: copyWorked = False # unless we can get copy_to to set the Seen flag on the copy, which means the IMAP server must have an extension that causes COPY to return the new ID unless we want to search for it
             elif type(box)==tuple: copyWorked = False # e.g. imap to maildir
@@ -827,7 +837,7 @@ def process_imap_inbox():
             else: copyWorked = False
             if not copyWorked:
                 debug("Saving message to ",box)
-                save_to(box, message, seenFlag)
+                save_to(box, message, seenFlag, changed0 and saveImap==imap)
             if box==filtered_inbox: newMail = True
         else: debug("Deleting message")
         imap.store(msgID, '+FLAGS', '\\Deleted')
@@ -1098,13 +1108,14 @@ def maybe_create(mailbox):
         assert not type(mailbox)==tuple, "maybe_create should not be called with a maildir mailbox"
         saveImap.create(mailbox) # error if exists OK
         already_created.add(mailbox)
-def save_to(mailbox, message_as_string, flags=""):
+def save_to(mailbox, message_as_string, flags="", mayNeedNewMsgID=True):
     "Saves message to a mailbox on the saveImap connection, creating the mailbox if necessary"
     if type(mailbox)==tuple and mailbox[0]=='maildir': return save_to_maildir(mailbox[1],message_as_string,flags)
     make_sure_logged_in() ; maybe_create(mailbox)
     msg = email.message_from_string(message_as_string)
     if 'Date' in msg: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
     else: imap_timestamp = time.time() # undated message ? (TODO: could parse Received lines)
+    if change_message_id and mayNeedNewMsgID and 'Message-ID' in msg: message_as_string = message_as_string.replace("Message-ID: <","Message-ID: <2",1) # .muttrc editor default adds '1', so let's add a '2'
     if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check the "Content-Transfer-Encoding" is in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(imap_timestamp), message_as_string))
 
@@ -1136,7 +1147,7 @@ def do_maildirs_to_imap():
         m = get_maildir(d2)
         for k,msg in m.items():
             globalise_charsets(msg,imap_8bit)
-            save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg))
+            save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg),False)
             del m[k]
         clean_empty_maildir(d2)
 def clean_empty_maildir(d2):
@@ -1169,7 +1180,7 @@ def do_maildir_to_copyself():
         globalise_charsets(msg,imap_8bit)
         if copyself_delete_attachments:
             delete_attachments(msg)
-        save_to(copyself_folder_name,myAsString(msg),imap_flags_from_maildir_msg(msg))
+        save_to(copyself_folder_name,myAsString(msg),imap_flags_from_maildir_msg(msg),False)
         del m[k]
     m.clean()
 assert not copyself_folder_name == ('maildir', maildir_to_copyself), "this can lead to loops"
@@ -1189,10 +1200,10 @@ def do_copyself_to_copyself():
                 debug("Moving messages from ",folder," to ",copyself_folder_name)
                 said = True
             msg = email.message_from_string(message)
-            globalise_charsets(msg,imap_8bit)
+            charsets_changed = globalise_charsets(msg,imap_8bit)
             if copyself_delete_attachments:
-                delete_attachments(msg)
-            save_to(copyself_folder_name,myAsString(msg),"\\Seen") # can't use copy_to even if msg hasn't changed, because we can't get copy_to to set the Seen flag on the copy (unless an IMAP extension that can help us do that is installed)
+                delete_attachments(msg) # apparently deleting an attachment does not affect mayNeedNewMsgID, at least Gmail Jan 2022: use only charsets_changed for that
+            save_to(copyself_folder_name,myAsString(msg),"\\Seen",charsets_changed) # can't use copy_to even if msg hasn't changed, because we can't get copy_to to set the Seen flag on the copy (unless an IMAP extension that can help us do that is installed)
             imap.store(msgID, '+FLAGS', '\\Deleted')
         if said: check_ok(imap.expunge())
 
@@ -1604,7 +1615,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
                     else: walk_msg(msg,addOldDateFunc(old_date))
                     del msg['Date']
                 msg['Date'] = email.utils.formatdate(localtime=True)
-                save_to(filtered_inbox,myAsString(msg))
+                save_to(filtered_inbox,myAsString(msg),mayNeedNewMsgID=False)
                 toDel.append(msgID)
             for msgID in toDel: del maildir[msgID]
             clean_empty_maildir(postponed_maildir+os.sep+dayToCheck)
@@ -1990,7 +2001,8 @@ def do_copy(foldername):
             if "\\seen" in flags.lower() and not "old" in flags.lower(): flags2.append("\\Seen")
             # Not sure if all secondary IMAPs will understand \Flagged (called "star" in some clients e.g. K9 Mail; mutt default keybindings set with w ! and clear with W ! )
             flags = " ".join(flags2)
-            save_to(foldername,message,flags) ; cp += 1
+            save_to(foldername,message,flags,False)
+            cp += 1
     debug("... ",cp," of ",tot," added")
     check_ok(saveImap.expunge())
 
