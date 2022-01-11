@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.65 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.66 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1610,6 +1610,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
                         # previous imapfix_from_line stored in postpone folder
                         # ditto the above (no need to add old date), but
                         # upgrade the imapfix From line for K-9 etc
+                        del msg['From']
                         msg['From'] = imapfix_From_line
                     elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
                     else: walk_msg(msg,addOldDateFunc(old_date))
