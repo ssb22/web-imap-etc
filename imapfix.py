@@ -1610,7 +1610,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
                         # previous imapfix_from_line stored in postpone folder
                         # ditto the above (no need to add old date), but
                         # upgrade the imapfix From line for K-9 etc
-                        del msg['From']
+                        del msg['From'] # this was missing before v1.66, resulting in multiple From lines when upgrading old-imapfix messages from maildirs
                         msg['From'] = imapfix_From_line
                     elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
                     else: walk_msg(msg,addOldDateFunc(old_date))
