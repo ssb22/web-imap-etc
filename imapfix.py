@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.66 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.67 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -741,6 +741,20 @@ def forced_from(msg):
     if fr.endswith('>') and '<' in fr and f(fr[fr.rindex('<')+1:-1]): return True
     # TODO: any other formats to check?
 
+def quote_display_name_if_needed(msg):
+    # 'From: Testing @ ZOE COVID Study <...>'
+    # gave 'Unknown Sender' in K9, please quote it
+    def ensureQuoted(dnMatch):
+        displayName = dnMatch.group()
+        if re.match("^[A-Za-z0-9 ]*$",displayName):
+            # should be OK to leave unchanged if it didn't use @ etc
+            return displayName
+        else: return '"'+displayName+'"'
+    f = msg.get("From","").strip()
+    f2 = re.sub(r'^[^<"]*(?= <[^>]*>$)',ensureQuoted,f)
+    if not f==f2:
+        del msg['From'] ; msg['From'] = f2 ; return True
+
 def body_text(msg):
     "Returns a representation of the message's body text (all parts), for rules"
     if msg.is_multipart(): return "\n".join(body_text(p) for p in msg.get_payload())
@@ -804,6 +818,7 @@ def process_imap_inbox():
          changed = remove_blank_inline_parts(msg) or changed
          changed = rewrite_deliveryfail(msg) or changed
          changed = forced_from(msg) or changed
+         changed = quote_display_name_if_needed(msg) or changed
          changed = rewrite_importance(msg) or changed
          if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
          if changed: message = myAsString(msg)
@@ -1610,7 +1625,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
                         # previous imapfix_from_line stored in postpone folder
                         # ditto the above (no need to add old date), but
                         # upgrade the imapfix From line for K-9 etc
-                        del msg['From'] # this was missing before v1.66, resulting in multiple From lines when upgrading old-imapfix messages from maildirs
+                        del msg['From'] # this was missing before v1.66, resulting in two From lines when upgrading old-imapfix messages from maildirs; if such a message is encountered now, both 'From' lines will be deleted by this one 'del'
                         msg['From'] = imapfix_From_line
                     elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
                     else: walk_msg(msg,addOldDateFunc(old_date))
