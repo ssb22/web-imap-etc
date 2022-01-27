@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.67 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.68 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -529,6 +529,12 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # All note options assume that any non-ASCII characters in
 # the input will be encoded as UTF-8.
 
+# Run with --upload (files) to upload as attachments into
+# filtered_inbox messages, e.g. for transfer to a mobile
+# (likely more efficient than SMTP and bypasses filtering)
+# - recurse- into directories if specified; won't delete
+# files after uploading.
+
 # End of options - non-developers can stop reading now :)
 # -------------------------------------------------------
 
@@ -568,7 +574,7 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # limitations under the License.
 
 from imapfix_config import *
-import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback
+import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback,mimetypes
 if not sys.version_info[0]==2:
     print ("ERROR: ImapFix is a Python 2 program and should be run with 'python2'.\nIt needs major revision for Python 3's version of the email library.\nTry compiling Python 2.7 in your home directory if it's no longer installed on your system.")
     # In particular, Python 3.3+ revised the Message class into an EmailMessage class (with Message as a compatibility option), need to use as_bytes rather than as_string; set_payload available only in compatibility mode and works in Python3 Unicode-strings so we'd need to figure out how to handle other charsets including invalid coding.
@@ -1268,12 +1274,14 @@ def utf8_to_header(u8):
     return "=?UTF-8?"+ret+"?="
 
 import email.mime.multipart,email.mime.message,email.mime.text,email.mime.image,email.charset,email.mime.base
-def turn_into_attachment(message):
+def turn_into_attachment(message,covering_text=None,attach_raw=False):
+    if covering_text==None: covering_text = "Large message converted to attachment" # by imapfix, but best not mention this as it might bias the filters?
     m2 = email.mime.multipart.MIMEMultipart()
     for k,v in message.items():
-        if not k.lower() in ['content-length','content-type','content-transfer-encoding','lines','mime-version']: m2[k]=v
-    m2.attach(email.mime.text.MIMEText("Large message converted to attachment")) # by imapfix, but best not mention this as it might bias the filters?
-    m2.attach(email.mime.message.MIMEMessage(message))
+        if not k.lower() in ['content-length','content-type','content-transfer-encoding','lines','mime-version','content-disposition']: m2[k]=v
+    m2.attach(email.mime.text.MIMEText(covering_text))
+    if attach_raw: m2.attach(message)
+    else: m2.attach(email.mime.message.MIMEMessage(message))
     return m2
 def size_of_first_part(message):
     if message.is_multipart():
@@ -1556,14 +1564,8 @@ def add_tnef0(message,accum):
     os.popen("tnef -C "+outdir+" --number-backups --unix-paths --save-body --ignore-checksum --ignore-encode --ignore-cruft","wb").write(payload)
     for f in listdir(outdir):
         debug("Adding ",repr(f))
-        origF,f = f,outdir+os.sep+f ; mimeType = "application/binary"
-        if os.sep in f:
-            _,ext = f.rsplit(os.sep)
-            if ext=="pdf": mimeType = "application/pdf"
-            # TODO: other extensions / types ?
-            # any message.rtf should be picked up by office
-        mT,subT = mimeType.split("/")
-        b = email.mime.base.MIMEBase(mT,subT)
+        origF,f = f,outdir+os.sep+f
+        b = getMimeBase(f)
         b.set_payload(open(f,"rb").read())
         tryRm(f)
         b['Content-Disposition']='attachment; filename='+origF
@@ -1573,6 +1575,12 @@ def add_tnef0(message,accum):
     except: debug("Could not remove ",outdir)
     if ret: message.set_payload("") # no point keeping the winmail.dat itself if we successfully got its contents out
     return ret
+
+def getMimeBase(f):
+    mimeType = mimetypes.guess_type(f)[0]
+    if not mimeType: mimeType = "application/binary"
+    mT,subT = mimeType.split("/")
+    return email.mime.base.MIMEBase(mT,subT)
 
 def folderList(pattern="*"):
     make_sure_logged_in()
@@ -1836,6 +1844,12 @@ def do_note(subject,ctype="text/plain",maybe=0):
     save_to(saveTo,"From: "+imapfix_From_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 def from_mangle(body): return re.sub('(?<![^\n])From ','>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
 
+def upload(filelist):
+    for f in filelist:
+        if os.path.isdir(f): upload([(f+os.sep+g) for g in listdir(f)])
+        elif not os.path.isfile(f): debug("Ignoring non-file non-directory ",f)
+        elif not f.endswith('~') and do_upload(open(f,"rb").read(),os.stat(f).st_mtime,f): debug("Uploaded ",f)
+
 def multinote(filelist,to_real_inbox,use_filename=False):
     if not filtered_inbox: to_real_inbox = True
     for f in filelist:
@@ -1856,6 +1870,18 @@ def multinote(filelist,to_real_inbox,use_filename=False):
 def tryRm(f):
     try: os.remove(f)
     except: pass
+
+def do_upload(data,theDate,fname):
+    b = getMimeBase(fname)
+    b.set_payload(data)
+    b['Content-Disposition']='attachment; filename='+(os.sep+fname)[(os.sep+fname).rindex(os.sep)+1:]
+    encoders.encode_base64(b)
+    message = turn_into_attachment(b,"Attached "+fname,True)
+    message["From"] = imapfix_From_line
+    message["Subject"] = fname
+    message["Date"] = email.utils.formatdate(theDate,localtime=True)
+    save_to(filtered_inbox,myAsString(message))
+    return True
 
 def do_multinote(body,theDate,to_real_inbox,subject):
     body = re.sub("\r\n?","\n",body.strip())
@@ -2108,7 +2134,7 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
     msg['Date'] = email.utils.formatdate(localtime=True)
     msg['X-Mailer'] = __doc__[:__doc__.index(" (c)")] # in case somebody needs to audit
     for f in attachment_filenames:
-        subMsg = email.mime.base.MIMEBase('application', 'octet-stream') # TODO: more specific types?
+        subMsg = getMimeBase(f)
         subMsg.set_payload(open(f,'rb').read())
         encoders.encode_base64(subMsg)
         if os.sep in f: f=f[f.rindex(os.sep)+1:]
@@ -2149,6 +2175,7 @@ if __name__ == "__main__":
   elif '--multinote-inbox' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote-inbox')+1:],True)
   elif '--multinote-fname' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote-fname')+1:],False,True)
   elif '--multinote-inbox-fname' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote-inbox-fname')+1:],True,True)
+  elif '--upload' in sys.argv: upload(sys.argv[sys.argv.index('--upload')+1:])
   elif '--once' in sys.argv:
       poll_interval = False ; mainloop()
   elif '--fix-archives' in sys.argv: fix_archives_written_by_imapfix_v1_308() # TODO: document this? (use if mutt can't read archives written by v1.308, and some earlier versions, TODO: check which version was the first to have the 'writes a malformed envelope-From' problem)
