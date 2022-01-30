@@ -1,8 +1,8 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.55 (c) Silas S. Brown 2012-22.
+# Version 1.56 (c) Silas S. Brown 2012-22.
 
-# Tested in zsh on macOS 11.4 through 12.0,
+# Tested in zsh on macOS 11.4 through 12.1,
 # and in bash on Mac OS X 10.7 through 10.14.
 
 # This script can go in your ~/.zshrc (10.15+)
@@ -177,7 +177,7 @@ if ! /usr/bin/which -s jmacs; then
 jmacs () { emacs -q "$@" ; } ; export -f jmacs >/dev/null
   else # emacs not present in macOS 11, but we might have it as an application:
     if declare -f emacs >/dev/null; then
-      jmacs () { $(declare -f emacs|grep -i '^\s*open.*/Emacs.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/MacOS/Emacs -q -nw "$@" ; } ; export -f jmacs >/dev/null
+      jmacs () { Emacs=$(declare -f emacs|grep -i '^\s*open.*/Emacs.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/MacOS/Emacs; if [ "$1" = "" ]; then $Emacs -q -nw --eval '(switch-to-buffer "*scratch*")'; else $Emacs -q -nw "$@"; fi ; } ; export -f jmacs >/dev/null
     elif declare -f aquamacs >/dev/null; then # TODO: not tested
       jmacs () { $(declare -f emacs|grep -i '^\s*open.*/Aquamacs.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/MacOS/Aquamacs -q -nw "$@" ; } ; export -f jmacs >/dev/null
     fi
