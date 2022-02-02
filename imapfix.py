@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.68 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.681 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -752,7 +752,7 @@ def quote_display_name_if_needed(msg):
     # gave 'Unknown Sender' in K9, please quote it
     def ensureQuoted(dnMatch):
         displayName = dnMatch.group()
-        if re.match("^[A-Za-z0-9 ]*$",displayName):
+        if re.match("^[A-Za-z0-9 .]*$",displayName):
             # should be OK to leave unchanged if it didn't use @ etc
             return displayName
         else: return '"'+displayName+'"'
@@ -1628,8 +1628,9 @@ def do_postponed_foldercheck(dayToCheck="today"):
                     said = True
                 old_date = msg.get("Date","")
                 if old_date:
-                    if msg.get('From','')==imapfix_From_line: pass # no need to add old date if it's a --note or --multinote
-                    elif msg.get('From','')==imapfix_name:
+                    theFrom = msg.get('From','').replace('"','').strip()
+                    if theFrom==imapfix_From_line: pass # no need to add old date if it's a --note or --multinote
+                    elif theFrom==imapfix_name:
                         # previous imapfix_from_line stored in postpone folder
                         # ditto the above (no need to add old date), but
                         # upgrade the imapfix From line for K-9 etc
