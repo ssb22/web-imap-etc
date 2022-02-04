@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.681 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.69 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1262,10 +1262,21 @@ def globalise_header_charset(match):
     #    return match.group() # no changes needed
     # - actually, do it anyway, because some UTF8 headers might be
     # quopri-encoded when they're only ASCII, etc, and "normalising"
-    # these might help the writing of filtering rules
+    # these might help the writing of filtering rules.
+    # Also, we want to de-"stylise" Unicode 1D400..1D6A3
+    # so it works better with speech synths and rules.
     hu8 = header_to_u8(match)
     if hu8 == match.group(): return hu8 # something went wrong; at least don't double-encode it
-    return utf8_to_header(hu8)
+    return utf8_to_header(destylise_u8_header(hu8))
+def destylise_u8_header(u8):
+    def sub(match):
+        m=match.group()
+        aNum = ((ord(m[2])-0x90)*(0xc0-0x80)+ord(m[3])-0x80) % 52
+        if aNum>=26: return chr(ord('a')+aNum-26)
+        else: return chr(ord('A')+aNum)
+    u8 = re.sub("\xf0\x9d[\x90-\x99][\x80-\xbf]",sub,re.sub("\xf0\x9d\x9a[\x80-\xa3]",sub,u8)) # U+1D400..U+1D6A3 (works even if Python is narrow build)
+    if re.search("\xef[\xbc\xbd]",u8): u8=re.sub(u"[\uFF01-\uFF5E]",lambda m:chr(ord(m.group())-0xFF01+ord('!')),u8.decode('utf-8')).encode('utf-8') # full-width ASCII
+    return u8
 def utf8_to_header(u8):
     if not ('=?' in u8 or re.search(r"[^ -~]",u8)): return u8 # ASCII and no encoding needed
     ret = "B?"+base64.encodestring(u8).replace("\n","")
