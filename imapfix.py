@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.69 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.691 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -114,7 +114,7 @@ def handle_authenticated_message(subject,firstPart,attach):
 # SSL-authenticated as coming from yourself (see below).
 # Returns the name of a folder (or maildir as above), or
 # None to delete the message, or False = undecided (normal
-# rules will apply).
+# rules will apply, except spamprobe will be bypassed).
 # If folder name starts with *, mail will be marked 'seen'.
 # firstPart is a UTF-8 copy of the first part of the body
 # (which will typically contain plain text even if you
@@ -803,10 +803,11 @@ def process_imap_inbox():
             imapMsgid = msgID ; continue
         doneSomething = True
         msg = email.message_from_string(message)
-        box = changed = False ; seenFlag=""
+        box = changed = bypass_spamprobe = False ; seenFlag=""
         if authenticates(msg):
           # do auth'd-msgs processing before any convert-to-attachment etc
           debug("Message authenticates")
+          bypass_spamprobe = True
           box,newSubj = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject",""),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
           if newSubj: # for postponed_foldercheck
             del msg["Subject"]
@@ -839,7 +840,9 @@ def process_imap_inbox():
                 o = StringIO() ; traceback.print_exc(None,o)
                 save_to(filtered_inbox,"From: "+imapfix_From_line+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(localtime=True),o.getvalue()))
                 box = filtered_inbox
-            if box==False: box = spamprobe_rules(message,is_additional and additional_inbox_train_spam)
+            if box==False:
+                if bypass_spamprobe: box = filtered_inbox
+                else: box = spamprobe_rules(message,is_additional and additional_inbox_train_spam)
         if box:
             if not box==spam_folder:
                 changed2 = False
@@ -949,7 +952,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         def generator():
             for m in maildir.iteritems():
                 k,v = m
-                yield k,v.get_flags(),v
+                yield k,v.get_flags(),myAsString(v)
         toDel = []
     else:
         make_sure_logged_in() ; debug(toDbg)
@@ -1826,6 +1829,9 @@ def do_archive():
         if not age==None: age = age*24*3600
         if type(foldername)==tuple: bStr=foldername[1]
         else: bStr = foldername
+        if os.sep in bStr:
+            bStr=bStr[bStr.rindex(os.sep)+1:]
+            assert bStr, "shouldn't end mbox with /"
         archive(foldername, archive_path+os.sep+bStr, age, action)
 
 def do_nightly_train():
