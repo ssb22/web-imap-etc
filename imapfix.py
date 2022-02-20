@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.691 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.7 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -71,7 +71,9 @@ office_convert = None # or "html" or "pdf", to use
 # to produce converted versions of office documents
 # (beware, I have not checked soffice for vulnerabilities)
 # - resulting HTML might not work on old WM phones as they
-# don't support data: image URLs
+# don't support data: image URLs.
+# This option also enables summary generation of
+# Microsoft Calendar attachments.
 
 pdf_convert = False # True = use
 #  a.pdf # makes a-html.html as.html (ignores extra html argument or -stdout)
@@ -1438,6 +1440,10 @@ def walk_msg(message,partFunc,*args):
         o,to_attach = to_attach,[]
         for i in message.get_payload():
           changed = walk_msg(i,partFunc,*args) or changed
+        if to_attach and message.get("Content-Type","").startswith("multipart/alternative"): # can happen with Exchange clients even if only one attachment
+            ct = message["Content-Type"].replace("multipart/alternative","multipart/mixed",1)
+            del message["Content-Type"]
+            message["Content-Type"] = ct
         for i in to_attach: message.attach(i)
         to_attach = o ; return changed
     else: return partFunc(message,*args)
@@ -1505,6 +1511,14 @@ def filename_ext(message):
     return fn,ext
 def add_office0(message,accum):
     if to_attach == None: return False # TODO? (non-multipart message sent with a single document and nothing else)
+    if "Content-Type" in message and (str(message['Content-Type']).startswith("text/calendar") or str(message['Content-Type']).startswith("application/ics")):
+        cal = ["Calendar file:"]
+        for l in re.sub("LANGUAGE=[a-zA-Z-]*:","",message.get_payload(decode=True).replace("\r\n","\n").replace("\n "," ").replace("\nX-MICROSOFT-","\n").replace(";ROLE=REQ-PARTICIPANT","").replace(";PARTSTAT=NEEDS-ACTION","").replace(";RSVP=TRUE","").replace(";VALUE=DATE","").replace("mailto:","")).split("\n"):
+            if any(l.startswith(f) for f in ["TZID:","ORGANIZER","ATTENDEE","SUMMARY","DTSTART:2","DTEND:2","LOCATIONDISPLAYNAME","LOCATIONSTREET","LOCATIONCITY"]) and ':' in l and l[l.index(':')+1:].replace(r'\n','').strip(): cal.append(" ".join(l.replace(";","; ").replace(":",": ").split()))
+        if len(cal)==1: return False # no details found
+        b = email.mime.base.MIMEBase("text","plain")
+        b.set_payload("\n".join(cal))
+        to_attach.append(b) ; return True
     fn = filename_ext(message)
     if fn==False: return False
     fn,ext = fn
