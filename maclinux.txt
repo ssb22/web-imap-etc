@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.56 (c) Silas S. Brown 2012-22.
+# Version 1.57 (c) Silas S. Brown 2012-22.
 
 # Tested in zsh on macOS 11.4 through 12.2,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -259,7 +259,14 @@ ulimit -n 1024 # allow programs to have more open files
 volume () {
   if [ ! "$1" ]; then
     # if no argument, print current percentage
-    osascript -e "output volume of (get volume settings)"
+    V=$(osascript -e "output volume of (get volume settings)")
+    if [ "$V" = "missing value" ]; then
+      echo "Cannot read current volume"
+      echo "This can happen if a multi-output device has been set in audio-midi-setup"
+      echo "(e.g. to copy computer's sound to QuickTime's recorder via BlackHole)" # (or SoundFlower on older Macs?)
+      echo " - audio-midi-setup must be used to read volume"
+      echo "(can still set it from command line)" # (at least it could when I tested it)
+    else echo "$V"; fi
   else osascript -e "set volume output volume $1"; fi }
 # older Macs just had "set volume" with a number 0 to 7
 export -f volume >/dev/null
