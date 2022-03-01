@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.7 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.71 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -276,13 +276,20 @@ copyself_delete_attachments = False # if True, attachments
 # attached, unlike the fcc_attach='no' setting in Mutt 1.5)
 
 copyself_folder_name = "Sent Items"
+# Used as a destination folder for maildir_to_copyself
+# and/or copyself_delete_attachments, etc.
+# (I call it "copyself" because I first used email on a
+# local-area network in 1995 with Pegasus Mail for DOS,
+# which saved "copies to self" in "copyself.pmi";
+# nowadays "sent" or "sent items" seems more common for
+# new setups.)
 # If you want to keep this on a local maildir instead, you
 # can set it to ("maildir","path/to/maildir")
 # (in which case also setting maildir_to_copyself will
-# result in messages being moved from one maildir to
-# another, with copyself_delete_attachments still applied)
+# result in messages simply being moved from one maildir to
+# another, but with copyself_delete_attachments still applied)
 
-copyself_alt_folder = "Sent" # None or the name of an IMAP
+copyself_alt_folder = None # or the name of an IMAP
 # folder, any messages found (if folder exists) will be
 # moved to copyself_folder_name, with their attachments
 # deleted if copyself_delete_attachments is True.  You can
