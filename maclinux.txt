@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.57 (c) Silas S. Brown 2012-22.
+# Version 1.58 (c) Silas S. Brown 2012-22.
 
 # Tested in zsh on macOS 11.4 through 12.2,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -39,7 +39,7 @@
 # and in China: https://gitee.com/ssb22/web-imap-etc
 # although some early ones are missing.
 
-if test -d /Volumes && test "$(uname -s)" = Darwin; then
+if [ -d /Volumes ] && [ "$(uname -s)" = Darwin ]; then
 # we're on a Mac
 
 # if in bash, avoid recursion:
@@ -52,11 +52,11 @@ diskutil info disk0|grep SMART|grep -v 'Status:[^A-z]*Verified$' && echo "Hard d
 export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
 # (gnubin (from coreutils package) comes last so Mac versions take priority, just in case; coreutils has some commands not otherwise available e.g. factor, md5sum)
 export MANPATH=$MANPATH:/usr/local/opt/coreutils/libexec/gnuman
-if test "$SHELL" = /bin/bash && test -e /sw/bin/init.sh; then . /sw/bin/init.sh; fi
+[ ! "$ZSH_NAME" ] && [ -e /sw/bin/init.sh ] && . /sw/bin/init.sh
 
-for N in "$HOME"/Library/Python/*/bin; do test -e "$N" && export PATH="$PATH:$N"; done # for pip install --user (without --user it's /usr/local/bin)
+for N in "$HOME"/Library/Python/*/bin; do [ -e "$N" ] && export PATH="$PATH:$N"; done # for pip install --user (without --user it's /usr/local/bin)
 
-if test "$SHELL" = /bin/bash && /usr/bin/which -s brew; then
+if [ ! "$ZSH_NAME" ] && /usr/bin/which -s brew; then
   # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
   brew () { BASH_ENV= $(/usr/bin/which brew) "$@" ; } ; export -f brew
 fi
@@ -130,7 +130,7 @@ alias battery-status='pmset -g batt' # for MacBook laptops
 if [ -e /usr/bin/python3 ] ; then export DefineAppsPython=/usr/bin/python3
 elif [ -e /usr/bin/python2 ] ; then export DefineAppsPython=/usr/bin/python2
 else echo "maclinux cannot find system Python: most of our application shortcuts will NOT be defined" 1>&2; fi # TODO: search path for a user-installed python3 or python?
-if [ ! "$DefineAppsPython" = "" ]; then
+if [ "$DefineAppsPython" ]; then
 DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 "$DefineAppsPython" -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" \"$@\" ; } ; export -f "+Command+" >/dev/null"'$'\n\n''print ("\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:]))' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
 else DefineApps () { false ; }; fi
 DefineApps /Applications /System/Applications /usr/local/Cellar/emacs
@@ -177,7 +177,7 @@ if ! /usr/bin/which -s jmacs; then
 jmacs () { emacs -q "$@" ; } ; export -f jmacs >/dev/null
   else # emacs not present in macOS 11, but we might have it as an application:
     if declare -f emacs >/dev/null; then
-      jmacs () { Emacs=$(declare -f emacs|grep -i '^\s*open.*/Emacs.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/MacOS/Emacs; if [ "$1" = "" ]; then $Emacs -q -nw --eval '(switch-to-buffer "*scratch*")'; else $Emacs -q -nw "$@"; fi ; } ; export -f jmacs >/dev/null
+      jmacs () { Emacs=$(declare -f emacs|grep -i '^\s*open.*/Emacs.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/MacOS/Emacs; if [ ! "$1" ]; then $Emacs -q -nw --eval '(switch-to-buffer "*scratch*")'; else $Emacs -q -nw "$@"; fi ; } ; export -f jmacs >/dev/null
     elif declare -f aquamacs >/dev/null; then # TODO: not tested
       jmacs () { $(declare -f emacs|grep -i '^\s*open.*/Aquamacs.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/MacOS/Aquamacs -q -nw "$@" ; } ; export -f jmacs >/dev/null
     fi
@@ -283,11 +283,11 @@ stop () { osascript -e "tell application \"iTunes\" to stop" ; }
 export -f pause stop >/dev/null
 
 # we can also do the following without sudo, as long as a desktop session is running:
-halt () { [ "$(jobs -s)" = "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to shut down") & ) ; exit ; }
+halt () { [ ! "$(jobs -s)" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to shut down") & ) ; exit ; }
 # (if the "exit" warns about stopped jobs, we won't do the shutdown)
 poweroff () { halt ; }
-reboot () { [ "$(jobs -s)" = "" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to restart") & ) ; exit ; }
-logout () { [ "$(jobs -s)" = "" ] && ( ( sleep 0.5 && osascript -e "tell application \"System Events\" to log out") & ) ; exit ; }
+reboot () { [ ! "$(jobs -s)" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to restart") & ) ; exit ; }
+logout () { [ ! "$(jobs -s)" ] && ( ( sleep 0.5 && osascript -e "tell application \"System Events\" to log out") & ) ; exit ; }
 sleepnow () { if ! pmset -g assertions|grep PreventSystemSleep|grep -v '^\s*PreventSystemSleep\s*0$'; then (sleep 0.5; pmset sleepnow) & exit; else false; fi ; }
 alias suspend-mac=sleepnow
 export -f halt poweroff reboot logout sleepnow >/dev/null
@@ -361,25 +361,20 @@ alias man-ps=psmanpage
 # Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
 if [ ! "$SSH_CLIENT" ]; then
   # simpler prompt for a local Mac (hostname can be a bit long)
-  if test "$SHELL" = /bin/bash; then
-    export PS1='mac:\w\$ '
-  else export PS1='mac:%~%# '; fi
+  [ "$ZSH_NAME" ] && export PS1='mac:%~%# ' || export PS1='mac:\w\$ '
 elif test "$(hostname -s)" = mac || test "$(hostname -s)" = unknown; then
   # if hostname has been SET to mac, better make it different
   # to distinguish between a local one and one over SSH
-  if test "$SHELL" = /bin/bash; then
-    export PS1='mac.ssh:\w\$ '
-  else export PS1='mac.ssh:%~%# '; fi
+  [ "$ZSH_NAME" ] && export PS1='mac.ssh:%~%# ' || export PS1='mac.ssh:\w\$ '
   case "$TERM" in xterm*) echo -n $'\033]0;mac ssh\007' ;; esac
 else
-  if test "$SHELL" = /bin/bash; then
-    export PS1='\h:\w\$ '
-  else export PS1='%m:%~%# '; fi
+  [ "$ZSH_NAME" ] && export PS1='%m:%~%# ' || export PS1='\h:\w\$ '
   case "$TERM" in xterm*) echo -n $'\033]0;'"$(hostname -s)"$'\007' ;; esac
 fi
+case "$TERM" in xterm*) [ "$ZSH_NAME" ] && export PS1=$'%{\e[1;37;40m%}'"$PS1"$'%{\e[1;33;40m%}' || export PS1='\[\e[1;37;40m\]'"$PS1"'\[\e[1;33;40m\]' ;; esac
 
 export BASH_ENV="$__OldBashEnv"
-if test "$SHELL" = /bin/zsh; then
+if [ "$ZSH_NAME" ]; then
     unsetopt hup check_running_jobs bad_pattern no_match # as bash
     setopt -k # allow comments even in interactive (as bash does)
 fi
