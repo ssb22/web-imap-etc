@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.71 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.72 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -297,6 +297,8 @@ copyself_alt_folder = None # or the name of an IMAP
 # comma.  Might be useful if some of your IMAP programs
 # insist on doing their own sent-mail filing to folders of
 # their own choice rather than yours.
+check_copyself_alt_folder_on_secondary_too = False
+# (see secondary_imap below)
 auto_delete_folder = None # or "Trash" if you want everything
 # in it to be automatically deleted periodically; useful if
 # your IMAP client insists on moving messages there when you
@@ -863,7 +865,7 @@ def process_imap_inbox():
                 if changed2: message = myAsString(msg)
             if seenFlag: copyWorked = False # unless we can get copy_to to set the Seen flag on the copy, which means the IMAP server must have an extension that causes COPY to return the new ID unless we want to search for it
             elif type(box)==tuple: copyWorked = False # e.g. imap to maildir
-            elif not changed and saveImap == imap:
+            elif not changed and saveImap == imap and (not imap_to_maildirs or box in imap_maildir_exceptions):
                 debug("Copying unchanged message to ",box)
                 copyWorked = copy_to(box, msgID)
                 if not copyWorked: debug("... failed; falling back to re-upload")
@@ -1144,6 +1146,7 @@ def maybe_create(mailbox):
 def save_to(mailbox, message_as_string, flags="", mayNeedNewMsgID=True):
     "Saves message to a mailbox on the saveImap connection, creating the mailbox if necessary"
     if type(mailbox)==tuple and mailbox[0]=='maildir': return save_to_maildir(mailbox[1],message_as_string,flags)
+    elif imap_to_maildirs and not mailbox in imap_maildir_exceptions: return save_to_maildir(imap_to_maildirs+os.sep+mailbox,message_as_string,flags) # might as well skip the intermediate step of putting it in an IMAP folder to be picked up by imap_to_maildirs on next cycle
     make_sure_logged_in() ; maybe_create(mailbox)
     msg = email.message_from_string(message_as_string)
     if 'Date' in msg: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
@@ -1217,7 +1220,7 @@ def do_maildir_to_copyself():
         del m[k]
     m.clean()
 assert not copyself_folder_name == ('maildir', maildir_to_copyself), "this can lead to loops"
-assert not (maildirs_to_imap and maildirs_to_imap == imap_to_maildirs), "loop"
+assert not (maildirs_to_imap and imap_to_maildirs), "Setting both maildirs_to_imap and imap_to_maildirs at the same time is not supported"
 
 def do_copyself_to_copyself():
     for folder in copyself_alt_folder.split(","):
@@ -1841,6 +1844,8 @@ def process_secondary_imap():
             additional_inbox = None
         process_imap_inbox()
         additional_inbox = oAI
+        if check_copyself_alt_folder_on_secondary_too:
+            do_copyself_to_copyself()
   imap = saveImap
 
 def do_archive():
@@ -2002,14 +2007,15 @@ def do_backup():
                 mbox[k] = msg
         mbox.close()
 
+imap_maildir_exceptions += ["","INBOX",filtered_inbox,
+                            additional_inbox,
+                            spam_folder]
+if auto_delete_folder: imap_maildir_exceptions += auto_delete_folder.split(",")
+if copyself_alt_folder: imap_maildir_exceptions += copyself_alt_folder.split(",")
 def do_imap_to_maildirs():
     mailbox.Maildir.colon = maildir_colon
     for foldername in folderList():
-        if foldername in ["","INBOX",filtered_inbox,
-                          additional_inbox,
-                          spam_folder,
-                          auto_delete_folder,
-                          copyself_alt_folder]+imap_maildir_exceptions: continue
+        if foldername in imap_maildir_exceptions: continue
         typ, data = imap.select(foldername)
         if not typ=='OK': continue
         m = None
@@ -2043,7 +2049,8 @@ def do_copy(foldername):
         print ("No folder name specified")
         return
     make_sure_logged_in()
-    global imap,saveImap
+    global imap,saveImap,imap_to_maildirs
+    imap_to_maildirs = None
     check_ok(imap.select(foldername))
     # Work out which messages need to be deleted:
     do_not_delete = set() ; do_not_copy = set()
