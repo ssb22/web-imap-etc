@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.516 (c) 2014-21 Silas S. Brown.
+# webcheck.py v1.517 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -406,7 +406,8 @@ def run_webdriver_inner(actionList,browser):
         else: return browser.find_element_by_link_text(spec)
     def getSrc():
       def f(b,switchBack=[]):
-        src = b.find_element_by_xpath("//*").get_attribute("outerHTML")
+        try: src = b.find_element_by_xpath("//*").get_attribute("outerHTML")
+        except: return u"getSrc webdriver exception but can retry" # can get timing-related WebDriverException: Message: Error - Unable to load Atom 'find_element'
         for el in ['frame','iframe']:
           for frame in b.find_elements_by_tag_name(el):
             b.switch_to.frame(frame)
