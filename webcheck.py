@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.518 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.519 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -660,16 +660,21 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     if txt: txt += '\n'
     txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is (in RSS it would have originated with a double-'escaped' < within 'escaped' html markup)
     txt = re.sub("</?[A-Za-z][^>]*>",simplifyTag,txt) # avoid overly-verbose HTML (but still allow some)
+    txt = re.sub("<[pP]></[pP]>","",txt).replace("\n\n","\n") # sometimes left after simplifyTag removes img
     newItems.append(title+'\n'+txt+linkify(link))
   if not pKeep: return # if the feed completely failed to fetch, don't erase what we have
   for k in list(previous_timestamps.keys()):
     if k[:2]==(url,'seenItem') and not k in pKeep:
       del previous_timestamps[k] # dropped from the feed
   if newItems: getBuf(sys.stdout).write((str(len(newItems))+" new "+itemType+" items in "+url+paren(comment)+' :\n'+'\n---\n'.join(n.strip() for n in newItems)+'\n\n').encode('utf-8'))
+def simplifyAttr(match):
+  m = match.group()
+  if m.lower().startswith(" href="): return m
+  else: return ""
 def simplifyTag(match):
   m = match.group()
   t = m.split()[0].replace('<','').replace('>','').replace('/','')
-  if t=='a': return m # keep (TODO: strip style?)
+  if t=='a': return re.sub(' [A-Za-z]+="[^"]*"',simplifyAttr,m)
   elif t in ['p','br','em','strong','b','i','u','s']:
     if ' ' in m: return m.split()[0]+'>' # strip attributes
     else: return m
