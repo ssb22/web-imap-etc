@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.519 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.52 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -618,7 +618,6 @@ def parseRSS(url,content,comment):
       if not curElem[0]==None: items[-1][curElem[0]].append(' ') # ensure any additional ones are space-separated
       curElem[0]=None
   def CharacterDataHandler(data):
-    data=data.strip()
     if data and not curElem[0]==None:
       items[-1][curElem[0]].append(data)
   parser.StartElementHandler = StartElementHandler
@@ -629,7 +628,7 @@ def parseRSS(url,content,comment):
   except expat.error as e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n(Check if this URL is still serving RSS?)\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
   for i in xrange(len(items)):
     items[i][1] = "".join(urlparse.urljoin(url,w) for w in "".join(items[i][1]).strip().split()).strip() # handle links relative to the RSS itself
-    for j in [0,2,3]: items[i][j]=u"".join(U(x) for x in items[i][j]).strip()
+    for j in [0,2,3]: items[i][j]=re.sub(r"\s+"," ",u"".join(U(x) for x in items[i][j])).strip()
   handleRSS(url,items,comment)
 def entityref(m):
   m=m.group()[1:-1] ; m2 = None
