@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.52 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.521 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -656,10 +656,10 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     pKeep.add(k)
     if k in previous_timestamps and not '--show-seen-rss' in sys.argv: continue # seen this one already
     previous_timestamps[k] = True
-    if txt: txt += '\n'
     txt = re.sub("&#x([0-9A-Fa-f]*);",lambda m:unichr(int(m.group(1),16)),re.sub("&#([0-9]*);",lambda m:unichr(int(m.group(1))),txt)) # decode &#..; HTML entities (sometimes used for CJK), but leave &lt; etc as-is (in RSS it would have originated with a double-'escaped' < within 'escaped' html markup)
     txt = re.sub("</?[A-Za-z][^>]*>",simplifyTag,txt) # avoid overly-verbose HTML (but still allow some)
-    txt = re.sub("<[pP]></[pP]>","",txt).replace("\n\n","\n") # sometimes left after simplifyTag removes img
+    txt = re.sub("<[pP]></[pP]>","",txt).strip() # sometimes left after simplifyTag removes img
+    if txt: txt += '\n'
     newItems.append(title+'\n'+txt+linkify(link))
   if not pKeep: return # if the feed completely failed to fetch, don't erase what we have
   for k in list(previous_timestamps.keys()):
