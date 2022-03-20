@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.58 (c) Silas S. Brown 2012-22.
+# Version 1.59 (c) Silas S. Brown 2012-22.
 
 # Tested in zsh on macOS 11.4 through 12.2,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -361,17 +361,17 @@ alias man-ps=psmanpage
 # Mac's multiline editing doesn't always work well with ANSI codes, even when \[..\] delimiters are used
 if [ ! "$SSH_CLIENT" ]; then
   # simpler prompt for a local Mac (hostname can be a bit long)
-  [ "$ZSH_NAME" ] && export PS1='mac:%~%# ' || export PS1='mac:\w\$ '
+  [ "$ZSH_NAME" ] && PS1='mac:%~%# ' || PS1='mac:\w\$ '
 elif test "$(hostname -s)" = mac || test "$(hostname -s)" = unknown; then
   # if hostname has been SET to mac, better make it different
   # to distinguish between a local one and one over SSH
-  [ "$ZSH_NAME" ] && export PS1='mac.ssh:%~%# ' || export PS1='mac.ssh:\w\$ '
+  [ "$ZSH_NAME" ] && PS1='mac.ssh:%~%# ' || PS1='mac.ssh:\w\$ '
   case "$TERM" in xterm*) echo -n $'\033]0;mac ssh\007' ;; esac
 else
-  [ "$ZSH_NAME" ] && export PS1='%m:%~%# ' || export PS1='\h:\w\$ '
+  [ "$ZSH_NAME" ] && PS1='%m:%~%# ' || PS1='\h:\w\$ '
   case "$TERM" in xterm*) echo -n $'\033]0;'"$(hostname -s)"$'\007' ;; esac
 fi
-case "$TERM" in xterm*) [ "$ZSH_NAME" ] && export PS1=$'%{\e[1;37;40m%}'"$PS1"$'%{\e[1;33;40m%}' || export PS1='\[\e[1;37;40m\]'"$PS1"'\[\e[1;33;40m\]' ;; esac
+case "$TERM" in xterm*) [ "$ZSH_NAME" ] && PS1=$'%{\e[1;37;40m%}'"$PS1"$'%{\e[1;33;40m%}' || PS1='\[\e[1;37;40m\]'"$PS1"'\[\e[1;33;40m\]' ;; esac
 
 export BASH_ENV="$__OldBashEnv"
 if [ "$ZSH_NAME" ]; then
