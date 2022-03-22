@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.72 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.73 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -16,6 +16,10 @@ password = "xxxxxxxx"
 #    password = open(".imapfix-pass").read().strip()
 # instead, so that it won't be shown on-screen when you're
 # editing other things.)
+
+# You can also use OAuth2 by setting password like this:
+# password = ("command to generate oauth2 string", 3500)
+# where 3500 is the number of seconds before script is called again.
 
 login_retry = False # True = don't stop on login failure
 # (useful if your network connection is not always on)
@@ -260,8 +264,8 @@ imap_maildir_exceptions = [] # or list folders like Drafts
 # that should not be moved to maildirs
 
 sync_command = None # or command to run after every cycle,
-# e.g. "mbsync -a" if you want to maintain BOTH maildirs
-# and remote IMAP folders in the same state
+# e.g. "mbsync -a" or "~/.local/bin/offlineimap" if you
+# want to maintain maildirs + remote IMAP folders in same state
 # (if poll_interval is "idle" this can wait for the next
 # change on the _remote_ side before it runs)
 
@@ -612,6 +616,8 @@ else: compression_ext = ""
 if image_size:
     from PIL import Image
     import imghdr
+
+import commands
 
 def debug(*args):
     if not quiet:
@@ -1819,10 +1825,20 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
                 host,port = host.split(':')
                 imap = Class(host, int(port))
             else: imap = Class(host)
-            check_ok(imap.login(user,pwd))
+            if type(pwd)==tuple: # OAuth2
+                cmd,secs = pwd
+                if oauth2_string_cache.setdefault(cmd,(None,0))[1] < time.time():
+                    debug("Generating OAuth2 access string")
+                    access_string = commands.getoutput(cmd).strip()
+                    try: access_string = base64.decodestring(access_string)
+                    except: pass # maybe it wasn't base64
+                    oauth2_string_cache[cmd] = (access_string,time.time()+secs)
+                check_ok(imap.authenticate('XOAUTH2', lambda _:oauth2_string_cache[cmd][0]))
+            else: check_ok(imap.login(user,pwd))
             return imap
         except: pass
     raise Exception("Could not log in to "+host)
+oauth2_string_cache = {}
 
 def process_secondary_imap():
   global imap ; first=True
@@ -2140,7 +2156,6 @@ def make_sure_logged_out():
         imap = saveImap = None
 
 def other_running():
-    import commands
     ps = commands.getoutput("ps auxwww").split('\n')
     numCols = len(ps[0].split())
     lineFormat = r"^(.*[^\s])\s+([0-9]+)"+r"\s+[^\s]+"*(numCols-3)+r"\s+([^\s].*)$" # this assumes the PID will be the first numeric thing that comes after whitespace (which should cope with usernames that have whitespace in them as long as they don't have whitespace followed by number)
