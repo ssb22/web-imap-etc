@@ -9,7 +9,7 @@ if test -e index.html; then
     echo "Error: index.html already exists"
     exit 1
 fi
-(echo '<html><body style="overflow-x:hidden">';
+(echo '<html><body style="overflow-x:hidden;margin:0">';
 for F in *.jpg *.JPG; do if test -e "$F"; then
   case "$(exiftool -list "$F"|grep ^Orientation|sed -e 's/.*: //')" in
       ("Rotate 90 CW")
