@@ -1833,8 +1833,10 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
                     try: access_string = base64.decodestring(access_string)
                     except: pass # maybe it wasn't base64
                     oauth2_string_cache[cmd] = (access_string,time.time()+secs)
+                debug("Using OAuth2 access string")
                 check_ok(imap.authenticate('XOAUTH2', lambda _:oauth2_string_cache[cmd][0]))
             else: check_ok(imap.login(user,pwd))
+            debug("Logged in")
             return imap
         except: pass
     raise Exception("Could not log in to "+host)
