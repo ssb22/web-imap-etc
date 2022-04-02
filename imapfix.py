@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.73 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.74 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -20,6 +20,11 @@ password = "xxxxxxxx"
 # You can also use OAuth2 by setting password like this:
 # password = ("command to generate oauth2 string", 3500)
 # where 3500 is the number of seconds before script is called again.
+# (You'll then have to sort out calls to oauth2.py or whatever,
+# and if you registered a 'test app' it is likely that refresh
+# tokens will not persist more than a week or so and will need
+# periodic renewal in a browser; this won't be the case if
+# you use credentials from a production application.)
 
 login_retry = False # True = don't stop on login failure
 # (useful if your network connection is not always on)
@@ -174,7 +179,7 @@ smtp_fromHeader = "Example Name <example@example.org>"
 smtp_fromAddr = "example@example.org"
 smtp_host = "localhost"
 smtp_user = ""
-smtp_password = ""
+smtp_password = "" # or e.g. ("oauth2 cmd",3600)
 smtp_delay = 60 # seconds between each message
 # (These smtp_ settings are not currently used by anything
 # except user-supplied handle_authenticated_message functions)
@@ -1833,7 +1838,7 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
                     try: access_string = base64.decodestring(access_string)
                     except: pass # maybe it wasn't base64
                     oauth2_string_cache[cmd] = (access_string,time.time()+secs)
-                debug("Using OAuth2 access string")
+                debug("Using OAuth2 access string") # if hangs here, refresh token might have been invalidated (e.g. in GMail 'testing-only apps' the refresh tokens are short-lived) and the server is delaying it after repeated use
                 check_ok(imap.authenticate('XOAUTH2', lambda _:oauth2_string_cache[cmd][0]))
             else: check_ok(imap.login(user,pwd))
             debug("Logged in")
@@ -2206,7 +2211,17 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
     import smtplib
     if smtp_host=="localhost": s = smtplib.SMTP(smtp_host)
     else: s = smtplib.SMTP_SSL(smtp_host)
-    if smtp_user: s.login(smtp_user, smtp_password)
+    if smtp_user:
+        if type(smtp_password)==tuple:
+            cmd,secs = smtp_password
+            if oauth2_string_cache.setdefault(cmd,(None,0))[1] < time.time():
+                debug("Generating OAuth2 access string for SMTP")
+                access_string = commands.getoutput(cmd).strip()
+                try: access_string = base64.decodestring(access_string)
+                except: pass # maybe it wasn't base64
+                oauth2_string_cache[cmd] = (access_string,time.time()+secs)
+            s.docmd('AUTH','XOAUTH2 '+base64.b64encode(access_string))
+        else: s.login(smtp_user, smtp_password)
     ret = s.sendmail(smtp_fromAddr,to_u8,myAsString(msg))
     assert len(ret)==0, "Some (but not all) recipients were refused: "+repr(ret)
     s.quit()
