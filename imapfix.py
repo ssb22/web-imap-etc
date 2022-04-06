@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.74 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.75 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1675,20 +1675,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
                 if not said:
                     debug("Moving messages from maildir ",postponed_maildir+os.sep+dayToCheck," to ",filtered_inbox)
                     said = True
-                old_date = msg.get("Date","")
-                if old_date:
-                    theFrom = msg.get('From','').replace('"','').strip()
-                    if theFrom==imapfix_From_line: pass # no need to add old date if it's a --note or --multinote
-                    elif theFrom==imapfix_name:
-                        # previous imapfix_from_line stored in postpone folder
-                        # ditto the above (no need to add old date), but
-                        # upgrade the imapfix From line for K-9 etc
-                        del msg['From'] # this was missing before v1.66, resulting in two From lines when upgrading old-imapfix messages from maildirs; if such a message is encountered now, both 'From' lines will be deleted by this one 'del'
-                        msg['From'] = imapfix_From_line
-                    elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
-                    else: walk_msg(msg,addOldDateFunc(old_date))
-                    del msg['Date']
-                msg['Date'] = email.utils.formatdate(localtime=True)
+                reDate(msg)
                 save_to(filtered_inbox,myAsString(msg),mayNeedNewMsgID=False)
                 toDel.append(msgID)
             for msgID in toDel: del maildir[msgID]
@@ -1701,20 +1688,24 @@ def do_postponed_foldercheck(dayToCheck="today"):
             debug("Moving messages from ",folder," to ",filtered_inbox)
             said = True
         msg = email.message_from_string(message)
-        if msg.get("From","")==imapfix_name: # pre v1.5
-            del msg['From'] ; msg['From'] = imapfix_From_line # K-9 5.8+
-        old_date = msg.get("Date","")
-        if old_date:
-            if msg.get('From','')==imapfix_From_line: pass # no need to add old date if it's a --note or --multinote
-            elif authenticates(msg) and 'To' in msg and username in msg['To']: pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
-            else: walk_msg(msg,addOldDateFunc(old_date))
-            del msg['Date']
-        msg['Date'] = email.utils.formatdate(localtime=True)
+        reDate(msg)
         save_to(filtered_inbox,myAsString(msg))
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if said: check_ok(imap.expunge())
     check_ok(imap.select()) ; do_delete(folder)
 
+def reDate(msg):
+    theFrom = msg.get('From','').replace('"','').strip()
+    if theFrom==imapfix_name: # pre v1.5
+        del msg['From'] ; msg['From'] = imapfix_From_line # K-9 5.8+
+    old_date = msg.get("Date","")
+    if old_date:
+        if theFrom==imapfix_From_line: pass # no need to add old date if it's a --note or --multinote
+        elif authenticates(msg) and 'To' in msg and (username in msg['To'] or getAddr(msg['To'])==getAddr(msg.get('From',''))): pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
+        else: walk_msg(msg,addOldDateFunc(old_date))
+        del msg['Date']
+    msg['Date'] = email.utils.formatdate(localtime=True)
+def getAddr(a): return ''.join(a.split()[-1:]).replace('<','').replace('>','')
 def addOldDateFunc(old_date):
     def addOldDate(message):
         newPara = ""
