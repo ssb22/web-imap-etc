@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.75 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.751 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1894,9 +1894,8 @@ def do_note(subject,ctype="text/plain",maybe=0):
     if isatty(sys.stdin):
         sys.stderr.write("Type the note, then EOF\n")
     body = sys.stdin.read()
-    if not body:
-        if maybe: return
-        body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
+    if maybe and not body.strip(): return
+    if not body: body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
     if filtered_inbox==None: saveTo = ""
     else: saveTo = filtered_inbox
     save_to(saveTo,"From: "+imapfix_From_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
