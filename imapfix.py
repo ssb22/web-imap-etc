@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.751 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.752 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -35,6 +35,9 @@ filtered_inbox = "in" # or =None if you don't want to do
 # e.g. because you're on an auxiliary machine (which does
 # not have your spamprobe database etc) but still want to
 # use maildir_to_copyself for mutt (see notes below).
+# You can also use environment variables with override
+# e.g. import os; filtered_inbox = os.getenv("ImapFolder","in")
+# so it can be overridden with ImapFolder for --upload
 
 # If you want to keep your filtered_inbox on local maildir
 # instead of IMAP server, set it to a tuple with the first
