@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.591 (c) Silas S. Brown 2012-22.
+# Version 1.592 (c) Silas S. Brown 2012-22.
 
 # Tested in zsh on macOS 11.4 through 12.2,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -129,7 +129,8 @@ alias battery-status='pmset -g batt' # for MacBook laptops
 # just make an 'update-functions' cmd for use when wanted?
 if [ -e /usr/bin/python3 ] ; then export DefineAppsPython=/usr/bin/python3
 elif [ -e /usr/bin/python2 ] ; then export DefineAppsPython=/usr/bin/python2
-else echo "maclinux cannot find system Python: most of our application shortcuts will NOT be defined" 1>&2; fi # TODO: search path for a user-installed python3 or python?
+else echo "maclinux cannot find system Python: most of our application shortcuts will NOT be defined" 1>&2; fi # TODO: search path for a user-installed Python?
+if ! /usr/bin/which -s python2 && /usr/bin/which -s python2.7; then python2 () { python2.7 "$@" ; } ; export -f python2 >/dev/null; fi # e.g. MacPorts on macOS 12.3 (no system python2)
 if [ "$DefineAppsPython" ]; then
 if ! /usr/bin/which -s python; then python () { "$DefineAppsPython" "$@" ; } ; export -f python >/dev/null; fi
 DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 "$DefineAppsPython" -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" \"$@\" ; } ; export -f "+Command+" >/dev/null"'$'\n\n''print ("\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:]))' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
