@@ -566,23 +566,12 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # If you want to compare this code to old versions, most old
 # versions are being kept on SourceForge's E-GuideDog SVN repository
 # http://sourceforge.net/p/e-guidedog/code/HEAD/tree/ssb22/setup/
+# use: svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
 # and on GitHub at https://github.com/ssb22/web-imap-etc
 # and on GitLab at https://gitlab.com/ssb22/web-imap-etc
 # and on Bitbucket https://bitbucket.org/ssb22/web-imap-etc
 # and at https://gitlab.developers.cam.ac.uk/ssb22/web-imap-etc
-# and in China: https://gitee.com/ssb22/web-imap-etc
-# To check out the repository, you can do:
-# git clone https://github.com/ssb22/web-imap-etc.git
-# or
-# git clone https://gitlab.com/ssb22/web-imap-etc.git
-# or
-# git clone https://bitbucket.org/ssb22/web-imap-etc.git
-# or
-# git clone https://gitlab.developers.cam.ac.uk/ssb22/web-imap-etc
-# or
-# git clone https://gitee.com/ssb22/web-imap-etc
-# or
-# svn co http://svn.code.sf.net/p/e-guidedog/code/ssb22/setup
+# and in China: git clone https://gitee.com/ssb22/web-imap-etc
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
