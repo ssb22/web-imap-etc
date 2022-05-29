@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.522 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.523 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -123,10 +123,11 @@ def read_input():
       text = line_withComment[5:].strip()
       # and leave url and mainDomain as-is (same as above line)
     elif ':' in line and not line.split(':',1)[1].startswith('//'):
-      if not line.split(':',1)[1]: # deleting a header
+      header, value = line.split(':',1) ; value=value.strip()
+      if not value or header.lower()=='user-agent': # no value = delete header; user-agent can be set only once so auto-delete any previous setting
         for e in extraHeaders:
-          if e.startswith(line): extraHeaders.remove(e)
-      else: extraHeaders.append(line)
+          if e.startswith(header+':'): extraHeaders.remove(e)
+      if value: extraHeaders.append(line)
       continue
     elif line.startswith("c://") and ' ; ' in line_withComment: # shell command
       url, text = line_withComment.split(' ; ',1)

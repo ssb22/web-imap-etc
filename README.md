@@ -4,7 +4,28 @@ WebCheck
 From http://ssb22.user.srcf.net/setup/webcheck.html (also mirrored at http://ssb22.gitlab.io/setup/webcheck.html just in case)
 
 webcheck.py requires Python, and is compatible with both Python 2 and Python 3.
-It is a program to check Web pages for changes to specific phrases of text. Some web monitoring programs and “watchlist” facilities etc will tell you when *any* change is made to a page, but that’s of limited use when you are interested in only a few specific phrases, especially when these are surrounded by many other items which change far more frequently than the one that actually interests you. So WebCheck lets you check for changes to a particular item on a page.
+It is a program to check Web pages for changes to specific phrases of text. I currently use it to:
+
+* check that external links from my website still lead to the information that was there when I added them (I might need to update my links otherwise), and check whether or not I need to warn Lynx users about misguided blocking,
+* check the websites of companies, organisations or governments for changes to a specific rule to which I'd be interested in changes (for example because it applies to myself or someone I know, or because I've commented on it somewhere and my comment might need updating),
+* follow a couple of sites' "what's new" RSS feeds in my email,
+* check for new versions of software programs, data files, EPUB publications etc,
+* check if servers hosting my own projects are still serving them,
+* alert me if a private page has somehow been set to public when it shouldn't,
+* check if sentences I've added to "wiki" sites have been changed or deleted (perhaps for good reason, but anyway I want to know),
+* check if code fixes to websites have been accidentally reverted,
+* check if answers or comments I've added to crowd-sourced sites and/or 'blogs have been edited or deleted,
+* check transport websites to see when discounted bookings for a certain date range become available,
+* check if certain rare items I might be interested in appear on an auction site,
+* check to see if Chinese translations have appeared for resources I think my Chinese friends might be interested in,
+* check for any new seminars planned at a couple of locations,
+* check for messages to myself on a couple of websites where I need to log in to check for messages,
+* check for new events planned at a local stadium so I know when the roads are likely to be crowded,
+* check the names of new tenants at a local startup incubator in case I know someone whom I think might be interested in one,
+* check if Android applications I recommend are still on the Play Store, and if their minimum requirements have changed,
+* and various other checks as needed.
+
+Some web monitoring programs and “watchlist” facilities etc will tell you when *any* change is made to a page, but that’s of limited use when you are interested in only a few specific phrases, especially when these are surrounded by many other items which change far more frequently than the one that actually interests you. So WebCheck lets you check for changes to a particular item on a page.
 
 Note that this is not a “foolproof” method. If a page lists “old news”, or otherwise incorporates an old version of the item you’re monitoring, WebCheck might fail to spot the new situation. You have to use your judgement about when this program can reasonably be used.
 
