@@ -136,7 +136,7 @@ Selected features: (see program for a full list)
   * Converts non-ASCII headers and body to Unicode when possible, so you can connect with a device that can’t handle other encodings
   * Move very large message bodies into attachments, to work around display problems on some devices
   * Create “thumbnails” of large images so they can be previewed on low-bandwidth connections
-  * Can use tnef and soffice to unpack winmail.dat and add HTML or PDF versions of office documents, so you can view these on devices that don’t support them natively
+  * Can use tnef and soffice to unpack winmail.dat and add HTML or PDF versions of office documents, so you can view these on devices that don’t otherwise support them
   * Move mail between IMAP and local Maildirs
   * Move old mail to compressed archives, saving attachments separately and merging duplicates; archives can be searched along with current mail
   * Periodically check additional IMAP accounts and process their mail as if it had been sent to the first
