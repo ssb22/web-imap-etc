@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.523 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.524 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -139,6 +139,7 @@ def read_input():
       text = line_withComment[line_withComment.index('}')+1:].strip()
       mainDomain = '.'.join(urlparse.urlparse(actions[0]).netloc.rsplit('.',2)[-2:]) # assumes 1st action is a URL
       url = "wd://"+chr(0).join(actions)
+      if extraHeaders: url += '\n'+'\n'.join(extraHeaders)
     else: # not webdriver
       lSplit = line_withComment.split(None,1)
       if len(lSplit)==1: url, text = lSplit[0],"" # RSS only
@@ -258,7 +259,10 @@ def worker_thread(*args):
               except: u,content=None,B("DNS lookup failed")
               textContent = content
           elif url.startswith("wd://"): # run webdriver (this type of url is set internally: see read_input)
-              u,content = None, run_webdriver(url[5:].split(chr(0)))
+              ua = [e for e in extraHeaders if e.lower().startswith('user-agent:')]
+              if ua: ua=ua[0].split(':',1)[1].strip()
+              else: ua = default_ua
+              u,content = None, run_webdriver(ua,url[5:].split(chr(0)))
               textContent = None # parse 'content' if needed
               url = url[5:].split(chr(0),1)[0] # for display
           elif url.startswith("up://"): # just test if server is up, and no error if not
@@ -348,7 +352,7 @@ def worker_thread(*args):
       jobs.task_done()
 
 class NoTracebackException(Exception): pass
-def run_webdriver(actionList):
+def run_webdriver(ua,actionList):
     global webdriver # so run_webdriver_inner has it
     try: from selenium import webdriver
     except:
@@ -359,7 +363,7 @@ def run_webdriver(actionList):
       opts = Options()
       opts.add_argument("--headless")
       opts.add_argument("--disable-gpu")
-      opts.add_argument("--user-agent="+default_ua)
+      opts.add_argument("--user-agent="+ua)
       try: from inspect import getfullargspec as getargspec # Python 3
       except ImportError:
         try: from inspect import getargspec # Python 2
