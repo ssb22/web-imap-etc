@@ -55,6 +55,13 @@ It is possible to add arbitrary HTTP headers (such as `Accept-Language: en`) on 
 
 It is also possible to add :include directives if you wish to place some of your configuration into other files, e.g. `:include wiki-pages.list` (and if any file such as `webcheck.list` is a directory then the files inside it are read).
 
+It is also possible to add simple “or else” logic, for example:
+
+    http://example.org/page1 my text
+    else: http://example.org/page2 my text
+
+(this can also be used to retry the same URL if a server works intermittently); unexpected results or errors are reported only from the last `else:` in such a sequence.
+
 ## RSS feeds and item lists
 
 You can follow new items on RSS/Atom feeds: give the feed URL and *no* search text.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.525 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.53 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -90,10 +90,12 @@ def read_input_file(fname=default_filename):
   lines.reverse() # so can pop() them in order
   return lines
 def read_input():
-  ret = {} # domain -> { url -> [(days,text)] }
+  ret = {} # domain -> { url -> checklist [(days,text,elseLogic)] }
+  # elseLogic = None or (url,checklist)
   days = 0 ; extraHeaders = []
   url = mainDomain = None
   lines = read_input_file()
+  lastList = None
   while lines:
     line = line_withComment = " ".join(lines.pop().split())
     if " #" in line: line = line[:line.index(" #")].strip()
@@ -119,9 +121,13 @@ def read_input():
       os.environ["PATH"] = ":".join(line.split("=",1)[1].replace("$PATH:","").replace(":$PATH","").split(":") + os.environ.get("PATH","").split(":"))
       continue
 
+    isElse = False
+    if line.startswith("else:"):
+      isElse = True ; line=line[5:].lstrip()
+
     if line.startswith('also:') and url:
       text = line_withComment[5:].strip()
-      # and leave url and mainDomain as-is (same as above line)
+      # and leave url and mainDomain as-is (same as above line), TODO: interaction of 'also:' (and extra headers lines) with 'else:' might not be what users expect
     elif ':' in line and not line.split(':',1)[1].startswith('//'):
       header, value = line.split(':',1) ; value=value.strip()
       if not value or header.lower()=='user-agent': # no value = delete header; user-agent can be set only once so auto-delete any previous setting
@@ -146,7 +152,13 @@ def read_input():
       else: url, text = lSplit
       mainDomain = '.'.join(urlparse.urlparse(url).netloc.rsplit('.',2)[-2:])
       if extraHeaders: url += '\n'+'\n'.join(extraHeaders)
-    ret.setdefault(mainDomain,{}).setdefault(url,[]).append((days,text))
+    if isElse:
+      assert lastList, "else without suitable rule before it"
+      lastList[-1] = lastList[-1][:2] + ((url,[(0,text,None)]),) # must be days=0 because don't want to re-check the days count when just retrieved and failed something possibly on same URL ('else:' can be used for simple retrying)
+      lastList = lastList[-1][2][1] # so 'else' can be used as 'else if'
+    else:
+      lastList = ret.setdefault(mainDomain,{}).setdefault(url,[])
+      lastList.append((days,text,None))
   return ret
 
 def balanceBrackets(wordList):
@@ -236,123 +248,146 @@ default_ua = 'Mozilla/5.0 or whatever you like (actually Webcheck)'
 # Let's not even mention it in the readme: we don't want to encourage
 # people to hide their tools from webmasters unnecessarily.
 
+class Delayer:
+  def __init__(self): self.last_fetch_finished = 0
+  def wait(self):
+    time.sleep(max(0,self.last_fetch_finished+delay-time.time()))
+    if sys.stderr.isatty(): sys.stderr.write('.'),sys.stderr.flush()
+  def done(self): self.last_fetch_finished = time.time()
+
 def worker_thread(*args):
-    opener = None
+    opener = [None]
     while True:
       try: job = jobs.get(False)
       except: return # no more jobs left
       try:
-        last_fetch_finished = 0 # or time.time()-delay
-        for url,daysTextList in sorted(job.items()): # sorted will group http and https together
+        delayer = Delayer()
+        items = sorted(job.items()) # sorted will group http and https together
+        items.reverse()
+        while items:
+          url,checklist = items.pop()
           if '\n' in url:
               url = url.split('\n')
               extraHeaders = url[1:] ; url = url[0]
           else: extraHeaders = []
           if (url,'lastFetch') in previous_timestamps and not '--test-all' in sys.argv: # (--test-all is different from removing .webcheck.last because it shouldn't also re-output old items in RSS feeds)
-              minDays = min(d for d,_ in daysTextList)
+              minDays = min(d[0] for d in checklist)
               if minDays and previous_timestamps[(url,'lastFetch')]+minDays >= dayNo(): continue
           previous_timestamps[(url,'lastFetch')] = dayNo() # (keep it even if minDays==0, because that might be changed by later edits of webcheck.list)
-          time.sleep(max(0,last_fetch_finished+delay-time.time()))
-          if sys.stderr.isatty(): sys.stderr.write('.'),sys.stderr.flush()
-          if url.startswith("dns://"): # DNS lookup
-              try: u,content = None, B(' '.join(sorted(set('('+x[-1][0]+')' for x in socket.getaddrinfo(url[6:],1))))) # TODO this 'sorted' is lexicographical not numeric; it should be OK for most simple cases though (keeping things in a defined order so can check 2 or 3 IPs on same line if the numbers are consecutive and hold same number of digits).  Might be better if parse and numeric sort
-              except: u,content=None,B("DNS lookup failed")
-              textContent = content
-          elif url.startswith("wd://"): # run webdriver (this type of url is set internally: see read_input)
-              ua = [e for e in extraHeaders if e.lower().startswith('user-agent:')]
-              if ua: ua=ua[0].split(':',1)[1].strip()
-              else: ua = default_ua
-              u,content = None, run_webdriver(ua,url[5:].split(chr(0)))
-              textContent = None # parse 'content' if needed
-              url = url[5:].split(chr(0),1)[0] # for display
-          elif url.startswith("up://"): # just test if server is up, and no error if not
-              try:
-                if sys.version_info >= (2,7,9) and not verify_SSL_certificates: urlopen(url[5:],context=ssl._create_unverified_context(),timeout=60)
-                else: urlopen(url[5:],timeout=60)
-                u,content = None,B("yes")
-              except: u,content = None,B("no")
-              textContent = content
-          elif url.startswith("e://"): # run edbrowse
-              from subprocess import Popen,PIPE
-              edEnv=os.environ.copy() ; edEnv["TMPDIR"]=getoutput("(TMPDIR=/dev/shm mktemp -d -t ed || mktemp -d -t ed) 2>/dev/null") # ensure unique cache dir if we're running several threads (TODO: what about edbrowse 3.7.6 and below, which hard-codes a single cache dir in /tmp: had we better ensure only one of these is run at a time, just in case?  3.7.7+ honours TMPDIR)
-              try: child = Popen(["edbrowse","-e"],-1,stdin=PIPE,stdout=PIPE,stderr=PIPE,env=edEnv)
-              except OSError:
-                print ("webcheck misconfigured: couldn't run edbrowse")
-                continue # no need to update last_fetch_finished
-              u,(content,stderr) = None,child.communicate(B("b "+url[4:].replace('\\','\n')+"\n,p\nqt\n")) # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
-              try:
-                import shutil
-                shutil.rmtree(edEnv["TMPDIR"])
-              except: pass
-              if child.returncode:
-                print ("edbrowse failed on "+url)
-                # Most likely the failure was some link didn't exist when it should have, so show the output for debugging
-                print ("edbrowse output was: "+repr(content)+"\n")
-                last_fetch_finished = time.time()
-                continue
-              textContent = content.replace(B('{'),B(' ')).replace(B('}'),B(' ')) # edbrowse uses {...} to denote links
-              url = url[4:].split('\\',1)[0] # for display
-          elif url.startswith("c://"): # run command
-              content = getoutput(url[len("c://"):])
-              u = textContent = None
-          elif url.startswith("blocks-lynx://"):
-              r=Request(url[len("blocks-lynx://"):])
-              r.get_method=lambda:'HEAD'
-              r.add_header('User-agent','Lynx/2.8.9dev.4 libwww-FM/2.14')
-              u,content = None,B("no") # not blocking Lynx?
-              try: urlopen(r,timeout=60)
-              except Exception as e:
-                if type(e) in [HTTPError,socket.error,socket.timeout,ssl.SSLError]: # MIGHT be blocking Lynx (SSLError can be raised if hit the timeout), check:
-                  r.add_header('User-agent',default_ua)
-                  try:
-                    urlopen(r,timeout=60)
-                    content = B("yes") # error ONLY with Lynx, not with default UA
-                  except Exception as e: pass # error with default UA as well, so don't flag this one as a Lynx-test failure
-                else:
-                  print ("Info: "+url+" got "+str(type(e))+" (check the server exists at all?)")
-                  try: print (e.message)
-                  except: pass
-              textContent = content
-          elif url.startswith("head://"):
-              r=Request(url[len("head://"):])
-              r.get_method=lambda:'HEAD'
-              for h in extraHeaders: r.add_header(*tuple(x.strip() for x in h.split(':',1)))
-              if not any(h.lower().startswith("user-agent:") for h in extraHeaders): r.add_header('User-agent',default_ua)
-              u=None
-              if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=B(str(urlopen(r,context=ssl._create_unverified_context(),timeout=60).info()))
-              else: content=textContent=B(str(urlopen(r,timeout=60).info()))
-          elif url.startswith("gemini://"):
-              u = None
-              content,textContent = get_gemini(url)
-          else: # normal URL
-              if opener==None: opener = default_opener()
-              u,content = tryRead(url,opener,extraHeaders,all(t and not t.startswith('#') for _,t in daysTextList)) # don't monitorError for RSS feeds (don't try to RSS-parse an error message)
-              textContent = None
-          last_fetch_finished = time.time()
-          if content==None: continue # not modified (so nothing to report), or problem retrieving (which will have been reported by tryRead0)
-          if u:
-              lm = u.info().get("Last-Modified",None)
-              if lm: previous_timestamps[(url,'lastMod')] = lm
-              if keep_etags:
-                e = u.info().get("ETag",None)
-                if e: previous_timestamps[(url,'ETag')] = e
-          for _,t in daysTextList:
-              if t.startswith('>'):
-                  check(t[1:],content,"Source of "+url,"")
-              elif not t or t.startswith('#'):
-                  parseRSS(url,content,t.replace('#','',1).strip())
-              else:
-                if textContent==None:
-                  textContent,errmsg=htmlStrings(content)
-                else: errmsg = ""
-                check(t,textContent,url,errmsg)
+          r = doJob(opener,delayer,url,checklist,extraHeaders)
+          if r: # elseLogic yielded more items for this job (don't give to another thread, we need the same delayer as it might be retry on same URL)
+            r.reverse() ; items += r # try to keep pop() sequence in order
       except Exception as e:
         print ("Unhandled exception processing job "+repr(job))
         print (traceback.format_exc())
       jobs.task_done()
 
+def doJob(opener,delayer,url,checklist,extraHeaders):
+  failRet = [c[2] for c in checklist if c[2]]
+  delayer.wait()
+  if url.startswith("dns://"): # DNS lookup
+      try: u,content = None, B(' '.join(sorted(set('('+x[-1][0]+')' for x in socket.getaddrinfo(url[6:],1))))) # TODO this 'sorted' is lexicographical not numeric; it should be OK for most simple cases though (keeping things in a defined order so can check 2 or 3 IPs on same line if the numbers are consecutive and hold same number of digits).  Might be better if parse and numeric sort
+      except: u,content=None,B("DNS lookup failed")
+      textContent = content
+  elif url.startswith("wd://"): # run webdriver (this type of url is set internally: see read_input)
+      ua = [e for e in extraHeaders if e.lower().startswith('user-agent:')]
+      if ua: ua=ua[0].split(':',1)[1].strip()
+      else: ua = default_ua
+      u,(content,wasError) = None, run_webdriver(ua,url[5:].split(chr(0)),not failRet)
+      if wasError: return failRet
+      textContent = None # parse 'content' if needed
+      url = url[5:].split(chr(0),1)[0] # for display
+  elif url.startswith("up://"): # just test if server is up, and no error if not
+      try:
+        if sys.version_info >= (2,7,9) and not verify_SSL_certificates: urlopen(url[5:],context=ssl._create_unverified_context(),timeout=60)
+        else: urlopen(url[5:],timeout=60)
+        u,content = None,B("yes")
+      except: u,content = None,B("no")
+      textContent = content
+  elif url.startswith("e://"): # run edbrowse
+      from subprocess import Popen,PIPE
+      edEnv=os.environ.copy() ; edEnv["TMPDIR"]=getoutput("(TMPDIR=/dev/shm mktemp -d -t ed || mktemp -d -t ed) 2>/dev/null") # ensure unique cache dir if we're running several threads (TODO: what about edbrowse 3.7.6 and below, which hard-codes a single cache dir in /tmp: had we better ensure only one of these is run at a time, just in case?  3.7.7+ honours TMPDIR)
+      try: child = Popen(["edbrowse","-e"],-1,stdin=PIPE,stdout=PIPE,stderr=PIPE,env=edEnv)
+      except OSError:
+        print ("webcheck misconfigured: couldn't run edbrowse")
+        return # no need to update delayer, and probably no need to return failRet if it's an edbrowse misconfiguration
+      u,(content,stderr) = None,child.communicate(B("b "+url[4:].replace('\\','\n')+"\n,p\nqt\n")) # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
+      try:
+        import shutil
+        shutil.rmtree(edEnv["TMPDIR"])
+      except: pass
+      if child.returncode:
+        if not failRet:
+          print ("edbrowse failed on "+url)
+          # Most likely the failure was some link didn't exist when it should have, so show the output for debugging
+          print ("edbrowse output was: "+repr(content)+"\n")
+        delayer.done() ; return failRet
+      textContent = content.replace(B('{'),B(' ')).replace(B('}'),B(' ')) # edbrowse uses {...} to denote links
+      url = url[4:].split('\\',1)[0] # for display
+  elif url.startswith("c://"): # run command
+      content = getoutput(url[len("c://"):])
+      u = textContent = None
+  elif url.startswith("blocks-lynx://"):
+      r=Request(url[len("blocks-lynx://"):])
+      r.get_method=lambda:'HEAD'
+      r.add_header('User-agent','Lynx/2.8.9dev.4 libwww-FM/2.14')
+      u,content = None,B("no") # not blocking Lynx?
+      try: urlopen(r,timeout=60)
+      except Exception as e:
+        if type(e) in [HTTPError,socket.error,socket.timeout,ssl.SSLError]: # MIGHT be blocking Lynx (SSLError can be raised if hit the timeout), check:
+          r.add_header('User-agent',default_ua)
+          try:
+            urlopen(r,timeout=60)
+            content = B("yes") # error ONLY with Lynx, not with default UA
+          except Exception as e: pass # error with default UA as well, so don't flag this one as a Lynx-test failure
+        else:
+          print ("Info: "+url+" got "+str(type(e))+" (check the server exists at all?)")
+          try: print (e.message)
+          except: pass
+      textContent = content
+  elif url.startswith("head://"):
+      r=Request(url[len("head://"):])
+      r.get_method=lambda:'HEAD'
+      for h in extraHeaders: r.add_header(*tuple(x.strip() for x in h.split(':',1)))
+      if not any(h.lower().startswith("user-agent:") for h in extraHeaders): r.add_header('User-agent',default_ua)
+      u=None
+      if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=B(str(urlopen(r,context=ssl._create_unverified_context(),timeout=60).info()))
+      else: content=textContent=B(str(urlopen(r,timeout=60).info()))
+  elif url.startswith("gemini://"):
+      u = None
+      content,textContent = get_gemini(url)
+  else: # normal URL
+      if opener[0]==None: opener[0] = default_opener()
+      u,content = tryRead(url,opener[0],extraHeaders,all(t[1] and not t[1].startswith('#') for t in checklist)) # don't monitorError for RSS feeds (don't try to RSS-parse an error message)
+      textContent = None
+  delayer.done()
+  if content==None: return # not modified (so nothing to report), or problem retrieving (which will have been reported by tryRead0: TODO: return failRet in these circumstances so elseLogic can proceed?)
+  if u:
+      lm = u.info().get("Last-Modified",None)
+      if lm: previous_timestamps[(url,'lastMod')] = lm
+      if keep_etags:
+        e = u.info().get("ETag",None)
+        if e: previous_timestamps[(url,'ETag')] = e
+  toRet = []
+  for item in checklist:
+      t = item[1]
+      if t.startswith('>'):
+          out=check(t[1:],content,"Source of "+url,"")
+      elif not t or t.startswith('#'):
+          parseRSS(url,content,t.replace('#','',1).strip())
+          out = None
+      else:
+        if textContent==None:
+          textContent,errmsg=htmlStrings(content)
+        else: errmsg = ""
+        out=check(t,textContent,url,errmsg)
+      if out:
+        if item[2]: toRet.append(item[2])
+        else: sys.stdout.write(out) # don't use 'print' or may have problems with threads
+  return toRet
+
 class NoTracebackException(Exception): pass
-def run_webdriver(ua,actionList):
+def run_webdriver(ua,actionList,reportErrors):
     global webdriver # so run_webdriver_inner has it
     try: from selenium import webdriver
     except:
@@ -380,12 +415,16 @@ def run_webdriver(ua,actionList):
       except Exception as jChrome:
         print ("webcheck misconfigured: can't create either HeadlessChrome (%s) or PhantomJS (%s).  Check installation.  (PATH=%s, cwd=%s, webdriver version %s)" % (str(eChrome),str(jChrome),repr(os.environ.get("PATH","")),repr(os.getcwd()),repr(webdriver.__version__)))
         return B("")
-    r = ""
+    r = "" ; wasError = False
     try: r = run_webdriver_inner(actionList,browser)
-    except NoTracebackException as e: print (e.message)
-    except: print (traceback.format_exc())
+    except NoTracebackException as e:
+      if reportErrors: print (e.message)
+      else: wasError = True
+    except:
+      if reportErrors: print (traceback.format_exc())
+      else: wasError = True
     browser.quit()
-    return r
+    return r,wasError
 
 def run_webdriver_inner(actionList,browser):
     browser.set_window_size(1024, 768)
@@ -589,10 +628,11 @@ def check(text,content,url,errmsg):
     elif text.startswith("!"): # 'not', so alert if DOES contain
         if len(text)==1: return # TODO: print error?
         if myFind(text[1:],content):
-            sys.stdout.write(url+" contains "+text[1:]+comment+errmsg+"\n") # don't use 'print' or can have problems with threads
+            return url+" contains "+text[1:]+comment+errmsg+"\n"
     elif not myFind(text,content): # alert if DOESN'T contain
-        sys.stdout.write(linkify(url)+" no longer contains "+text+comment+errmsg+"\n")
-        if '??show?' in orig_comment: getBuf(sys.stdout).write(content+B('\n')) # TODO: document this (for debugging cases where the text shown in Lynx is not the text shown to Webcheck, and Webcheck says "no longer contains" when it still does)
+        r=linkify(url)+" no longer contains "+text+comment+errmsg+"\n"
+        if '??show?' in orig_comment: getBuf(sys.stdout).write(B("Debug: contents of "+linkify(url)+":\n")+content+B('\n')) # TODO: document this
+        return r
 
 def parseRSS(url,content,comment):
   from xml.parsers import expat
