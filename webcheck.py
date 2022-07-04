@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.53 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.54 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -465,26 +465,47 @@ def run_webdriver_inner(actionList,browser):
             findElem(a[1:-1]).click()
         elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
             start = a[1:a.rindex('/')]
-            delayAfter = int(a[a.rindex('/')+1:])
-            if start.startswith('.'): # TODO: document this: /.class/delay to match an exact class rather than the start of an ID, also /.class.closeClass/delay if it pops up a 'modal' box which then needs to be dismissed before clicking the next one
+            delayAfter = a[a.rindex('/')+1:]
+            curNo,startNo,endNo = 0,1,0
+            if ':' in delayAfter:
+              delayAfter,rest = delayAfter.split(':')
+              if '-' in rest:
+                startNo,endNo = rest.split('-')
+                startNo,endNo = int(startNo),int(endNo)
+              else: assert 0, "don't know how to parse "+rest
+            try: delayAfter = int(delayAfter)
+            except: delayAfter = 1
+            if start.startswith('.'): # TODO: document this: /.class/delay to match an exact class rather than the start of an ID, also /.class.closeClass/delay if it pops up a 'modal' box which then needs to be dismissed before clicking the next one, also /.class.closeClass/delay:startNo-endNo
               startClass = start[1:]
               if '.' in startClass: startClass,closeClass = startClass.split('.')
               else: closeClass = None
+              if startNo>1 and sys.stderr.isatty(): sys.stderr.write('(skip %d)' % (startNo-1)),sys.stderr.flush()
               for m in browser.find_elements_by_class_name(startClass):
-                try: m.click()
-                except: continue # can't click on that one for some reason (don't propagate exception here because the partial output will likely help diagnose)
-                if sys.stderr.isatty(): sys.stderr.write('*'),sys.stderr.flush() # webdriver's '.' for click-multiple
+                curNo += 1
+                if curNo < startNo: continue
+                if endNo and curNo > endNo: break
+                try:
+                  m.click()
+                  if sys.stderr.isatty(): sys.stderr.write('*'),sys.stderr.flush()
+                except:
+                  if sys.stderr.isatty(): sys.stderr.write('?'),sys.stderr.flush()
+                  continue
                 time.sleep(delayAfter)
                 snippets.append(getSrc())
                 if closeClass:
                   for c in browser.find_elements_by_class_name(closeClass):
-                    try: c.click()
+                    try:
+                      c.click()
+                      if sys.stderr.isatty(): sys.stderr.write('x'),sys.stderr.flush()
+                      break
                     except: pass # maybe it wasn't that one
-                  if sys.stderr.isatty(): sys.stderr.write('x'),sys.stderr.flush()
                   time.sleep(delayAfter)
             else:
              l = re.findall(B(' [iI][dD] *="('+re.escape(start)+'[^"]*)'),getSrc()) + re.findall(B(' [iI][dD] *=('+re.escape(start)+'[^"> ]*)'),getSrc())
              for m in l:
+              curNo += 1
+              if curNo < startNo: continue
+              if endNo and curNo > endNo: break
               browser.find_element_by_id(m).click()
               if sys.stderr.isatty(): sys.stderr.write('*'),sys.stderr.flush() # webdriver's '.' for click-multiple
               time.sleep(delayAfter)
