@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.752 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.753 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -724,6 +724,7 @@ def yield_all_messages(searchQuery=None,since=None):
         typ, data = imap.fetch(msgID, '(FLAGS)')
         if not typ=='OK': continue
         flags = data[0]
+        if not flags: flags = ""
         if '\\Deleted' in flags: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
         if '(' in flags: flags=flags[flags.rindex('('):flags.index(')')+1] # so it's suitable for imap.store below
         if bodyPeek_works:
