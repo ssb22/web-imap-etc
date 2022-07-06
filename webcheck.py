@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.54 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.55 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -123,7 +123,9 @@ def read_input():
 
     isElse = False
     if line.startswith("else:"):
-      isElse = True ; line=line[5:].lstrip()
+      isElse = True
+      line=line[5:].lstrip()
+      line_withComment=line_withComment[5:].lstrip()
 
     if line.startswith('also:') and url:
       text = line_withComment[5:].strip()
@@ -467,15 +469,19 @@ def run_webdriver_inner(actionList,browser):
             start = a[1:a.rindex('/')]
             delayAfter = a[a.rindex('/')+1:]
             curNo,startNo,endNo = 0,1,0
+            propagate_errors = False
             if ':' in delayAfter:
               delayAfter,rest = delayAfter.split(':')
+              if rest.endswith('!'):
+                propagate_errors = True
+                rest = rest[:-1]
               if '-' in rest:
                 startNo,endNo = rest.split('-')
                 startNo,endNo = int(startNo),int(endNo)
               else: assert 0, "don't know how to parse "+rest
             try: delayAfter = int(delayAfter)
             except: delayAfter = 1
-            if start.startswith('.'): # TODO: document this: /.class/delay to match an exact class rather than the start of an ID, also /.class.closeClass/delay if it pops up a 'modal' box which then needs to be dismissed before clicking the next one, also /.class.closeClass/delay:startNo-endNo
+            if start.startswith('.'):
               startClass = start[1:]
               if '.' in startClass: startClass,closeClass = startClass.split('.')
               else: closeClass = None
@@ -489,7 +495,8 @@ def run_webdriver_inner(actionList,browser):
                   if sys.stderr.isatty(): sys.stderr.write('*'),sys.stderr.flush()
                 except:
                   if sys.stderr.isatty(): sys.stderr.write('?'),sys.stderr.flush()
-                  continue
+                  if propagate_errors: raise NoTracebackException(a+" failed to open instance "+str(curNo))
+                  else: continue
                 time.sleep(delayAfter)
                 snippets.append(getSrc())
                 if closeClass:
@@ -506,8 +513,13 @@ def run_webdriver_inner(actionList,browser):
               curNo += 1
               if curNo < startNo: continue
               if endNo and curNo > endNo: break
-              browser.find_element_by_id(m).click()
-              if sys.stderr.isatty(): sys.stderr.write('*'),sys.stderr.flush() # webdriver's '.' for click-multiple
+              try:
+                browser.find_element_by_id(m).click()
+                if sys.stderr.isatty(): sys.stderr.write('*'),sys.stderr.flush() # webdriver's '.' for click-multiple
+              except:
+                if sys.stderr.isatty(): sys.stderr.write('?'),sys.stderr.flush()
+                if propagate_errors: raise NoTracebackException(a+" failed to open instance "+str(curNo))
+                else: continue
               time.sleep(delayAfter)
               snippets.append(getSrc())
         elif '->' in a: # set a selection box
@@ -526,6 +538,7 @@ def run_webdriver_inner(actionList,browser):
             spec, val = a.split('=',1)
             if val.startswith('"') and val.endswith('"'): val=val[1:-1]
             findElem(spec).send_keys(val)
+        elif re.match("[0-9]+$",a): time.sleep(int(a))
         else: sys.stdout.write("Ignoring webdriver unknown action "+repr(a)+'\n')
         if sys.stderr.isatty(): sys.stderr.write(':'),sys.stderr.flush() # webdriver's '.'
         time.sleep(delay)
