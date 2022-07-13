@@ -665,7 +665,7 @@ def check(text,content,url,errmsg):
             return url+" contains "+text[1:]+comment+errmsg+"\n"
     elif not myFind(text,content): # alert if DOESN'T contain
         r=linkify(url)+" no longer contains "+text+comment+errmsg+"\n"
-        if '??show?' in orig_comment: getBuf(sys.stdout).write(B("Debug: contents of "+linkify(url)+":\n")+content+B('\n')) # TODO: document this
+        if '??show?' in orig_comment: getBuf(sys.stdout).write(B("Debug: contents of "+linkify(url)+" is:\n")+content+B('\n')) # TODO: document this
         return r
 
 def parseRSS(url,content,comment):
