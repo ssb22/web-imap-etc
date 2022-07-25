@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.592 (c) Silas S. Brown 2012-22.
+# Version 1.593 (c) Silas S. Brown 2012-22.
 
 # Tested in zsh on macOS 11.4 through 12.2,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -95,7 +95,7 @@ if ! /usr/bin/which -s free; then
   free () { top -l 1 -s 0 | grep -m 1 PhysMem ; }
   export -f free >/dev/null
 fi
-alias do-i-need-more-ram='if test $((vm_stat|grep "^Page[io]"|sed -e "s/.*://" -e "s/\.$//";echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 11)) -lt 10; then echo Maybe; else echo Probably not; fi' # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
+alias do-i-need-more-ram='if [ $((vm_stat|grep "^Page[io]"|sed -e "s/.*://" -e "s/\.$//";echo 1;echo +;echo /;echo p)|(dc 2>/dev/null || echo 11)) -lt 10 ]; then echo Maybe; else echo Probably not; fi' # 'maybe' if page outs are over 10% of page ins; +1 to avoid any possible division by zero if there have been no pageouts
 alias battery-status='pmset -g batt' # for MacBook laptops
 
 # Note: Anything with a hyphen in it must be an alias, not a
@@ -139,10 +139,15 @@ DefineApps /Applications /System/Applications /usr/local/Cellar/emacs
 if declare -f xcode >/dev/null; then DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
 unset DefineApps
 
-if test -e /Applications/MacPorts/VLC.app/Contents/MacOS/VLC; then
+if [ -e /Applications/MacPorts/VLC.app/Contents/MacOS/VLC ]; then
   # override the above "open": might need its command line
   # (but not everything listed by -H really works)
   vlc () { /Applications/MacPorts/VLC.app/Contents/MacOS/VLC "$@" ; } ; export -f vlc >/dev/null
+fi
+
+if [ -e /Applications/LibreOffice.app/Contents/MacOS/soffice ]; then
+  # for command-line conversions
+  soffice () { /Applications/LibreOffice.app/Contents/MacOS/soffice "$@" ; } ; export -f soffice >/dev/null
 fi
 
 # One slight annoyance is if you use some Macs that
@@ -215,14 +220,14 @@ if declare -f macfusion >/dev/null; then
   export curlftpfs_Path="$MF_Path/Contents/PlugIns/ftpfs.mfplugin/Contents/Resources/curlftpfs_static_mg"
   unset MF_Path
   if ! /usr/bin/which -s curlftpfs &&
-    test -e "$curlftpfs_Path"; then
+    [ -e "$curlftpfs_Path" ]; then
       curlftpfs () { "$curlftpfs_Path" -o uid="$(id -u)" "$@" ; }
       ftpfs () { curlftpfs "$@" ; } # might as well
       export -f curlftpfs ftpfs >/dev/null
   else unset curlftpfs_Path
   fi
   if ! /usr/bin/which -s sshfs &&
-    test -e "$sshfs_Path"; then
+    [ -e "$sshfs_Path" ]; then
       sshfs () { "$sshfs_Path" "$@" ; }
       export -f sshfs >/dev/null
   else unset sshfs_Path
@@ -267,7 +272,7 @@ volume () {
       echo "This can happen if a multi-output device has been set in audio-midi-setup"
       echo "(e.g. to copy computer's sound to QuickTime's recorder via BlackHole)" # (or SoundFlower on older Macs?)
       echo " - audio-midi-setup must be used to read volume"
-      echo "(can still set it from command line)" # (at least it could when I tested it)
+      # Can still set it from command line IF it's a multi-output device, NOT if it's an aggregate device (splitting stereo channels to separate Bluetooth feeds etc)
     else echo "$V"; fi
   else osascript -e "set volume output volume $1"; fi }
 # older Macs just had "set volume" with a number 0 to 7
@@ -314,7 +319,7 @@ _install_login_command () {
   L="$(echo "$1"|sed -e 's,.*/,,')"
   if [ -e "$HOME/Library/LaunchAgents/$L.plist" ] || [ ! "$L" ] || ! touch "$HOME/Library/LaunchAgents/$L.plist" 2>/dev/null; then
     # can't use executable name as plist name (exists or can't create), so make a generic one
-    C=0; while test -e "$HOME/Library/LaunchAgents/loginscript$C.plist"; do C=$[$C+1]; done; L=loginscript$C
+    C=0; while [ -e "$HOME/Library/LaunchAgents/loginscript$C.plist" ]; do C=$[$C+1]; done; L=loginscript$C
   fi
   F="$HOME/Library/LaunchAgents/$L.plist"; (echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";echo "<!DOCTYPE plist PUBLIC \"-//Apple Computer//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>Label</key><string>$L</string><key>Program</key><string>$1</string><key>RunAtLoad</key><true/></dict></plist>") > "$F"
   launchctl load "$F"
@@ -364,7 +369,7 @@ alias man-ps=psmanpage
 if [ ! "$SSH_CLIENT" ]; then
   # simpler prompt for a local Mac (hostname can be a bit long)
   [ "$ZSH_NAME" ] && PS1='mac:%~%# ' || PS1='mac:\w\$ '
-elif test "$(hostname -s)" = mac || test "$(hostname -s)" = unknown; then
+elif [ "$(hostname -s)" = mac ] || [ "$(hostname -s)" = unknown ]; then
   # if hostname has been SET to mac, better make it different
   # to distinguish between a local one and one over SSH
   [ "$ZSH_NAME" ] && PS1='mac.ssh:%~%# ' || PS1='mac.ssh:\w\$ '
@@ -410,7 +415,7 @@ catdocx_cp1252 () { catdocx_utf8 "$@" | iconv -c -f UTF8 -t CP1252//TRANSLIT ; }
 # Bonus command 2: cat a load of text files into a
 # self-extracting shell script (for email or whatever)
 # (must o/p to a file; i/p cannot incl dirs)
-shellarc () { Out="$1"; if test -e "$Out" ; then echo "Output file $Out exists; I'd rather not overwrite it" ; return; fi; echo "Writing $Out"; (echo '#!/bin/bash' ; while [ "$2" ]; do if echo "$2"|grep / >/dev/null; then echo mkdir -p '"'"$(echo "$2"|sed -e 's,/[^/]*$,,')"'"'; fi; C=0; while grep EOF$C "$2" >/dev/null; do C=$[C+1]; done ; echo "cat > \"$2\" <<\"EOF$C\"" ; cat $2 ; echo EOF$C ; shift; done) > "$Out" ; chmod +x "$Out" ; }
+shellarc () { Out="$1"; if [ -e "$Out" ]; then echo "Output file $Out exists; I'd rather not overwrite it" ; return; fi; echo "Writing $Out"; (echo '#!/bin/bash' ; while [ "$2" ]; do if echo "$2"|grep / >/dev/null; then echo mkdir -p '"'"$(echo "$2"|sed -e 's,/[^/]*$,,')"'"'; fi; C=0; while grep EOF$C "$2" >/dev/null; do C=$[C+1]; done ; echo "cat > \"$2\" <<\"EOF$C\"" ; cat $2 ; echo EOF$C ; shift; done) > "$Out" ; chmod +x "$Out" ; }
 
 # Bonus command 3: pdfmerge, on any machine with qpdf installed (to help with double-sided printing)
-which qpdf >/dev/null 2>/dev/null && pdfmerge () { if test -e merged.pdf; then rm -i merged.pdf; fi && qpdf --empty --pages $(for i in $@; do echo $i 1-z; done) -- merged.pdf && du -h merged.pdf ; }
+which qpdf >/dev/null 2>/dev/null && pdfmerge () { if [ -e merged.pdf ]; then rm -i merged.pdf; fi && qpdf --empty --pages $(for i in $@; do echo $i 1-z; done) -- merged.pdf && du -h merged.pdf ; }
