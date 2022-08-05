@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.55 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.56 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -445,7 +445,10 @@ def run_webdriver_inner(actionList,browser):
         except: return u"getSrc webdriver exception but can retry" # can get timing-related WebDriverException: Message: Error - Unable to load Atom 'find_element'
         for el in ['frame','iframe']:
           for frame in b.find_elements_by_tag_name(el):
-            b.switch_to.frame(frame)
+            try: b.switch_to.frame(frame)
+            except: # StaleElementReferenceException is possible for some reason
+              src += "(Unable to switch to frame "+str(frame)+") "
+              continue
             src += f(b,switchBack+[frame])
             b.switch_to.default_content()
             for fr in switchBack: b.switch_to.frame(fr)
