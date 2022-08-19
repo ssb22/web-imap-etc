@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.753 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.754 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1743,6 +1743,7 @@ def mainloop():
   debug(__doc__)
   try:
    if postponed_foldercheck or postponed_daynames: do_postponed_foldercheck("old")
+   if poll_interval: debug("Starting loop at %d-%02d-%02d %d:%02d" % time.localtime()[:5])
    while True:
     if alarm_delay: checkAlarmDelay()
     if maildirs_to_imap: do_maildirs_to_imap()
@@ -1751,8 +1752,7 @@ def mainloop():
     if auto_delete_folder: do_auto_delete()
     if imap_to_maildirs: do_imap_to_maildirs()
     global filtered_inbox
-    if filtered_inbox:
-        process_imap_inbox()
+    if filtered_inbox: process_imap_inbox()
     if time.time() > secondary_imap_due and secondary_imap_hostname:
         fiO = filtered_inbox
         if not filtered_inbox:
