@@ -126,6 +126,7 @@ def read_input():
       isElse = True
       line=line[5:].lstrip()
       line_withComment=line_withComment[5:].lstrip()
+      assert line, "else: must be followed on same line"
 
     if line.startswith('also:') and url:
       text = line_withComment[5:].strip()
