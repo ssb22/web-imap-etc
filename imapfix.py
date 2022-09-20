@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.754 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.76 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -530,6 +530,8 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # Run with --htmlnote to do the same but send as HTML.
 # Run with --maybenote to do --note only if standard input
 # has text (no mail left if your script printed nothing).
+# Use --from=X to override the From name to X for notes
+# (quote it for the shell if it's more than one word)
 
 # Run with --multinote (files) to transfer a group of text
 # files into filtered_inbox notes.  The first line of each
@@ -675,9 +677,15 @@ def myAsString(msg):
 imapfix_name = sys.argv[0]
 if os.sep in imapfix_name: imapfix_name=imapfix_name[imapfix_name.rindex(os.sep)+1:]
 if not imapfix_name: imapfix_name = "imapfix.py"
+from_name = imapfix_name
+for i in range(1,len(sys.argv)):
+    if sys.argv[i].startswith('--from='):
+        from_name = sys.argv[i][len('--from='):]
+        del sys.argv[i] ; break
 try: _a,_b = imapfix_name.split('.',1)
 except: _a,_b = imapfix_name,'0'
-imapfix_From_line = "%s <%s@%s>" % (imapfix_name,_a,_b) # previously just imapfix_name, but K-9 Mail Version 5.8 started to require this to be formatted with an @ or it would just say "Unknown Sender"
+from_addr = " <%s@%s>" % (_a,_b) # (the part that doesn't change under --from=)
+from_line = from_name+from_addr # previously just imapfix_name, but K-9 Mail Version 5.8 started to require this to be formatted with an @ or it would just say "Unknown Sender"; imapfix 1.76+ supports any name before the address
 del _a,_b
 
 def postponed_match(subject):
@@ -703,7 +711,7 @@ def authenticated_wrapper(subject,firstPart,attach={}):
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
         o = StringIO() ; traceback.print_exc(None,o)
-        save_to(filtered_inbox,"From: "+imapfix_From_line+"\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),o.getvalue()))
+        save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),o.getvalue()))
         r=False
     return r, None
 
@@ -853,7 +861,7 @@ def process_imap_inbox():
             except:
                 if not catch_extraRules_errors: raise
                 o = StringIO() ; traceback.print_exc(None,o)
-                save_to(filtered_inbox,"From: "+imapfix_From_line+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(localtime=True),o.getvalue()))
+                save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(localtime=True),o.getvalue()))
                 box = filtered_inbox
             if box==False:
                 if bypass_spamprobe: box = filtered_inbox
@@ -927,9 +935,9 @@ def authenticates(msg):
           if not any((reverse_dns.endswith(t) or ip==t) for t in trusted_domain if t): break
       elif not reverse_dns.endswith(trusted_domain): break
 
-def imapfixNote(): return "From: "+imapfix_From_line+"\r\nSubject: Folder "+repr(filtered_inbox)+" has new mail\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n \n" # make sure there's at least one space in the message, for some clients that don't like empty body
+def imapfixNote(): return "From: "+from_line+"\r\nSubject: Folder "+repr(filtered_inbox)+" has new mail\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n \n" # make sure there's at least one space in the message, for some clients that don't like empty body
 # (and don't put a date in the Subject line: the message's date is usually displayed anyway, and screen space might be in short supply)
-def isImapfixNote(msg): return ("From: "+imapfix_name) in msg and ("Subject: Folder "+repr(filtered_inbox)+" has new mail") in msg
+def isImapfixNote(msg): return ("From: "+from_name) in msg and ("Subject: Folder "+repr(filtered_inbox)+" has new mail") in msg
 
 def get_maildir(dirName,create=True):
     if maildir_delete_emacs_backup_files:
@@ -1690,10 +1698,10 @@ def do_postponed_foldercheck(dayToCheck="today"):
 def reDate(msg):
     theFrom = msg.get('From','').replace('"','').strip()
     if theFrom==imapfix_name: # pre v1.5
-        del msg['From'] ; msg['From'] = imapfix_From_line # K-9 5.8+
+        del msg['From'] ; msg['From'] = from_line # K-9 5.8+
     old_date = msg.get("Date","")
     if old_date:
-        if theFrom==imapfix_From_line: pass # no need to add old date if it's a --note or --multinote
+        if theFrom.endswith(from_addr): pass # no need to add old date if it's a --note or --multinote
         elif authenticates(msg) and 'To' in msg and (username in msg['To'] or getAddr(msg['To'])==getAddr(msg.get('From',''))): pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
         else: walk_msg(msg,addOldDateFunc(old_date))
         del msg['Date']
@@ -1707,7 +1715,7 @@ def addOldDateFunc(old_date):
             if message["Content-Type"].startswith("text/html"): newPara = "<p>" # TODO: might end up being before the HTML tag; depends which browser you use
         if 'Content-Disposition' in message and message['Content-Disposition'].startswith('attachment'): return False
         changed = globalise_charsets(message, imap_8bit) # just in case
-        dateIntro = imapfix_name+": original Date: "
+        dateIntro = from_name+": original Date: "
         if message.get_payload(decode=True).startswith(dateIntro): return changed
         if not changed: globalise_charsets(message, imap_8bit, True) # ensure set up for:
         return setPayload(message,dateIntro + old_date + newPara + "\n\n" + message.get_payload(decode=True),'utf-8') # Fixed in v1.498: postponing a message previously caused quopri to be decoded but still declared, invalidating URLs that had = followed by hex code in them, breaking links on commercial mailing-list trackers like MailChimp
@@ -1721,7 +1729,7 @@ def do_calendar():
         if re.match("^[0-9*]*$",subj[0]): subj=subj[1:] # month day txt
         subj = ' '.join(l.split()[2:])
         if len(subj)>60: subj=subj[:57]+"..."
-        save_to(filtered_inbox,"From: "+imapfix_From_line.replace(imapfix_name,"calendar",1)+"\r\nSubject: "+subj+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n"+l+"\n")
+        save_to(filtered_inbox,"From: "+from_line.replace(from_name,"calendar",1)+"\r\nSubject: "+subj+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n"+l+"\n")
 
 setAlarmAt = 0
 def checkAlarmDelay():
@@ -1842,7 +1850,7 @@ def process_secondary_imap():
         debug(msg)
         if report_secondary_login_failures:
             imap = saveImap # for make_sure_logged_in
-            save_to(filtered_inbox,"From: "+imapfix_From_line+"\r\nSubject: imapfix_config secondary_imap problem or server down\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),msg))
+            save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config secondary_imap problem or server down\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),msg))
         imap = None
     if imap:
         global additional_inbox
@@ -1891,7 +1899,7 @@ def do_note(subject,ctype="text/plain",maybe=0):
     if not body: body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
     if filtered_inbox==None: saveTo = ""
     else: saveTo = filtered_inbox
-    save_to(saveTo,"From: "+imapfix_From_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
+    save_to(saveTo,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 def from_mangle(body): return re.sub('(?<![^\n])From ','>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
 
 def upload(filelist):
@@ -1927,7 +1935,7 @@ def do_upload(data,theDate,fname):
     b['Content-Disposition']='attachment; filename='+(os.sep+fname)[(os.sep+fname).rindex(os.sep)+1:]
     encoders.encode_base64(b)
     message = turn_into_attachment(b,"Attached "+fname,True)
-    message["From"] = imapfix_From_line
+    message["From"] = from_line
     message["Subject"] = fname
     message["Date"] = email.utils.formatdate(theDate,localtime=True)
     save_to(filtered_inbox,myAsString(message))
@@ -1944,7 +1952,7 @@ def do_multinote(body,theDate,to_real_inbox,subject):
         box,newSubj = authenticated_wrapper(subject,body)
         if newSubj: subject = newSubj
     if box==False: box=filtered_inbox
-    if not box==None: save_to(box,"From: "+imapfix_From_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
+    if not box==None: save_to(box,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
     return True
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
