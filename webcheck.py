@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.56 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.57 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -194,7 +194,7 @@ class HTMLStrings(HTMLParser):
         if self.theTxt and self.theTxt[-1].endswith(thing): return
         self.theTxt.append(thing)
     def handle_starttag(self, tag, attrs):
-        if tag in "p br div h1 h2 h3 h4 h5 h6 th tr td table".split(): self.ensure(' ') # space rather than newline because we might want to watch for a string that goes across headings etc
+        if tag in "p br div h1 h2 h3 h4 h5 h6 th tr td table dt dd".split(): self.ensure(' ') # space rather than newline because we might want to watch for a string that goes across headings etc
         elif tag in ["script","style"]: self.omit=True
     def handle_endtag(self, tag):
         if tag in ["script","style"]: self.omit=False
