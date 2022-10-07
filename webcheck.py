@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.57 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.571 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -504,11 +504,12 @@ def run_webdriver_inner(actionList,browser):
                 time.sleep(delayAfter)
                 snippets.append(getSrc())
                 if closeClass:
-                  for c in browser.find_elements_by_class_name(closeClass):
+                  l = list(browser.find_elements_by_class_name(closeClass))
+                  for c in l:
                     try:
                       c.click()
                       if sys.stderr.isatty(): sys.stderr.write('x'),sys.stderr.flush()
-                      break
+                      if not browser.find_elements_by_class_name(closeClass)==l: break # it did something
                     except: pass # maybe it wasn't that one
                   time.sleep(delayAfter)
             else:
