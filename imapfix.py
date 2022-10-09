@@ -573,7 +573,7 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # and on GitLab at https://gitlab.com/ssb22/web-imap-etc
 # and on Bitbucket https://bitbucket.org/ssb22/web-imap-etc
 # and at https://gitlab.developers.cam.ac.uk/ssb22/web-imap-etc
-# and in China: git clone https://gitee.com/ssb22/web-imap-etc
+# and in China: https://gitee.com/ssb22/web-imap-etc
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
