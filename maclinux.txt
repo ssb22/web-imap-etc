@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.595 (c) Silas S. Brown 2012-22.
+# Version 1.596 (c) Silas S. Brown 2012-22.
 
 # Tested in zsh on macOS 11.4 through 12.6,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -249,6 +249,9 @@ if alias adobe-reader 2>/dev/null >/dev/null && ! /usr/bin/which -s acroread; th
   export -f acroread >/dev/null
 elif alias adobe-acrobat-reader-dc 2>/dev/null >/dev/null && ! /usr/bin/which -s acroread; then
   acroread () { open -W -a "$(alias adobe-acrobat-reader-dc|sed -e 's/[^"]*"//' -e 's/".*//')" "$@" ; }
+  export -f acroread >/dev/null
+elif alias adobe-acrobat-reader 2>/dev/null >/dev/null && ! /usr/bin/which -s acroread; then
+  acroread () { open -W -a "$(alias adobe-acrobat-reader|sed -e 's/[^"]*"//' -e 's/".*//')" "$@" ; }
   export -f acroread >/dev/null
 fi
 
