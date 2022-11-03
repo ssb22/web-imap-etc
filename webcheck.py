@@ -701,7 +701,7 @@ def parseRSS(url,content,comment):
   parser.CharacterDataHandler = CharacterDataHandler
   if type(u"")==type(""): content = content.decode("utf-8") # Python 3 (expat needs 'strings' on each platform)
   try: parser.Parse(re.sub("&[A-Za-z]*;",entityref,content),1)
-  except expat.error as e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n(Check if this URL is still serving RSS?)\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
+  except expat.error as e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n(You might want to check if this URL is still serving RSS)\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
   for i in xrange(len(items)):
     items[i][1] = "".join(urlparse.urljoin(url,w) for w in "".join(items[i][1]).strip().split()).strip() # handle links relative to the RSS itself
     for j in [0,2,3]: items[i][j]=re.sub(r"\s+"," ",u"".join(U(x) for x in items[i][j])).strip()
