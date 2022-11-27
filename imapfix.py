@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.77 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.78 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -744,7 +744,8 @@ def yield_all_messages(searchQuery=None,since=None):
                 try: imap.store(msgID, 'FLAGS', flags)
                 except: imap.store(msgID, 'FLAGS', "()") # gmail can give a \Recent flag but not accept setting it
         if not typ=='OK': continue
-        yield msgID, flags, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
+        try: yield msgID, flags, data[0][1] # data[0][0] is e.g. '1 (RFC822 {1015}'
+        except: continue # data==None or data[0]==None
 
 def rewrite_deliveryfail(msg):
     if not failed_address_to_subject: return
