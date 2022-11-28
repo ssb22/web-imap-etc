@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.78 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.79 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -190,6 +190,10 @@ smtp_delay = 60 # seconds between each message
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
 # you can also set this to a local maildir: ("maildir","path/to/spam")
+
+spamprobe_remove_images = True # work around a bug in some
+# versions of spamprobe that causes them to crash when an
+# image is present in the email to be tested
 
 poll_interval = 4*60
 # Note: set poll_interval=False if you want just one run,
@@ -636,6 +640,10 @@ def spamprobe_rules(message,already_spam=False):
 
 def run_spamprobe(action,message):
   if not spamprobe_command: return ""
+  if spamprobe_remove_images:
+      msg = email.message_from_string(message)
+      delete_images(msg)
+      message=myAsString(msg)
   cIn, cOut = os.popen2(spamprobe_command+" "+action)
   cIn.write(message); cIn.close()
   return cOut.read()
@@ -1112,6 +1120,12 @@ def delete_attachments(msg):
 def delete_attachment(msg):
     if msg.get_filename(): msg.set_payload("")
 
+def delete_images(msg):
+    walk_msg(msg,delete_image)
+def delete_image(msg):
+    if msg.get("Content-Type","").startswith("image/"):
+        msg.set_payload("") # empty: this is enough to stop the spamprobe crash (don't need to remove the attachment altogether)
+
 def nightly_train(foldername, spamprobe_action):
     if type(foldername)==tuple:
         try: maildir = get_maildir(foldername[1],False)
@@ -1368,7 +1382,7 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
             if globalise_charsets(i,will_use_8bit,force_change): changed = True
         return changed
     cType = message.get_content_type()
-    if not cType.startswith("text/") and 'Content-Disposition' in message: return changed # don't risk messing up PDF attachments etc here
+    if not cType.startswith("text/") and ('Content-Disposition' in message or cType.startswith("image/")): return changed # don't risk messing up PDF attachments, images etc
     is_html = cType and cType.startswith("text/html")
     specified_charset = message.get_content_charset(None)
     while specified_charset and specified_charset.startswith("charset="):
