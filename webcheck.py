@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.571 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.572 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,9 +59,15 @@ except: # Python 3
 def B(s): # byte-string from "" literal
   if type(s)==type("")==type(u""): return s.encode('utf-8') # Python 3
   else: return s # Python 2
+def S(b):
+  if type(b)==type(""): return b # Python 2
+  else: return b.decode('utf-8') # Python 3
 def U(s):
   if type(s)==type(u""): return s
   return s.decode('utf-8')
+def UL(s):
+  if type(s)==type(u""): return s
+  return s.decode('latin1')
 def getBuf(f):
   try: return f.buffer # Python 3
   except: return f # Python 2
@@ -213,8 +219,9 @@ class HTMLStrings(HTMLParser):
 def htmlStrings(html):
     parser = HTMLStrings()
     try:
-        parser.feed(html.decode("latin1")) ; parser.close()
-        return parser.text().encode("latin1"), ""
+        parser.feed(UL(html)) ; parser.close()
+        if type(html)==type(u""): return parser.text(), ""
+        else: return parser.text().encode("latin1"), ""
     except: return html, "\n- problem extracting strings from HTML at line %d offset %d\n%s" % (parser.getpos()+(traceback.format_exc(),)) # returning html might still work for 'was that text still there' queries; error message is displayed only if it doesn't
 
 def main():
@@ -309,7 +316,7 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       textContent = content
   elif url.startswith("e://"): # run edbrowse
       from subprocess import Popen,PIPE
-      edEnv=os.environ.copy() ; edEnv["TMPDIR"]=getoutput("(TMPDIR=/dev/shm mktemp -d -t ed || mktemp -d -t ed) 2>/dev/null") # ensure unique cache dir if we're running several threads (TODO: what about edbrowse 3.7.6 and below, which hard-codes a single cache dir in /tmp: had we better ensure only one of these is run at a time, just in case?  3.7.7+ honours TMPDIR)
+      edEnv=os.environ.copy() ; edEnv["TMPDIR"]=getoutput("(TMPDIR=/dev/shm mktemp -d -t edXXXXXX || mktemp -d -t edXXXXXX) 2>/dev/null") # ensure unique cache dir if we're running several threads (TODO: what about edbrowse 3.7.6 and below, which hard-codes a single cache dir in /tmp: had we better ensure only one of these is run at a time, just in case?  3.7.7+ honours TMPDIR)
       try: child = Popen(["edbrowse","-e"],-1,stdin=PIPE,stdout=PIPE,stderr=PIPE,env=edEnv)
       except OSError:
         print ("webcheck misconfigured: couldn't run edbrowse")
@@ -389,18 +396,20 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
         else: sys.stdout.write(out) # don't use 'print' or may have problems with threads
   return toRet
 
-class NoTracebackException(Exception): pass
+class NoTracebackException(Exception):
+    def __init__(self,message): self.message = message
 def run_webdriver(ua,actionList,reportErrors):
     global webdriver # so run_webdriver_inner has it
     try: from selenium import webdriver
     except:
         print ("webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)")
-        return B("")
+        return B(""), True
     try:
       from selenium.webdriver.chrome.options import Options
       opts = Options()
       opts.add_argument("--headless")
       opts.add_argument("--disable-gpu")
+      opts.add_argument("--disable-dev-shm-usage") # needed if /dev/shm is small
       opts.add_argument("--user-agent="+ua)
       try: from inspect import getfullargspec as getargspec # Python 3
       except ImportError:
@@ -417,7 +426,7 @@ def run_webdriver(ua,actionList,reportErrors):
       try: browser = webdriver.PhantomJS(service_args=sa,service_log_path=os.path.devnull)
       except Exception as jChrome:
         print ("webcheck misconfigured: can't create either HeadlessChrome (%s) or PhantomJS (%s).  Check installation.  (PATH=%s, cwd=%s, webdriver version %s)" % (str(eChrome),str(jChrome),repr(os.environ.get("PATH","")),repr(os.getcwd()),repr(webdriver.__version__)))
-        return B("")
+        return B(""), True
     r = "" ; wasError = False
     try: r = run_webdriver_inner(actionList,browser)
     except NoTracebackException as e:
@@ -759,7 +768,7 @@ def linkify(link): return link.replace("(","%28").replace(")","%29") # for email
 def extract(url,content,startEndMarkers,comment):
   assert len(startEndMarkers)==2, "Should have exactly one '...' between the braces when extracting items"
   start,end = startEndMarkers
-  start,end = B(start),B(end)
+  content,start,end = B(content),B(start),B(end)
   i=0 ; items = []
   while True:
     i = content.find(start,i)
@@ -769,7 +778,7 @@ def extract(url,content,startEndMarkers,comment):
     c = content[i+len(start):j].decode('utf-8').strip()
     if c: items.append(('Auto-extracted text:','',c,"")) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
     i = j+len(end)
-  if not items: print ("No items were extracted from "+url+" via "+start+"..."+end+" (check that site changes haven't invalidated this extraction rule)")
+  if not items: print ("No items were extracted from "+url+" via "+S(start)+"..."+S(end)+" (check that site changes haven't invalidated this extraction rule)")
   handleRSS(url,items,comment,"extracted")
 
 def myFind(text,content):
