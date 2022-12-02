@@ -2258,7 +2258,7 @@ if __name__ == "__main__":
   elif '--copy' in sys.argv: do_copy(' '.join(sys.argv[sys.argv.index('--copy')+1:]))
   elif '--backup' in sys.argv: do_backup()
   elif '--note' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]))
-  elif '--note-inbox' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]),to_real_inbox=True)
+  elif '--note-inbox' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note-inbox')+1:]),to_real_inbox=True)
   elif '--maybenote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--maybenote')+1:]),maybe=1)
   elif '--htmlnote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--htmlnote')+1:]),"text/html")
   elif '--multinote' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote')+1:],False)
