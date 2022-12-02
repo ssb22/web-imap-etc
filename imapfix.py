@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.79 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.791 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -530,7 +530,8 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # (taken from standard input) directly into filtered_inbox
 # - useful from scripts etc (you can get the note without
 # having to wait for it to go through SMTP and polling).
-# (If filtered_inbox is None, --note uses real inbox)
+# If filtered_inbox is None, --note uses real inbox,
+# or use --note-inbox for the same effect.
 # Run with --htmlnote to do the same but send as HTML.
 # Run with --maybenote to do --note only if standard input
 # has text (no mail left if your script printed nothing).
@@ -1176,7 +1177,9 @@ def save_to(mailbox, message_as_string, flags="", mayNeedNewMsgID=True):
     elif imap_to_maildirs and not mailbox in imap_maildir_exceptions: return save_to_maildir(imap_to_maildirs+os.sep+mailbox,message_as_string,flags) # might as well skip the intermediate step of putting it in an IMAP folder to be picked up by imap_to_maildirs on next cycle
     make_sure_logged_in() ; maybe_create(mailbox)
     msg = email.message_from_string(message_as_string)
-    if 'Date' in msg: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
+    if 'Date' in msg:
+        try: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
+        except: imap_timestamp = time.time() # badly-formatted date (TODO: could try Received lines)
     else: imap_timestamp = time.time() # undated message ? (TODO: could parse Received lines)
     if change_message_id and mayNeedNewMsgID and 'Message-ID' in msg: message_as_string = message_as_string.replace("Message-ID: <","Message-ID: <2",1) # .muttrc editor default adds '1', so let's add a '2'
     if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check the "Content-Transfer-Encoding" is in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
@@ -1905,7 +1908,7 @@ def yield_folders():
         if not typ=='OK': continue
         yield foldername
 
-def do_note(subject,ctype="text/plain",maybe=0):
+def do_note(subject,ctype="text/plain",maybe=0,to_real_inbox=False):
     subject = subject.strip()
     if not subject: subject = "Note to self (via imapfix)"
     if isatty(sys.stdin):
@@ -1913,7 +1916,8 @@ def do_note(subject,ctype="text/plain",maybe=0):
     body = sys.stdin.read()
     if maybe and not body.strip(): return
     if not body: body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
-    if filtered_inbox==None: saveTo = ""
+    if filtered_inbox==None or to_real_inbox:
+        saveTo = ""
     else: saveTo = filtered_inbox
     save_to(saveTo,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 def from_mangle(body): return re.sub('(?<![^\n])From ','>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
@@ -2254,6 +2258,7 @@ if __name__ == "__main__":
   elif '--copy' in sys.argv: do_copy(' '.join(sys.argv[sys.argv.index('--copy')+1:]))
   elif '--backup' in sys.argv: do_backup()
   elif '--note' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]))
+  elif '--note-inbox' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--note')+1:]),to_real_inbox=True)
   elif '--maybenote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--maybenote')+1:]),maybe=1)
   elif '--htmlnote' in sys.argv: do_note(' '.join(sys.argv[sys.argv.index('--htmlnote')+1:]),"text/html")
   elif '--multinote' in sys.argv: multinote(sys.argv[sys.argv.index('--multinote')+1:],False)
