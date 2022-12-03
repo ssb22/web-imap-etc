@@ -424,7 +424,7 @@ def run_webdriver(ua,actionList,reportErrors):
           break
         except:
           if not retry: raise
-          if sys.stderr.isatty: sys.stderr.write("R")
+          if sys.stderr.isatty(): sys.stderr.write("R")
           time.sleep(2)
     except Exception as eChrome: # probably no HeadlessChrome, try PhantomJS
       os.environ["QT_QPA_PLATFORM"]="offscreen"
