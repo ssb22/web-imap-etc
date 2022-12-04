@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.573 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.572 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -417,15 +417,8 @@ def run_webdriver(ua,actionList,reportErrors):
         except ImportError: getargspec = None
       try: useOptions = 'options' in getargspec(webdriver.chrome.webdriver.WebDriver.__init__).args
       except: useOptions = False
-      for retry in range(9,-1,-1):
-        try:
-          if useOptions: browser = webdriver.Chrome(options=opts)
-          else: browser = webdriver.Chrome(chrome_options=opts)
-          break
-        except:
-          if not retry: raise
-          if sys.stderr.isatty(): sys.stderr.write("R")
-          time.sleep(2)
+      if useOptions: browser = webdriver.Chrome(options=opts)
+      else: browser = webdriver.Chrome(chrome_options=opts)
     except Exception as eChrome: # probably no HeadlessChrome, try PhantomJS
       os.environ["QT_QPA_PLATFORM"]="offscreen"
       sa = ['--ssl-protocol=any']
