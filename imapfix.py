@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.791 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.792 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1796,12 +1796,15 @@ def mainloop():
         done_spamprobe_cleanup_today = True
     if poll_interval=="idle":
         make_sure_logged_in() ; imap.select()
-        debug("Waiting for IMAP event") ; imap.idle()
-        # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
+        debug("Waiting for IMAP event")
+        try: imap.idle() # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
+        except: # e.g. imaplib2.abort, fall back on delay
+            debug("Wait failed: falling back to logout + 5 minutes")
+            make_sure_logged_out()
+            time.sleep(300)
     else:
         debug("Sleeping for ",poll_interval," seconds")
         time.sleep(poll_interval)
-         # TODO catch imap connection errors and re-open?  or just put this whole process in a loop
     newDay = time.localtime()[:3]
     if not oldDay==newDay:
       oldDay=newDay
@@ -1811,7 +1814,9 @@ def mainloop():
           do_postponed_foldercheck()
       if train_spamprobe_nightly: do_nightly_train()
       done_spamprobe_cleanup_today = False
-    if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime): break
+    if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime):
+        debug("Config change detected")
+        break
   finally: make_sure_logged_out()
 
 def near_equal(time1,time2):
