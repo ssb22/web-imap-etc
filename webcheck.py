@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.573 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.574 (c) 2014-22 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -413,7 +413,6 @@ def run_webdriver(ua,actionList,reportErrors):
       opts = Options()
       opts.add_argument("--headless")
       opts.add_argument("--disable-gpu")
-      opts.add_argument("--disable-dev-shm-usage") # needed if /dev/shm is small
       opts.add_argument("--user-agent="+ua)
       try: from inspect import getfullargspec as getargspec # Python 3
       except ImportError:
