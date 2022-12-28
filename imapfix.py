@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.792 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.793 (c) 2013-22 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1570,7 +1570,7 @@ def add_office0(message,accum):
     outfile = "tmpdoc-%d.%s"%(os.getpid(),office_convert)
     open(infile,"wb").write(payload)
     debug("Running soffice to get ",office_convert)
-    if os.system("soffice --convert-to %s %s" % (office_convert, infile)): # conversion error, or soffice not found
+    if os.system("soffice --convert-to %s %s" % (office_convert, infile)) or not os.path.exists(outfile): # conversion error, or soffice not found
         debug("soffice run returned failure")
         clean_tmpdoc() ; return False
     mimeType = {"html":"text/html; charset=utf-8","pdf":"application/pdf"}.get(office_convert,"application/binary")
