@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.793 (c) 2013-22 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.794 (c) 2013-23 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1544,11 +1544,15 @@ def add_office(message):
 def filename_ext(message):
     if not 'Content-Disposition' in message: return False
     fn = str(message['Content-Disposition'])
-    if not 'filename' in fn: return False
-    fn = re.sub(header_charset_regex,header_to_u8,fn[fn.index('filename'):].replace("filename=","",1).replace('"',""))
+    s = re.search('filename="([^"]*)"',fn)
+    if s: fn = s.group(1)
+    else:
+        s = re.search("filename=([^;]*)",fn)
+        if s: fn = s.group(1)
+        else: return False
+    fn = re.sub(header_charset_regex,header_to_u8,fn)
     if not '.' in fn: return False
     ext = fn[fn.rindex('.'):].lower()
-    if ';' in ext: ext=ext[:ext.index(';')]
     return fn,ext
 def add_office0(message,accum):
     if to_attach == None: return False # TODO? (non-multipart message sent with a single document and nothing else)
@@ -1564,14 +1568,14 @@ def add_office0(message,accum):
     if fn==False: return False
     fn,ext = fn
     if not ext in ".doc .docx .rtf .odt .xls .xlsx .ods .ppt .odp".split(): return False
-    debug("Getting payload")
+    debug("Getting payload for ",fn)
     payload = message.get_payload(decode=True)
     infile = "tmpdoc-%d%s" % (os.getpid(),ext)
     outfile = "tmpdoc-%d.%s"%(os.getpid(),office_convert)
     open(infile,"wb").write(payload)
-    debug("Running soffice to get ",office_convert)
+    debug("Running soffice to get ",outfile," from ",infile)
     if os.system("soffice --convert-to %s %s" % (office_convert, infile)) or not os.path.exists(outfile): # conversion error, or soffice not found
-        debug("soffice run returned failure")
+        debug("soffice run returned failure (is the install complete?)")
         clean_tmpdoc() ; return False
     mimeType = {"html":"text/html; charset=utf-8","pdf":"application/pdf"}.get(office_convert,"application/binary")
     mT,subT = mimeType.split("/")
@@ -1593,7 +1597,7 @@ def add_pdf0(message,accum):
     if fn==False: return False
     fn,ext = fn
     if not ext==".pdf": return False
-    debug("Getting payload")
+    debug("Getting payload for ",fn)
     payload = message.get_payload(decode=True)
     infile = "tmpdoc-%d.pdf" % (os.getpid(),)
     outfile = "tmpdoc-%ds.html" % (os.getpid(),)
