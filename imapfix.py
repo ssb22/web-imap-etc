@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.794 (c) 2013-23 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.795 (c) 2013-23 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1184,6 +1184,7 @@ def save_to(mailbox, message_as_string, flags="", mayNeedNewMsgID=True):
     if change_message_id and mayNeedNewMsgID and 'Message-ID' in msg: message_as_string = message_as_string.replace("Message-ID: <","Message-ID: <2",1) # .muttrc editor default adds '1', so let's add a '2'
     if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check the "Content-Transfer-Encoding" is in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(imap_timestamp), message_as_string))
+    return "Uploaded"
 
 def save_to_maildir(maildir_path, message_as_string, flags=""):
     mailbox.Maildir.colon = maildir_colon
@@ -1192,6 +1193,7 @@ def save_to_maildir(maildir_path, message_as_string, flags=""):
     msg = mailbox.MaildirMessage(email.message_from_string(message_as_string.replace("\r\n","\n")))
     msg.set_flags(maildir_flags_from_imap(flags))
     m.add(msg)
+    return "Processed" # not Uploaded if it's a local maildir
 
 def rename_folder(folder):
     if not isinstance(folder,str): return folder
@@ -1935,7 +1937,8 @@ def upload(filelist):
     for f in filelist:
         if os.path.isdir(f): upload([(f+os.sep+g) for g in listdir(f)])
         elif not os.path.isfile(f): debug("Ignoring non-file non-directory ",f)
-        elif not f.endswith('~') and do_upload(open(f,"rb").read(),os.stat(f).st_mtime,f): debug("Uploaded ",f)
+        elif not f.endswith('~'): debug(do_upload(open(f,"rb").read(),os.stat(f).st_mtime,f)+" ",f)
+        else: tryRm(f),debug("Deleting "+f)
 
 def multinote(filelist,to_real_inbox,use_filename=False):
     if not filtered_inbox: to_real_inbox = True
@@ -1951,7 +1954,8 @@ def multinote(filelist,to_real_inbox,use_filename=False):
                 subj = f
                 if os.sep in subj: subj=subj[subj.rindex(os.sep)+1:]
             else: subj = None
-            if do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj): debug("Uploaded ",f)
+            r = do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj)
+            if r: debug(r+" ",f)
         tryRm(f)
 
 def tryRm(f):
@@ -1967,8 +1971,7 @@ def do_upload(data,theDate,fname):
     message["From"] = from_line
     message["Subject"] = fname
     message["Date"] = email.utils.formatdate(theDate,localtime=True)
-    save_to(filtered_inbox,myAsString(message))
-    return True
+    return save_to(filtered_inbox,myAsString(message))
 
 def do_multinote(body,theDate,to_real_inbox,subject):
     body = re.sub("\r\n?","\n",body.strip())
@@ -1981,8 +1984,8 @@ def do_multinote(body,theDate,to_real_inbox,subject):
         box,newSubj = authenticated_wrapper(subject,body)
         if newSubj: subject = newSubj
     if box==False: box=filtered_inbox
-    if not box==None: save_to(box,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
-    return True
+    if box==None: return "Deleted" # (if this happens on multinote, you might want to check your authenticated_wrapper rules)
+    else: return save_to(box,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
 if quiet==2: quiet = not isatty(sys.stdout)
