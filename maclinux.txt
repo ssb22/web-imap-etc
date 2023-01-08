@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.596 (c) Silas S. Brown 2012-22.
+# Version 1.597 (c) Silas S. Brown 2012-23.
 
 # Tested in zsh on macOS 11.4 through 12.6,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -90,6 +90,11 @@ top () { /usr/bin/top -stats $(if /usr/bin/top -l 1 -s 0 -stats mem >/dev/null 2
 export -f top >/dev/null
 alias netstat-tl="lsof -iTCP -sTCP:LISTEN"
 alias netstat-t="lsof -iTCP -sTCP:ESTABLISHED"
+
+if ! /usr/bin/which -s airport && [ -e System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport ]; then
+  airport () { /System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport "$@" ; }
+  export -f airport >/dev/null
+fi
 
 if ! /usr/bin/which -s free; then
   free () { top -l 1 -s 0 | grep -m 1 PhysMem ; }
