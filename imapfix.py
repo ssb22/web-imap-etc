@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.795 (c) 2013-23 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.796 (c) 2013-23 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -846,6 +846,7 @@ def process_imap_inbox():
             del msg["Subject"]
             msg["Subject"] = utf8_to_header(newSubj)
             changed = True
+          print "Debugger: about to check",box
           if box and box[0]=='*':
               box=box[1:] ; seenFlag="\\Seen"
         if not box==None:
@@ -1772,7 +1773,10 @@ def mainloop():
     if exit_if_imapfix_config_py_changes=="stamp":
       try: os.utime("imapfix_config.py",None) # open with "a" doesn't always update timestamp
       except: pass
-    mtime = os.stat("imapfix_config.py").st_mtime
+    import imapfix_config
+    mfile = imapfix_config.__file__ # might be in different directory on sys.path
+    if mfile.endswith("pyc"): mfile=mfile[:-1]
+    mtime = os.stat(mfile).st_mtime
   debug(__doc__)
   try:
    if postponed_foldercheck or postponed_daynames: do_postponed_foldercheck("old")
@@ -1820,7 +1824,7 @@ def mainloop():
           do_postponed_foldercheck()
       if train_spamprobe_nightly: do_nightly_train()
       done_spamprobe_cleanup_today = False
-    if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat("imapfix_config.py").st_mtime):
+    if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat(mfile).st_mtime):
         debug("Config change detected")
         break
   finally: make_sure_logged_out()
@@ -1979,13 +1983,16 @@ def do_multinote(body,theDate,to_real_inbox,subject):
         debug("Not creating message from blank file")
         return False
     if not subject: subject,body = (body+"\n").split("\n",1)
+    seenFlag = ""
     if to_real_inbox: box = ""
     else:
         box,newSubj = authenticated_wrapper(subject,body)
+        if box and box[0]=='*':
+            box=box[1:] ; seenFlag="\\Seen"
         if newSubj: subject = newSubj
     if box==False: box=filtered_inbox
     if box==None: return "Deleted" # (if this happens on multinote, you might want to check your authenticated_wrapper rules)
-    else: return save_to(box,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
+    else: return save_to(box,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n",seenFlag)
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
 if quiet==2: quiet = not isatty(sys.stdout)
