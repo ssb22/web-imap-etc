@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.796 (c) 2013-23 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.797 (c) 2013-23 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -846,7 +846,6 @@ def process_imap_inbox():
             del msg["Subject"]
             msg["Subject"] = utf8_to_header(newSubj)
             changed = True
-          print "Debugger: about to check",box
           if box and box[0]=='*':
               box=box[1:] ; seenFlag="\\Seen"
         if not box==None:
@@ -1562,7 +1561,7 @@ def add_office0(message,accum):
     if "Content-Type" in message and (str(message['Content-Type']).startswith("text/calendar") or str(message['Content-Type']).startswith("application/ics")):
         cal = ["Calendar file:"]
         for l in re.sub("LANGUAGE=[a-zA-Z-]*:","",message.get_payload(decode=True).replace("\r\n","\n").replace("\n "," ").replace("\nX-MICROSOFT-","\n").replace(";ROLE=REQ-PARTICIPANT","").replace(";PARTSTAT=NEEDS-ACTION","").replace(";RSVP=TRUE","").replace(";VALUE=DATE","").replace("mailto:","")).split("\n"):
-            if any(l.startswith(f) for f in ["TZID:","ORGANIZER","ATTENDEE","SUMMARY","DTSTART:2","DTEND:2","LOCATIONDISPLAYNAME","LOCATIONSTREET","LOCATIONCITY"]) and ':' in l and l[l.index(':')+1:].replace(r'\n','').strip(): cal.append(" ".join(l.replace(";","; ").replace(":",": ").split()))
+            if any(l.startswith(f) for f in ["TZID:","ORGANIZER","ATTENDEE","SUMMARY","DTSTART:2","DTEND:2","DTSTART;TZID=","DTEND;TZID=","LOCATIONDISPLAYNAME","LOCATIONSTREET","LOCATIONCITY"]) and ':' in l and l[l.index(':')+1:].replace(r'\n','').strip(): cal.append(" ".join(l.replace(";","; ").replace(":",": ").split()))
         if len(cal)==1: return False # no details found
         b = email.mime.base.MIMEBase("text","plain")
         b.set_payload("\n".join(cal))
