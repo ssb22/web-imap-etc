@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.597 (c) Silas S. Brown 2012-23.
+# Version 1.598 (c) Silas S. Brown 2012-23.
 
 # Tested in zsh on macOS 11.4 through 13.1,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -301,7 +301,7 @@ stop () { osascript -e "tell application \"iTunes\" to stop" ; }
 export -f pause stop >/dev/null
 
 # we can also do the following without sudo, as long as a desktop session is running:
-halt () { [ ! "$(jobs -s)" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to shut down") & ) ; exit ; }
+halt () { if [ ! "$SSH_CLIENT" ]; then [ ! "$(jobs -s)" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to shut down") & ) ; exit ; else sudo shutdown -h now; fi ; }
 # (if the "exit" warns about stopped jobs, we won't do the shutdown)
 poweroff () { halt ; }
 reboot () { [ ! "$(jobs -s)" ] && ( ( sleep 0.5 && osascript -e "tell application \"Finder\" to restart") & ) ; exit ; }
