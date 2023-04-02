@@ -1,5 +1,5 @@
 /*
-  Time and Item Counter (c) 2004-2019 Silas S. Brown.
+  Time and Item Counter (c) 2004-2023 Silas S. Brown.
   
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
   2004: SNOBOL version
   2010: Javascript version
   2019: Node.js option in JS version
+  2023: support decimal fractions of hours
 
   Command-line usage: echo "1234-507" | node timetrack.js
   
@@ -141,9 +142,12 @@ function addup(s) {
         this.letters = new Object();
         this.startedAt = false; this.stopped = true;
         this.totMins = 0;
-        this.report = function(label) {
+        this.report = function(label,asDecimal) {
             var tRep="", tr_other = new Array();
-            if(!label || this.totMins) tRep += label+Math.floor(this.totMins/60)+"h "+label+(this.totMins%60)+"min";
+            if(!label || this.totMins) {
+                if(asDecimal) tRep += label+parseFloat(Math.ceil(100*this.totMins/60)/100)+"h"; // not .toFixed(2) because 1.50h at a glance is potentially confusing between 1.5h and 1h50min
+                else tRep += label+Math.floor(this.totMins/60)+"h "+label+(this.totMins%60)+"min";
+            }
             for (var l in this.letters) tr_other.push(""+label+this.letters[l]+l);
             tr_other.sort();
             if ((tr_other.length || !this.stopped) && tRep) tRep += " ";
@@ -155,6 +159,7 @@ function addup(s) {
     var anonP = new Project(), otherP = new Object();
     var ww = s.replace(/-/g," -").split(/\s+/);
     var proj=anonP, lastProj=anonP;
+    var asDecimal = undefined;
     for (var ii=0; ii < ww.length; ii++) {
         var w = ww[ii]; if (!w) continue;
         lastProj = proj;
@@ -167,7 +172,10 @@ function addup(s) {
             proj = otherP[pName]; w = w.slice(iii);
             lastProj = proj;
         } else proj=anonP; // and keep lastProj, for cases like (pname)305 -47 (remembering we added the space)
-        if (w.match(/^[0-9]+h$/)) proj.totMins += 60*Number(w.slice(0,-1));
+        if (w.match(/^[0-9]+([.][0-9]+)?h$/)) {
+            proj.totMins += Math.ceil(60*Number(w.slice(0,-1)));
+            if(asDecimal==undefined) asDecimal=!!w.match(/.*[.]/); // so start with (e.g.) 0.0h if want the output to look like that
+        }
         else if (w.match(/^[0-9]+min$/)) proj.totMins += Number(w.slice(0,-3));
         else if (w.match(/^[0-9]+mins$/)) proj.totMins += Number(w.slice(0,-4));
         else if (w.slice(-1).match(/[A-Za-z]/)) {
@@ -196,8 +204,8 @@ function addup(s) {
         } else if (w=="-" && !proj.stopped) {}
         else return "E: Don't know what "+w+" means";
     }
-    var tRep = anonP.report(""), oPout = new Array();
-    for (p in otherP) oPout.push("\n"+otherP[p].report(p));
+    var tRep = anonP.report("",asDecimal), oPout = new Array();
+    for (p in otherP) oPout.push("\n"+otherP[p].report(p,asDecimal));
     oPout.sort(); return tRep + oPout.join("");
 }
 
