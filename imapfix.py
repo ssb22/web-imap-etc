@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.797 (c) 2013-23 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.798 (c) 2013-23 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -643,8 +643,8 @@ def run_spamprobe(action,message):
   if not spamprobe_command: return ""
   if spamprobe_remove_images:
       msg = email.message_from_string(message)
-      delete_images(msg)
-      message=myAsString(msg)
+      if delete_images(msg):
+          message=myAsString(msg)
   cIn, cOut = os.popen2(spamprobe_command+" "+action)
   cIn.write(message); cIn.close()
   return cOut.read()
@@ -1122,10 +1122,11 @@ def delete_attachment(msg):
     if msg.get_filename(): msg.set_payload("")
 
 def delete_images(msg):
-    walk_msg(msg,delete_image)
+    return walk_msg(msg,delete_image)
 def delete_image(msg):
     if msg.get("Content-Type","").startswith("image/"):
         msg.set_payload("") # empty: this is enough to stop the spamprobe crash (don't need to remove the attachment altogether)
+        return True
 
 def nightly_train(foldername, spamprobe_action):
     if type(foldername)==tuple:
