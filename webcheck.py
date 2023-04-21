@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.574 (c) 2014-22 Silas S. Brown.
+# webcheck.py v1.575 (c) 2014-23 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@
 # and in China: https://gitee.com/ssb22/web-imap-etc
 
 max_threads = 10
-delay = 3 # seconds
+delay = 5 # seconds (3 insufficient for StackExchange rate limit)
 keep_etags = False # if True, will also keep any ETag headers as well as Last-Modified
 verify_SSL_certificates = False # webcheck's non-Webdriver URLs are for monitoring public services and there's not a lot of point in SSL authentication; failures due to server/client certificate misconfigurations are more trouble than they're worth
 
