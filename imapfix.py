@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.798 (c) 2013-23 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.799 (c) 2013-23 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -93,6 +93,11 @@ pdf_convert = False # True = use
 # -c complex , or -noframes ?
 
 use_tnef = False # True = use "tnef" command on winmail.dat
+
+headers_to_delete = [] # prefixes of headers to delete from all
+# messages, in case you use Mutt's "Edit Message" on notes to self
+# e.g. headers_to_delete = ["X-MS","X-Microsoft"]
+# (note however that extra_rules and spam detection runs first)
 
 header_rules = [
     ("folder-name-1",
@@ -682,6 +687,9 @@ def myAsString(msg):
     a,b = message.split("\r\n\r\n",1)
     message = re.sub(header_charset_regex,lambda x:re.sub(r"\s_","_",re.sub("\r\n\s","",x.group())),a,flags=re.DOTALL)+"\r\n\r\n"+b
     return message
+def headers(msg):
+    # some Python libraries buggy, so do it ourselves
+    return set(l.split(None,1)[0][:-1] for l in myAsString(msg).split("\r\n\r\n",1)[0].split("\n") if l and l[0].strip())
 
 imapfix_name = sys.argv[0]
 if os.sep in imapfix_name: imapfix_name=imapfix_name[imapfix_name.rindex(os.sep)+1:]
@@ -878,13 +886,16 @@ def process_imap_inbox():
                 else: box = spamprobe_rules(message,is_additional and additional_inbox_train_spam)
         if box:
             if not box==spam_folder:
-                changed2 = False
-                if use_tnef: changed2 = add_tnef(msg) or changed2
-                if image_size: changed2 = add_previews(msg) or changed2
-                if office_convert: changed2 = add_office(msg) or changed2
-                if pdf_convert: changed2 = add_pdf(msg) or changed2
-                changed = changed2 or changed # don't need to alter changed0 here, since if the only change is adding parts then change_message_id does not need to take effect (at least, not with Gmail January 2022)
-                if changed2: message = myAsString(msg)
+                if headers_to_delete and delete_headers(msg):
+                    changed0 = changed = True # for change_message_id
+                    added = True # so myAsString happens
+                else: added = False
+                if use_tnef: added = add_tnef(msg) or added
+                if image_size: added = add_previews(msg) or added
+                if office_convert: added = add_office(msg) or added
+                if pdf_convert: added = add_pdf(msg) or added
+                changed = added or changed # don't need to alter changed0 here, since if the only change is adding parts then change_message_id does not need to take effect (at least, not with Gmail January 2022)
+                if added: message = myAsString(msg)
             if seenFlag: copyWorked = False # unless we can get copy_to to set the Seen flag on the copy, which means the IMAP server must have an extension that causes COPY to return the new ID unless we want to search for it
             elif type(box)==tuple: copyWorked = False # e.g. imap to maildir
             elif not changed and saveImap == imap and (not imap_to_maildirs or box in imap_maildir_exceptions):
@@ -1651,6 +1662,14 @@ def add_tnef0(message,accum):
     except: debug("Could not remove ",outdir)
     if ret: message.set_payload("") # no point keeping the winmail.dat itself if we successfully got its contents out
     return ret
+
+def delete_headers(msg):
+    changed = False
+    for h in headers(msg):
+        if any(h.startswith(hd) for hd in headers_to_delete):
+            while h in msg: del msg[h]
+            changed = True
+    return changed
 
 def getMimeBase(f):
     mimeType = mimetypes.guess_type(f)[0]
