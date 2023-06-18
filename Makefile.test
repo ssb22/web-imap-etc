@@ -1,3 +1,4 @@
 # -*- mode: makefile -*-
 test:
 	echo "1234-507" | node timetrack.js | grep "4h 33min" >/dev/null
+.PHONY: test
