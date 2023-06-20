@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.598 (c) Silas S. Brown 2012-23.
+# Version 1.599 (c) Silas S. Brown 2012-23.
 
 # Tested in zsh on macOS 11.4 through 13.3,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -139,7 +139,31 @@ if ! /usr/bin/which -s python2 && /usr/bin/which -s python2.7; then python2 () {
 if [ "$DefineAppsPython" ]; then
 if ! /usr/bin/which -s python; then python () { "$DefineAppsPython" "$@" ; } ; export -f python >/dev/null; fi
 if ! /usr/bin/which -s jq && [ $(python --version 2>&1|sed -e 's/.* //' -e 's/\.//' -e 's/\..*//') -ge 26 ]; then jq () { python -m json.tool "$@" ; } ; export -f jq >/dev/null; fi
-DefineApps () { export T=$(mktemp /tmp/$PPID''XXXXXX) ; find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null | xargs -0 "$DefineAppsPython" -c 'import os,sys,re,distutils.spawn;os.chdir("/usr/bin")'$'\n''def orApp(c):'$'\n'' if not distutils.spawn.find_executable(c): return c'$'\n'' elif not distutils.spawn.find_executable(c+"-app"): return c+"-app"'$'\n\n''def getF(Command):'$'\n'' if "." in Command or "-" in Command: return lambda App: "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""'$'\n'' else: return lambda App:Command+" () { open -W -a \""+App+"\" \"$@\" ; } ; export -f "+Command+" >/dev/null"'$'\n\n''print ("\n".join((lambda Command:getF(orApp(Command))(App))(Command=re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())) for App in sys.argv[1:]))' >> $T ; . $T ; rm $T ; unset T; } # (the chdir to /usr/bin is because at least some versions of distutils.spawn assume that PATH contains . even when it doesn't)
+DefineApps () {
+    export T=$(mktemp /tmp/$PPID''XXXXXX)
+    find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null |
+        xargs -0 "$DefineAppsPython" -c '
+import os,sys,re
+from distutils.spawn import find_executable
+os.chdir("/usr/bin") # because at least some versions of distutils.spawn assume that PATH contains .
+def orApp(c):
+ if not find_executable(c):
+  return c
+ elif not find_executable(c+"-app"): return c+"-app"
+
+def getF(Command,App):
+ if not Command: return ""
+ elif "." in Command or "-" in Command:
+  return "alias \""+Command+"\"=\"open -W -a \\\""+App+"\\\"\""
+ else: return Command+" () { open -W -a \""+App+"\" \"$@\" ; } ; export -f "+Command+" >/dev/null"
+
+for App in sys.argv[1:]:
+ Commands=[re.sub("[^a-z0-9._-]","",re.sub(".*/","",App)[:-4].replace(" ","-").lower())]
+ if Commands[0].startswith("microsoft-"): Commands.append(Commands[0].replace("microsoft-",""))
+ elif Commands[0]=="chmox" and not find_executable("kchmviewer"): Commands.append("kchmviewer") # probably easier to auto-complete, as chmox will suggest chmod also
+ elif Commands[0] in ["adobe-reader","adobe-acrobat-reader-dc","adobe-acrobat-reader"] and not find_executable("acroread"): Commands.append("acroread")
+ for Command in Commands: print (getF(orApp(Command),App))' >> $T
+    . $T ; rm $T ; unset T; }
 else DefineApps () { false ; }; fi
 DefineApps /Applications /System/Applications /usr/local/Cellar/emacs
 if declare -f xcode >/dev/null; then DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
@@ -240,24 +264,6 @@ if declare -f macfusion >/dev/null; then
       export -f sshfs >/dev/null
   else unset sshfs_Path
   fi
-fi
-
-if declare -f chmox >/dev/null && ! /usr/bin/which -s kchmviewer; then
-  kchmviewer () { chmox "$@" ; } ; export -f kchmviewer >/dev/null
-  # kchmviewer is probably easier to auto-complete, as
-  # chmox will suggest chmod also.
-  # Intel binaries are included in chmox 0.4+
-fi
-
-if alias adobe-reader 2>/dev/null >/dev/null && ! /usr/bin/which -s acroread; then
-  acroread () { open -W -a "$(alias adobe-reader|sed -e 's/[^"]*"//' -e 's/".*//')" "$@" ; } # must define it this way, not just by calling adobe-reader within the function, because our aliases might not be available in a subshell
-  export -f acroread >/dev/null
-elif alias adobe-acrobat-reader-dc 2>/dev/null >/dev/null && ! /usr/bin/which -s acroread; then
-  acroread () { open -W -a "$(alias adobe-acrobat-reader-dc|sed -e 's/[^"]*"//' -e 's/".*//')" "$@" ; }
-  export -f acroread >/dev/null
-elif alias adobe-acrobat-reader 2>/dev/null >/dev/null && ! /usr/bin/which -s acroread; then
-  acroread () { open -W -a "$(alias adobe-acrobat-reader|sed -e 's/[^"]*"//' -e 's/".*//')" "$@" ; }
-  export -f acroread >/dev/null
 fi
 
 # If you have installed fuse-ext2 then might as well set
