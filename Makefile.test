@@ -1,4 +1,5 @@
 # -*- mode: makefile -*-
 test:
-	echo "1234-507" | node timetrack.js | grep "4h 33min" >/dev/null
+	[ "$$(echo "1234-507" | node timetrack.js)" = "4h 33min" ]
+	[ "$$(echo "0.5h 1234-507" | node timetrack.js)" = "5.05h" ]
 .PHONY: test
