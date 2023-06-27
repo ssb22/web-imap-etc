@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.576 (c) 2014-23 Silas S. Brown.
+# webcheck.py v1.577 (c) 2014-23 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -68,9 +68,12 @@ def U(s):
 def UL(s):
   if type(s)==type(u""): return s
   return s.decode('latin1')
-def getBuf(f):
-  try: return f.buffer # Python 3
-  except: return f # Python 2
+def writeBuf(f,w):
+  if hasattr(f,"buffer"): # Python 3
+    f.flush() # ensure ordering
+    f.buffer.write(w)
+    f.buffer.flush() # ensure ordering
+  else: f.write(w) # Python 2
 try: import ssl
 except: # you won't be able to check https:// URLs
   ssl = 0 ; verify_SSL_certificates = False
@@ -683,7 +686,7 @@ def check(text,content,url,errmsg):
             return url+" contains "+text[1:]+comment+errmsg+"\n"
     elif not myFind(text,content): # alert if DOESN'T contain
         r=linkify(url)+" no longer contains "+text+comment+errmsg+"\n"
-        if '??show?' in orig_comment: getBuf(sys.stdout).write(B("Debug: contents of "+linkify(url)+" is:\n")+content+B('\n')) # TODO: document this
+        if '??show?' in orig_comment: writeBuf(sys.stdout,B("Debug: contents of "+linkify(url)+" is:\n")+content+B('\n')) # TODO: document this
         return r
 
 def parseRSS(url,content,comment):
@@ -754,7 +757,7 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
   for k in list(previous_timestamps.keys()):
     if k[:2]==(url,'seenItem') and not k in pKeep:
       del previous_timestamps[k] # dropped from the feed
-  if newItems: getBuf(sys.stdout).write((str(len(newItems))+" new "+itemType+" items in "+url+paren(comment)+' :\n'+'\n---\n'.join(n.strip() for n in newItems)+'\n\n').encode('utf-8'))
+  if newItems: writeBuf(sys.stdout,(str(len(newItems))+" new "+itemType+" items in "+url+paren(comment)+' :\n'+'\n---\n'.join(n.strip() for n in newItems)+'\n\n').encode('utf-8'))
 def simplifyAttr(match):
   m = match.group()
   if m.lower().startswith(" href="): return m
