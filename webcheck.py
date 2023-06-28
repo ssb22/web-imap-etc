@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.577 (c) 2014-23 Silas S. Brown.
+# webcheck.py v1.578 (c) 2014-23 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -657,10 +657,11 @@ class OurRedirHandler(HTTPErrorProcessor):
   def our_response(self,request,response,prefix):
     try: code=response.code
     except: return response
-    if code not in [301,302,303,307]: return response
+    if code not in [301,302,303,307,308]: return response
     url = re.sub("[^!-~]+",lambda m:quote(m.group()),response.headers['Location']) # not all versions of the library do this, so we'll do it here if simple-open failed
     if self.nestLevel>9: raise Exception("too many redirects")
     if url.startswith("//"): url=prefix+url
+    elif url.startswith("/"): url=urlparse.urljoin(request.get_full_url(),url)
     if sys.version_info >= (2,7,9) and not verify_SSL_certificates: return build_opener(OurRedirHandler(self.nestLevel+1),HTTPCookieProcessor(),HTTPSHandler(context=ssl._create_unverified_context())).open(url,timeout=60)
     else: return build_opener(OurRedirHandler(self.nestLevel+1),HTTPCookieProcessor()).open(url,timeout=60)
   def http_response(self,request,response):
