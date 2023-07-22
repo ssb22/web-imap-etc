@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.799 (c) 2013-23 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.8 (c) 2013-23 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -191,6 +191,11 @@ smtp_password = "" # or e.g. ("oauth2 cmd",3600)
 smtp_delay = 60 # seconds between each message
 # (These smtp_ settings are not currently used by anything
 # except user-supplied handle_authenticated_message functions)
+
+rewrite_return_path_SRS=True # to undo the Sender Rewriting Scheme
+# in the Return-Path: you might want this if you rely on
+# Return-Path in extra rules and you want to be able to port
+# them to be behind a different forwarder
 
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
@@ -823,6 +828,14 @@ def rewrite_importance(msg):
             msg['Importance'] = 'High'; changed=True; break
     return changed
 
+def rewrite_return_path(msg):
+    if not rewrite_return_path_SRS or not 'Return-Path' in msg: return
+    rp = msg["Return-Path"]
+    rp2 = re.sub(r"(?i)^<SRS(?:0|(?:1.*=))=[0-9a-z]+=[0-9a-z]+=([^=]+)=([^@]+)@.*$",r"\2@\1",rp)
+    if not rp==rp2:
+        del msg["Return-Path"]
+        msg["Return-Path"] = rp2 ; return True
+
 def process_imap_inbox():
   make_sure_logged_in()
   doneSomething = True
@@ -868,6 +881,7 @@ def process_imap_inbox():
          changed = forced_from(msg) or changed
          changed = quote_display_name_if_needed(msg) or changed
          changed = rewrite_importance(msg) or changed
+         changed = rewrite_return_path(msg) or changed
          if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
          if changed: message = myAsString(msg)
          changed0 = changed # for change_message_id
