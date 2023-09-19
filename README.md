@@ -82,19 +82,20 @@ Besides checking `http://`, `https://` and `gemini://` URLs, you can check for:
 
 If the text you wish to check is written by complex Javascript and there’s no simple way to get it out of the site’s source code, and/or if you need to “log in” or perform other interaction to make it available, then you could try installing one of:
 
+ *  Headless Firefox with GeckoDriver,
  *  Headless Chrome with ChromeDriver,
  *  PhantomJS, or
  *  Edbrowse
 
 and have WebCheck drive one of these.
 
-Edbrowse is more lightweight and should be enough in many cases, but the others have more complete DOM support (see discussion on [Edbrowse issue 4](https://github.com/CMB/edbrowse/issues/4)), and some sites will work *only* in Headless Chrome. In any case you’d be advised to set the check-frequency wisely (see Efficiency section below).
+Edbrowse is more lightweight and should be enough in many cases, but the others have more complete DOM support (see discussion on [Edbrowse issue 4](https://github.com/CMB/edbrowse/issues/4)). In any case you’d be advised to set the check-frequency wisely (see Efficiency section below).
 
 For Edbrowse, prepend `e://` to the URL, e.g.:
 
     e://http://javascripty-site.example.com my comment
 
-Note that checks on the ‘source’ of a rendered DOM (such as checks for class names written by Javascript) are *not* available when using Edbrowse: you’ll have to run Headless Chrome or PhantomJS for those.
+Note that checks on the ‘source’ of a rendered DOM (such as checks for class names written by Javascript) are *not* available when using Edbrowse: you’ll have to run Headless Firefox, Headless Chrome or PhantomJS for those.
 
 Advanced users of edbrowse can write scripts to perform simple interaction with a Javascript site before reading out the text, provided such interaction does not involve spaces, for example:
 
@@ -102,15 +103,15 @@ Advanced users of edbrowse can write scripts to perform simple interaction with 
 
 Here, `/{LOG/` searches for a link whose text begins with ‘LOG’, `g` follows the first link on the current line, `/<>/` searches for empty form fields, `i=` fills them in and `i*` submits; see the edbrowse manual for a full list. `\` is used to separate commands; an implicit `b` (browse) command is added before the start and “print all” at the end. Source is not shown.
 
-For PhantomJS or Headless Chrome, you need to install the ‘webdriver’ (Selenium) interface. If you need to set it up in your home directory, try `pip install selenium --root $HOME/whatever`, set `PYTHONPATH` appropriately, and put the `phantomjs` or `chromedriver` binary in your `PATH` before running webcheck.
+For Headless Firefox, Headless Chrome or PhantomJS, you need to install the ‘webdriver’ (Selenium) interface. If you need to set it up in your home directory, try `pip install selenium --root $HOME/whatever`, set `PYTHONPATH` appropriately, and put the `phantomjs` or `chromedriver` or `geckodriver` binary in your `PATH` before running webcheck.
 
-An instruction to fetch data via Headless Chrome or PhantomJS looks like this:
+An instruction to fetch data via Headless Firefox, Headless Chrome or PhantomJS looks like this:
 
     { http://site.example.org/ [Click here to show the login form] #txtUsername=me@example.com [#okButton] [Show results] "Results" }
 
-where the first word is the starting URL, and items in square brackets will click either a link with that exact text or an element with the `id` or `name` specified after a `#` (check for `id=` or `name=` in a browser’s Document Inspector or similar), or the first element with the `class` specified after a `.` dot (you can specify other elements of a class `someClass` via `.someClass#2` and `.someClass#3` etc). `#id=text` sends keystrokes `text` to an input field with ID (or name) `id` (`.class=text` is also possible), and you can include space by adding a quoted phrase after the `=`. Text in quotes on its own causes the browser to wait until the page source contains it (which is usually necessary when using Headless Chrome or PhantomJS, less so with edbrowse); if you'd rather wait a fixed time period, you can specify a number of seconds instead of a quoted string. Also available is `#id->text` to select from a drop-down (by visible text; blank means deselect all; add quotes after the `->` to select a multi-word phrase), and `#id*n` to set a checkbox to state `n` (0 or 1).
+where the first word is the starting URL, and items in square brackets will click either a link with that exact text or an element with the `id` or `name` specified after a `#` (check for `id=` or `name=` in a browser’s Document Inspector or similar), or the first element with the `class` specified after a `.` dot (you can specify other elements of a class `someClass` via `.someClass#2` and `.someClass#3` etc). `#id=text` sends keystrokes `text` to an input field with ID (or name) `id` (`.class=text` is also possible), and you can include space by adding a quoted phrase after the `=`. Text in quotes on its own causes the browser to wait until the page source contains it (which is usually necessary when using Headless Firefox, Headless Chrome or PhantomJS, less so with edbrowse); if you'd rather wait a fixed time period, you can specify a number of seconds instead of a quoted string. Also available is `#id->text` to select from a drop-down (by visible text; blank means deselect all; add quotes after the `->` to select a multi-word phrase), and `#id*n` to set a checkbox to state `n` (0 or 1).
 
-Some sites make you click each item on a results page to reveal an individual result. To automate this in Headless Chrome or PhantomJS, use `/start/5` where ‘start’ is the start of each item ID and 5 is the number of seconds to wait after clicking, or `/.itemClass/5` to perform similarly with a class of elements called `itemClass` (and `.itemClass/.closeClass/5` is also possible if a ‘close’ button of class `closeClass` needs to be pressed to dismiss each result, and you can limit the range of items by adding `:1-47` or `:48-0` etc after the number of seconds, plus if the instruction ends with `!` then any error clicking on an item will be treated as a failure to load the whole page). A snapshot of the page after each click will be added to that of the final page, and the checks (or item extractions) that you specify will occur on the combined result. It’s assumed that no ‘back’ button needs to be pressed between clicks.
+Some sites make you click each item on a results page to reveal an individual result. To automate this in Headless Firefox, Headless Chrome or PhantomJS, use `/start/5` where ‘start’ is the start of each item ID and 5 is the number of seconds to wait after clicking, or `/.itemClass/5` to perform similarly with a class of elements called `itemClass` (and `.itemClass/.closeClass/5` is also possible if a ‘close’ button of class `closeClass` needs to be pressed to dismiss each result, and you can limit the range of items by adding `:1-47` or `:48-0` etc after the number of seconds, plus if the instruction ends with `!` then any error clicking on an item will be treated as a failure to load the whole page). A snapshot of the page after each click will be added to that of the final page, and the checks (or item extractions) that you specify will occur on the combined result. It’s assumed that no ‘back’ button needs to be pressed between clicks.
 
 ## Efficiency
 

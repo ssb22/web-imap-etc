@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.578 (c) 2014-23 Silas S. Brown.
+# webcheck.py v1.58 (c) 2014-23 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -413,6 +413,11 @@ def run_webdriver(ua,actionList,reportErrors):
         print ("webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)")
         return B(""), True
     try:
+      from selenium.webdriver.firefox.options import Options
+      options = Options() ; options.headless = True
+      browser = webdriver.Firefox(options=options)
+    except Exception as eFfx: # probably no Headless Firefox, try Headless Chrome
+     try:
       from selenium.webdriver.chrome.options import Options
       opts = Options()
       opts.add_argument("--headless")
@@ -426,13 +431,13 @@ def run_webdriver(ua,actionList,reportErrors):
       except: useOptions = False
       if useOptions: browser = webdriver.Chrome(options=opts)
       else: browser = webdriver.Chrome(chrome_options=opts)
-    except Exception as eChrome: # probably no HeadlessChrome, try PhantomJS
+     except Exception as eChrome: # probably no HeadlessChrome, try PhantomJS
       os.environ["QT_QPA_PLATFORM"]="offscreen"
       sa = ['--ssl-protocol=any']
       if not verify_SSL_certificates: sa.append('--ignore-ssl-errors=true')
       try: browser = webdriver.PhantomJS(service_args=sa,service_log_path=os.path.devnull)
-      except Exception as jChrome:
-        print ("webcheck misconfigured: can't create either HeadlessChrome (%s) or PhantomJS (%s).  Check installation.  (PATH=%s, cwd=%s, webdriver version %s)" % (str(eChrome),str(jChrome),repr(os.environ.get("PATH","")),repr(os.getcwd()),repr(webdriver.__version__)))
+      except Exception as ePJS:
+        print ("webcheck misconfigured: can't create Headless Firefox (%s), Headless Chrome (%s) or PhantomJS (%s).  Check installation.  (PATH=%s, cwd=%s, webdriver version %s)" % (str(eFfx),str(eChrome),str(ePJS),repr(os.environ.get("PATH","")),repr(os.getcwd()),repr(webdriver.__version__)))
         return B(""), True
     r = "" ; wasError = False
     try: r = run_webdriver_inner(actionList,browser)
