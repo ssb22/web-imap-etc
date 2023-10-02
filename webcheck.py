@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.58 (c) 2014-23 Silas S. Brown.
+# webcheck.py v1.581 (c) 2014-23 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -357,7 +357,10 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
           try:
             urlopen(r,timeout=60)
             content = B("yes") # error ONLY with Lynx, not with default UA
-          except Exception as e: pass # error with default UA as well, so don't flag this one as a Lynx-test failure
+          except Exception as e:
+            print ("Info: "+url+" got "+str(type(e))+" even without Lynx header, so not flagging as Lynx-blocking")
+            try: print (e.message)
+            except: pass
         else:
           print ("Info: "+url+" got "+str(type(e))+" (check the server exists at all?)")
           try: print (e.message)
