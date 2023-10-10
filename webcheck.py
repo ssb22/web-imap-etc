@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.581 (c) 2014-23 Silas S. Brown.
+# webcheck.py v1.582 (c) 2014-23 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -584,9 +584,13 @@ def get_gemini(url,nestLevel=0):
         host = host[:host.rindex(B(":"))]
     else: port = 1965
     s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-    s.settimeout(60) ; s=ssl.wrap_socket(s)
-    s.connect((host,port)) ; s.send(url+B("\r\n"))
-    g=[]
+    s.settimeout(60) ; s.connect((host,port))
+    try: protocol = ssl.PROTOCOL_TLS_CLIENT # Python 3.6+
+    except: protocol=ssl.PROTOCOL_TLS
+    ss = ssl.SSLContext(protocol)
+    ss.check_hostname,ss.verify_mode = False,ssl.CERT_NONE
+    s=ss.wrap_socket(s,server_hostname=host)
+    s.send(url+B("\r\n")) ; g=[]
     while not g or g[-1]: g.append(s.recv())
     s.close() ; g=B("").join(g)
     if B("\r\n") in g:
