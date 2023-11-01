@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.582 (c) 2014-23 Silas S. Brown.
+# webcheck.py v1.583 (c) 2014-23 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -324,12 +324,20 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       textContent = content
   elif url.startswith("e://"): # run edbrowse
       from subprocess import Popen,PIPE
+      try: from subprocess import TimeoutExpired # Python 3.3+
+      except: TimeoutExpired = None
       edEnv=os.environ.copy() ; edEnv["TMPDIR"]=getoutput("(TMPDIR=/dev/shm mktemp -d -t edXXXXXX || mktemp -d -t edXXXXXX) 2>/dev/null") # ensure unique cache dir if we're running several threads (TODO: what about edbrowse 3.7.6 and below, which hard-codes a single cache dir in /tmp: had we better ensure only one of these is run at a time, just in case?  3.7.7+ honours TMPDIR)
       try: child = Popen(["edbrowse","-e"],-1,stdin=PIPE,stdout=PIPE,stderr=PIPE,env=edEnv)
       except OSError:
         print ("webcheck misconfigured: couldn't run edbrowse")
         return # no need to update delayer, and probably no need to return failRet if it's an edbrowse misconfiguration
-      u,(content,stderr) = None,child.communicate(B("b "+url[4:].replace('\\','\n')+"\n,p\nqt\n")) # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
+      edcmd = B("b "+url[4:].replace('\\','\n')+"\n,p\nqt\n") # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
+      u = None
+      if TimeoutExpired:
+        try: content,stderr = child.communicate(edcmd,60)
+        except TimeoutExpired:
+          child.kill() ; content,stderr = child.communicate()
+      else: content,stderr = child.communicate(edcmd)
       try:
         import shutil
         shutil.rmtree(edEnv["TMPDIR"])
