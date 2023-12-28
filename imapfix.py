@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.8 (c) 2013-23 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.81 (c) 2013-23 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -919,7 +919,14 @@ def process_imap_inbox():
             else: copyWorked = False
             if not copyWorked:
                 debug("Saving message to ",box)
-                save_to(box, message, seenFlag, changed0 and saveImap==imap)
+                try: save_to(box, message, seenFlag, changed0 and saveImap==imap)
+                except: # uh-oh
+                    debug("Save FAIL: writing error and halting")
+                    save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix save error, HALTED\r\nDate: %s\r\n\r\nsave_to(%s) FAILED.\nThis can happen when you have quota issues with a very large message.\nFor safety, imapfix will now HALT processing.\nYou should terminate pid %s once you've sorted out the inbox.\n" % (email.utils.formatdate(localtime=True),box,str(os.getpid()))) # TODO: could try saving without attachments and quarantine the attachments somewhere; could try leaving it as 'seen' and checking for 'seen' on future loop iterations
+                    imap.expunge() # the ones we did before this
+                    make_sure_logged_out()
+                    if sync_command: os.system(sync_command)
+                    while True: time.sleep(60)
             if box==filtered_inbox: newMail = True
         else: debug("Deleting message")
         imap.store(msgID, '+FLAGS', '\\Deleted')
