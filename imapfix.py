@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.81 (c) 2013-23 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.82 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -87,10 +87,7 @@ office_convert = None # or "html" or "pdf", to use
 # This option also enables summary generation of
 # Microsoft Calendar attachments.
 
-pdf_convert = False # True = use
-#  a.pdf # makes a-html.html as.html (ignores extra html argument or -stdout)
-# imgs unless -i
-# -c complex , or -noframes ?
+pdf_convert = False # True = use "pdftohtml" on pdf files
 
 use_tnef = False # True = use "tnef" command on winmail.dat
 
@@ -273,6 +270,11 @@ maildirs_to_imap = None # or path to a local directory of
 maildir_colon = ':'
 maildir_delete_emacs_backup_files = True # in case need to
 # edit any (e.g. postponed notes) directly in maildir
+
+maildir_dedot = None # or path to a local directory of
+# maildirs: any non-symlink Maildir++ "dot" folders
+# in it will be moved to non-"dot" folders.  Use if
+# sharing e.g. local mutt with Dovecot
 
 imap_to_maildirs = None # or path to a local directory of
 # maildirs; messages will be moved from IMAP folders to
@@ -572,7 +574,7 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # Run with --upload (files) to upload as attachments into
 # filtered_inbox messages, e.g. for transfer to a mobile
 # (likely more efficient than SMTP and bypasses filtering)
-# - recurse- into directories if specified; won't delete
+# - recurses into directories if specified; won't delete
 # files after uploading.
 
 # End of options - non-developers can stop reading now :)
@@ -1251,14 +1253,15 @@ def do_maildirs_to_imap():
             save_to(to,myAsString(msg),imap_flags_from_maildir_msg(msg),False)
             del m[k]
         clean_empty_maildir(d2)
-def clean_empty_maildir(d2):
-    try: mailbox.Maildir(d2,None).clean()
+def clean_empty_maildir(md):
+    try: mailbox.Maildir(md,None).clean()
     except: pass
     newcurtmp = ["new","cur","tmp"]
-    if not any(listdir(d2+os.sep+ntc) for ntc in newcurtmp):
+    if not any(listdir(md+os.sep+ntc) for ntc in newcurtmp):
         # folder is now empty: remove it
-        for nct in newcurtmp: os.rmdir(d2+os.sep+nct)
-        try: os.rmdir(d2)
+        for nct in newcurtmp: os.rmdir(md+os.sep+nct)
+        for f in ['dovecot.index','dovecot.index.cache','dovecot.index.log','dovecot-keywords','dovecot-uidlist','maildirfolder']: tryRm(md+os.sep+f)
+        try: os.rmdir(md)
         except: pass
 
 def imap_flags_from_maildir_msg(msg): return " ".join(" ".join({'S':r'\Seen','D':r'\Deleted','R':r'\Answered','F':r'\Flagged'}.get(flag,"") for flag in msg.get_flags()).split())
@@ -1725,8 +1728,8 @@ def do_postponed_foldercheck(dayToCheck="today"):
         # and regardless of what time of day we are doing this (re)start, check for dated folders of today and older
         if postponed_maildir: mList=os.listdir(postponed_maildir)
         else: mList = []
-        for f in folderList()+mList:
-            if re.match(isoDate+'$',f) and f <= today: # TODO: Y10K (lexicographic comparison)
+        for f in folderList()+mList: # if we're sharing a maildir with an IMAP server like Dovecot (which uses Maildir++ i.e. folder directories start with dot) then mList might have dot + date
+            if re.match("[.]?"+isoDate+'$',f) and f <= today: # TODO: Y10K (lexicographic comparison)
                 do_postponed_foldercheck(f)
         return
     elif dayToCheck=="today": # called at midnight rollover (if postponed_foldercheck or postponed_daynames)
@@ -1828,6 +1831,7 @@ def mainloop():
     if copyself_alt_folder: do_copyself_to_copyself()
     if auto_delete_folder: do_auto_delete()
     if imap_to_maildirs: do_imap_to_maildirs()
+    if maildir_dedot: do_maildir_dedot()
     global filtered_inbox
     if filtered_inbox: process_imap_inbox()
     if time.time() > secondary_imap_due and secondary_imap_hostname:
@@ -2136,6 +2140,17 @@ def do_imap_to_maildirs():
             check_ok(imap.select())
             do_delete(foldername)
 
+def do_maildir_dedot():
+    for poss in os.listdir(maildir_dedot):
+        if poss.startswith(".") and not os.path.islink(maildir_dedot+os.sep+poss) and os.path.exists(maildir_dedot+os.sep+poss+os.sep+"cur"):
+            debug("Moving messages from maildir ",poss," to maildir ",poss[1:])
+            m = get_maildir(maildir_dedot+os.sep+poss)
+            for k,msg in m.items():
+                globalise_charsets(msg,imap_8bit)
+                save_to(('maildir',maildir_dedot+os.sep+poss[1:]),myAsString(msg),imap_flags_from_maildir_msg(msg),False)
+                del m[k]
+            clean_empty_maildir(maildir_dedot+os.sep+poss)
+    
 def do_copy(foldername):
     foldername = foldername.strip()
     if not foldername:
