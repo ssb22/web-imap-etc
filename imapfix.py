@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.82 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.83 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -673,12 +673,6 @@ def process_header_rules(header):
         i=re.finditer(m,headerLine.rstrip())
         try: i.next()
         except StopIteration: continue
-        if box:
-            if box[0]=='*': box=box[1:] # just save it without indication
-            elif newmail_directory:
-                if type(box)==tuple: bStr=re.sub(".*/","",box[1])
-                else: bStr = box
-                open(newmail_directory+os.sep+bStr,'a')
         return rename_folder(box)
   return False
 
@@ -869,8 +863,8 @@ def process_imap_inbox():
             del msg["Subject"]
             msg["Subject"] = utf8_to_header(newSubj)
             changed = True
-          if box and box[0]=='*':
-              box=box[1:] ; seenFlag="\\Seen"
+          if box and box[0]=='*': seenFlag="\\Seen"
+          box=rename_folder(box,False) # don't set newmail markers for authenticated
         if not box==None:
          # globalise charsets BEFORE the filtering rules
          # (especially if they've been developed based on
@@ -1230,10 +1224,19 @@ def save_to_maildir(maildir_path, message_as_string, flags=""):
     m.add(msg)
     return "Processed" # not Uploaded if it's a local maildir
 
-def rename_folder(folder):
+def rename_folder(folder,write_newmail=True):
+    if not folder: return folder
+    if folder[0]=='*': folder=folder[1:] # just save it without indication
+    elif newmail_directory and write_newmail:
+        if type(folder)==tuple:
+            if folder==filtered_inbox or folder==spam_folder: return folder # don't write newmail marker anyway
+            newmailStr=re.sub(".*/","",folder[1])
+        elif folder.lower()=="inbox": return filtered_inbox
+        elif folder.lower()=="spam": return spam_folder
+        else: newmailStr = folder
+        open(newmail_directory+os.sep+newmailStr,'a')
     if not isinstance(folder,str): return folder
-    if folder.lower()=="inbox":
-        return filtered_inbox
+    elif folder.lower()=="inbox": return filtered_inbox
     elif folder.lower()=="spam": return spam_folder
     else: return folder
 
@@ -1245,7 +1248,7 @@ def do_maildirs_to_imap():
         d2 = maildirs_to_imap+os.sep+d
         if not os.path.exists(d2+os.sep+"cur"):
             continue # not a maildir
-        to = rename_folder(d)
+        to = rename_folder(d,False) # don't set newmail markers for maildirs_to_imap
         debug("Moving messages from maildir ",d," to imap ",to)
         m = get_maildir(d2)
         for k,msg in m.items():
@@ -2031,8 +2034,8 @@ def do_multinote(body,theDate,to_real_inbox,subject):
     if to_real_inbox: box = ""
     else:
         box,newSubj = authenticated_wrapper(subject,body)
-        if box and box[0]=='*':
-            box=box[1:] ; seenFlag="\\Seen"
+        if box and box[0]=='*': seenFlag="\\Seen"
+        box=rename_folder(box,False) # don't set newmail markers for multinote
         if newSubj: subject = newSubj
     if box==False: box=filtered_inbox
     if box==None: return "Deleted" # (if this happens on multinote, you might want to check your authenticated_wrapper rules)
