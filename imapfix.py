@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.83 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.84 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -610,6 +610,7 @@ if not sys.version_info[0]==2:
     print ("ERROR: ImapFix is a Python 2 program and should be run with 'python2'.\nIt needs major revision for Python 3's version of the email library.\nTry compiling Python 2.7 in your home directory if it's no longer installed on your system.")
     # In particular, Python 3.3+ revised the Message class into an EmailMessage class (with Message as a compatibility option), need to use as_bytes rather than as_string; set_payload available only in compatibility mode and works in Python3 Unicode-strings so we'd need to figure out how to handle other charsets including invalid coding.
     # That's on top of the usual 'make sure all our code works whether or not type("")==type(u"")' issue.
+    # (And imghdr is deprecated in 3.11 for removal in 3.13, so will need an alternative to imghdr.what())
     sys.exit(1)
 from email import encoders
 from cStringIO import StringIO
@@ -1911,8 +1912,10 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
                     try: access_string = base64.decodestring(access_string)
                     except: pass # maybe it wasn't base64
                     oauth2_string_cache[cmd] = (access_string,time.time()+secs)
-                debug("Using OAuth2 access string") # if hangs here, refresh token might have been invalidated (e.g. in GMail 'testing-only apps' the refresh tokens are short-lived) and the server is delaying it after repeated use
-                check_ok(imap.authenticate('XOAUTH2', lambda _:oauth2_string_cache[cmd][0]))
+                debug("Trying OAuth2 access string") # if hangs here, refresh token might have been invalidated (e.g. in GMail 'testing-only apps' the refresh tokens are short-lived) and the server is delaying it after repeated use
+                try: check_ok(imap.authenticate('XOAUTH2', lambda _:oauth2_string_cache[cmd][0]))
+                except:
+                    debug("OAuth2 access string failed on ",repr(Class),": ",sys.exc_info()[1]) ; raise
             else: check_ok(imap.login(user,pwd))
             debug("Logged in")
             return imap
