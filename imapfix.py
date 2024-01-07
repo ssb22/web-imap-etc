@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.84 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.85 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -20,11 +20,7 @@ password = "xxxxxxxx"
 # You can also use OAuth2 by setting password like this:
 # password = ("command to generate oauth2 string", 3500)
 # where 3500 is the number of seconds before script is called again.
-# (You'll then have to sort out calls to oauth2.py or whatever,
-# and if you registered a 'test app' it is likely that refresh
-# tokens will not persist more than a week or so and will need
-# periodic renewal in a browser; this won't be the case if
-# you use credentials from a production application.)
+# (You'll then have to sort out calls to oauth2.py or whatever)
 
 login_retry = False # True = don't stop on login failure
 # (useful if your network connection is not always on)
@@ -186,6 +182,7 @@ smtp_host = "localhost"
 smtp_user = ""
 smtp_password = "" # or e.g. ("oauth2 cmd",3600)
 smtp_delay = 60 # seconds between each message
+smtp_fcc_Copyself = True
 # (These smtp_ settings are not currently used by anything
 # except user-supplied handle_authenticated_message functions)
 
@@ -210,6 +207,9 @@ poll_interval = 4*60
 # imaplib2 writes debug information to the console unless
 # run with python -O; to suppress this, do
 # sed -e s/__debug__/False/g < imaplib2.py > i && mv i imaplib2.py
+# Some imap servers (including possibly Outlook) do not
+# send new messages to the IDLE command: in this case it
+# is likely to result in a 29-minute poll interval
 
 logout_before_sleep = False # suggest set to True if using
 # a long poll_interval (not "idle"), or if
@@ -262,6 +262,7 @@ postponed_maildir = None # or "path/to/maildir", will
 quiet = True # False = print messages (including quota)
 # If you set quiet = 2, will be quiet if and only if the
 # standand output is not connected to a terminal
+# If you set quiet = None, will print to standard error
 
 maildirs_to_imap = None # or path to a local directory of
 # maildirs; messages will be moved to their corresponding
@@ -637,9 +638,11 @@ if image_size:
 import commands
 
 def debug(*args):
-    if not quiet:
+    if quiet==False: 
         print (reduce((lambda a,b:a+str(b)), args, ""))
-    
+    elif not quiet: # quiet=None (not False) means use stderr.  (In Python, 0==False but None!=False)
+        sys.stderr.write(reduce((lambda a,b:a+str(b)), args, "")+"\n")
+
 def check_ok(r):
     "Checks that the return value of an IMAP call 'r' is OK, raises exception if not"
     typ, data = r
@@ -664,6 +667,7 @@ def run_spamprobe(action,message):
 
 def spamprobe_cleanup():
     if not spamprobe_command: return
+    make_sure_logged_out()
     debug("spamprobe cleanup")
     os.system(spamprobe_command+" cleanup")
 
@@ -1817,12 +1821,12 @@ def mainloop():
   done_spamprobe_cleanup_today = False
   secondary_imap_due = 0
   if exit_if_imapfix_config_py_changes:
-    if exit_if_imapfix_config_py_changes=="stamp":
-      try: os.utime("imapfix_config.py",None) # open with "a" doesn't always update timestamp
-      except: pass
     import imapfix_config
     mfile = imapfix_config.__file__ # might be in different directory on sys.path
     if mfile.endswith("pyc"): mfile=mfile[:-1]
+    if exit_if_imapfix_config_py_changes=="stamp":
+      try: os.utime(mfile,None) # open with "a" doesn't always update timestamp
+      except: pass
     mtime = os.stat(mfile).st_mtime
   debug(__doc__)
   try:
@@ -1846,8 +1850,11 @@ def mainloop():
         process_secondary_imap()
         filtered_inbox = fiO
         secondary_imap_due = time.time() + secondary_imap_delay
-    if logout_before_sleep: make_sure_logged_out()
-    if sync_command: os.system(sync_command) # might make a separate login, hence after logout_before_sleep
+    if logout_before_sleep or (sync_command and (poll_interval=="idle" or not poll_interval)): make_sure_logged_out()
+    if sync_command:
+        debug("Running sync_command")
+        os.system(sync_command) # might make a separate login, hence after logout_before_sleep
+        debug("sync_command finished")
     if not poll_interval: break # --once
     if not done_spamprobe_cleanup_today:
         spamprobe_cleanup()
@@ -1855,11 +1862,16 @@ def mainloop():
     if poll_interval=="idle":
         make_sure_logged_in() ; imap.select()
         debug("Waiting for IMAP event")
+        t = time.time()
         try: imap.idle() # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
         except: # e.g. imaplib2.abort, fall back on delay
-            debug("Wait failed: falling back to logout + 5 minutes")
-            make_sure_logged_out()
-            time.sleep(300)
+            M = int((time.time()-t)/60)
+            debug("Wait failed after ",M,"mins: ",sys.exc_info()[1])
+            if M < 5:
+                debug("Falling back to logout + ",5-M," minutes")
+                make_sure_logged_out()
+                time.sleep((5-M)*60)
+        debug("Wait finished after ",int((time.time()-t)/60),"mins")
     else:
         debug("Sleeping for ",poll_interval," seconds")
         time.sleep(poll_interval)
@@ -1905,23 +1917,27 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
                 imap = Class(host, int(port))
             else: imap = Class(host)
             if type(pwd)==tuple: # OAuth2
-                cmd,secs = pwd
-                if oauth2_string_cache.setdefault(cmd,(None,0))[1] < time.time():
-                    debug("Generating OAuth2 access string")
-                    access_string = commands.getoutput(cmd).strip()
-                    try: access_string = base64.decodestring(access_string)
-                    except: pass # maybe it wasn't base64
-                    oauth2_string_cache[cmd] = (access_string,time.time()+secs)
+                access_string = oauth2_get(pwd,user)
                 debug("Trying OAuth2 access string") # if hangs here, refresh token might have been invalidated (e.g. in GMail 'testing-only apps' the refresh tokens are short-lived) and the server is delaying it after repeated use
-                try: check_ok(imap.authenticate('XOAUTH2', lambda _:oauth2_string_cache[cmd][0]))
+                try: check_ok(imap.authenticate('XOAUTH2', lambda _:access_string)) # imap.authenticate does the base64 encodestring equivalent (_Authenticator.encode)
                 except:
                     debug("OAuth2 access string failed on ",repr(Class),": ",sys.exc_info()[1]) ; raise
             else: check_ok(imap.login(user,pwd))
-            debug("Logged in")
+            debug("Logged in to ",host)
             return imap
         except: pass
     raise Exception("Could not log in to "+host)
+
 oauth2_string_cache = {}
+def oauth2_get(pwd,user):
+    cmd,secs = pwd
+    if oauth2_string_cache.setdefault(cmd,(None,0))[1] < time.time():
+        debug("Generating OAuth2 access string for ",user)
+        access_string = commands.getoutput(cmd).strip()
+        if re.match("[A-Za-z0-9/+]+=*$",access_string): access_string = base64.decodestring(access_string)
+        if not access_string.startswith("user="): access_string="user="+user+"\x01auth=Bearer "+access_string+"\x01\x01"
+        oauth2_string_cache[cmd] = (access_string,time.time()+secs)
+    return oauth2_string_cache[cmd][0]
 
 def process_secondary_imap():
   global imap ; first=True
@@ -1945,6 +1961,8 @@ def process_secondary_imap():
         additional_inbox = oAI
         if check_copyself_alt_folder_on_secondary_too:
             do_copyself_to_copyself()
+        debug("Logging out of ",sih)
+        imap.logout()
   imap = saveImap
 
 def do_archive():
@@ -2239,6 +2257,9 @@ def shell_quote(s): return "'"+s.replace("'",r"'\''")+"'"
 imap = None
 def make_sure_logged_in():
     global imap, saveImap
+    if imap:
+        try: check_ok(imap.select()) # can raise exception here on Outlook, requiring re-login
+        except: imap = None
     while imap==None:
         try: imap = saveImap = get_logged_in_imap(hostname,username,password)
         except:
@@ -2301,23 +2322,31 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
         msg.attach(subMsg)
     import smtplib
     if smtp_host=="localhost": s = smtplib.SMTP(smtp_host)
+    elif ':' in smtp_host: # e.g. smtp.office365.com:587
+        host,port = smtp_host.split(':')
+        port = int(port)
+        import ssl
+        s = smtplib.SMTP(host,port)
+        # s.set_debuglevel(1)
+        s.ehlo()
+        s.starttls() # TODO: keyfile,certfile if want to check (Python 2's smtplib can't just take a context=ssl.create_default_context() instead)
+        s.ehlo()
     else: s = smtplib.SMTP_SSL(smtp_host)
     if smtp_user:
         if type(smtp_password)==tuple:
-            cmd,secs = smtp_password
-            if oauth2_string_cache.setdefault(cmd,(None,0))[1] < time.time():
-                debug("Generating OAuth2 access string for SMTP")
-                access_string = commands.getoutput(cmd).strip()
-                try: access_string = base64.decodestring(access_string)
-                except: pass # maybe it wasn't base64
-                oauth2_string_cache[cmd] = (access_string,time.time()+secs)
-            s.docmd('AUTH','XOAUTH2 '+base64.b64encode(access_string))
+            access_string = oauth2_get(smtp_password,smtp_user)
+            debug('Doing XOAUTH2 in SMTP')
+            s.docmd('AUTH','XOAUTH2')
+            ret = s.docmd(base64.encodestring(access_string))
+            if "unsuccessful" in ret[1]:
+                debug(ret[1]) ; raise Exception(repr(ret))
         else: s.login(smtp_user, smtp_password)
+    debug("Doing sendmail")
     ret = s.sendmail(smtp_fromAddr,to_u8,myAsString(msg))
     assert len(ret)==0, "Some (but not all) recipients were refused: "+repr(ret)
     s.quit()
     if smtp_delay: callSMTP_time = time.time()+smtp_delay
-    if copyself:
+    if copyself and smtp_fcc_Copyself:
         if copyself_delete_attachments:
             delete_attachments(msg)
         save_to(copyself_folder_name,myAsString(msg),"\\Seen")
