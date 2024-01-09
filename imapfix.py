@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.85 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.86 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -207,9 +207,9 @@ poll_interval = 4*60
 # imaplib2 writes debug information to the console unless
 # run with python -O; to suppress this, do
 # sed -e s/__debug__/False/g < imaplib2.py > i && mv i imaplib2.py
-# Some imap servers (including possibly Outlook) do not
-# send new messages to the IDLE command: in this case it
-# is likely to result in a 29-minute poll interval
+# Some imap servers (including possibly Outlook) sometimes
+# fail to send new messages to the IDLE command (not always)
+# - if that happens, it'll probably be a 29-minute poll interval
 
 logout_before_sleep = False # suggest set to True if using
 # a long poll_interval (not "idle"), or if
@@ -293,6 +293,11 @@ sync_command = None # or command to run after every cycle,
 # want to maintain maildirs + remote IMAP folders in same state
 # (if poll_interval is "idle" this can wait for the next
 # change on the _remote_ side before it runs)
+
+sync_needed_only_if_wrote_maildirs = False # use e.g. if
+# sync_command is just a 'backup maildirs to somewhere'
+# and you don't mind backing up changes by non-imapfix
+# mail clients less frequently
 
 maildir_to_copyself = None # or path to a maildir whose
 # messages should be moved to imap's copyself (for example if
@@ -1220,6 +1225,7 @@ def save_to(mailbox, message_as_string, flags="", mayNeedNewMsgID=True):
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(imap_timestamp), message_as_string))
     return "Uploaded"
 
+sync_needed = not not sync_command
 def save_to_maildir(maildir_path, message_as_string, flags=""):
     mailbox.Maildir.colon = maildir_colon
     m = mailbox.Maildir(maildir_path,None)
@@ -1227,6 +1233,8 @@ def save_to_maildir(maildir_path, message_as_string, flags=""):
     msg = mailbox.MaildirMessage(email.message_from_string(message_as_string.replace("\r\n","\n")))
     msg.set_flags(maildir_flags_from_imap(flags))
     m.add(msg)
+    if sync_needed_only_if_wrote_maildirs and sync_command:
+        global sync_needed ; sync_needed = True
     return "Processed" # not Uploaded if it's a local maildir
 
 def rename_folder(folder,write_newmail=True):
@@ -1840,7 +1848,7 @@ def mainloop():
     if auto_delete_folder: do_auto_delete()
     if imap_to_maildirs: do_imap_to_maildirs()
     if maildir_dedot: do_maildir_dedot()
-    global filtered_inbox
+    global filtered_inbox, sync_needed
     if filtered_inbox: process_imap_inbox()
     if time.time() > secondary_imap_due and secondary_imap_hostname:
         fiO = filtered_inbox
@@ -1850,11 +1858,12 @@ def mainloop():
         process_secondary_imap()
         filtered_inbox = fiO
         secondary_imap_due = time.time() + secondary_imap_delay
-    if logout_before_sleep or (sync_command and (poll_interval=="idle" or not poll_interval)): make_sure_logged_out()
-    if sync_command:
+    if logout_before_sleep or (sync_needed and (poll_interval=="idle" or not poll_interval)): make_sure_logged_out()
+    if sync_needed:
         debug("Running sync_command")
         os.system(sync_command) # might make a separate login, hence after logout_before_sleep
         debug("sync_command finished")
+        if sync_needed_only_if_wrote_maildirs: sync_needed=False
     if not poll_interval: break # --once
     if not done_spamprobe_cleanup_today:
         spamprobe_cleanup()
@@ -1863,7 +1872,9 @@ def mainloop():
         make_sure_logged_in() ; imap.select()
         debug("Waiting for IMAP event")
         t = time.time()
-        try: imap.idle() # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
+        try:
+            imap.idle() # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
+            debug("Wait finished after ",int((time.time()-t)/60),"mins")
         except: # e.g. imaplib2.abort, fall back on delay
             M = int((time.time()-t)/60)
             debug("Wait failed after ",M,"mins: ",sys.exc_info()[1])
@@ -1871,7 +1882,6 @@ def mainloop():
                 debug("Falling back to logout + ",5-M," minutes")
                 make_sure_logged_out()
                 time.sleep((5-M)*60)
-        debug("Wait finished after ",int((time.time()-t)/60),"mins")
     else:
         debug("Sleeping for ",poll_interval," seconds")
         time.sleep(poll_interval)
@@ -2263,7 +2273,9 @@ def make_sure_logged_in():
     while imap==None:
         try: imap = saveImap = get_logged_in_imap(hostname,username,password)
         except:
-            if not login_retry: raise
+            if not login_retry: # don't need a tracebck for this:
+                sys.stderr.write("Login failed: exitting")
+                sys.exit(1)
             imap = None
             debug("Login failed; retry in 30 seconds")
             time.sleep(30)
