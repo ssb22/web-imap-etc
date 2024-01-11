@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.86 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.87 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1449,7 +1449,7 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
     is_unspecified = cType and cType.startswith("text/") and not specified_charset
     try: p0 = message.get_payload(decode=True) # in most cases we need it (TODO: in a few small cases we don't, but low-priority as the entire message has probably been loaded into RAM already)
     except:
-        message['X-ImapFix-Globalise-Charset-Decode-Error'] = str(sys.exc_info()[1])
+        message['X-ImapFix-Globalise-Charset-Decode-Error'] = repr(sys.exc_info()[1]).strip()
         return True
     if specified_charset=='us-ascii' and re.search('[\x80-\xff]',p0): # mislabelled ASCII
         force_change = is_unspecified = True
@@ -1877,7 +1877,7 @@ def mainloop():
             debug("Wait finished after ",int((time.time()-t)/60),"mins")
         except: # e.g. imaplib2.abort, fall back on delay
             M = int((time.time()-t)/60)
-            debug("Wait failed after ",M,"mins: ",sys.exc_info()[1])
+            debug("Wait failed after ",M,"mins: ",repr(sys.exc_info()[1]).strip())
             if M < 5:
                 debug("Falling back to logout + ",5-M," minutes")
                 make_sure_logged_out()
@@ -1925,13 +1925,26 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
             if len(host.split(':'))==2:
                 host,port = host.split(':')
                 imap = Class(host, int(port))
-            else: imap = Class(host)
+            else: imap,port = Class(host),None
             if type(pwd)==tuple: # OAuth2
-                access_string = oauth2_get(pwd,user)
+                access_string, regenerated = oauth2_get(pwd,user)
                 debug("Trying OAuth2 access string") # if hangs here, refresh token might have been invalidated (e.g. in GMail 'testing-only apps' the refresh tokens are short-lived) and the server is delaying it after repeated use
                 try: check_ok(imap.authenticate('XOAUTH2', lambda _:access_string)) # imap.authenticate does the base64 encodestring equivalent (_Authenticator.encode)
                 except:
-                    debug("OAuth2 access string failed on ",repr(Class),": ",sys.exc_info()[1]) ; raise
+                    debug("OAuth2 access string failed on ",repr(Class),": ",repr(sys.exc_info()[1]).strip())
+                    if regenerated: raise # = continue
+                    else:
+                        debug("Retrying with force-regenerate")
+                        # sometimes needs a re-connect to do this:
+                        try: imap.logout()
+                        except: pass
+                        if port: imap = Class(host, int(port))
+                        else: imap = Class(host)
+                        access_string, regenerated = oauth2_get(pwd,user,True)
+                        try: check_ok(imap.authenticate('XOAUTH2', lambda _:access_string))
+                        except:
+                            debug("Still failed")
+                            raise # = continue
             else: check_ok(imap.login(user,pwd))
             debug("Logged in to ",host)
             return imap
@@ -1939,15 +1952,16 @@ def get_logged_in_imap(host,user,pwd,insecureFirst=False):
     raise Exception("Could not log in to "+host)
 
 oauth2_string_cache = {}
-def oauth2_get(pwd,user):
-    cmd,secs = pwd
-    if oauth2_string_cache.setdefault(cmd,(None,0))[1] < time.time():
+def oauth2_get(pwd,user,force_regenerate=False):
+    cmd,secs = pwd ; regenerated = False
+    if oauth2_string_cache.setdefault(cmd,(None,0))[1] < time.time() or force_regenerate:
         debug("Generating OAuth2 access string for ",user)
         access_string = commands.getoutput(cmd).strip()
         if re.match("[A-Za-z0-9/+]+=*$",access_string): access_string = base64.decodestring(access_string)
         if not access_string.startswith("user="): access_string="user="+user+"\x01auth=Bearer "+access_string+"\x01\x01"
         oauth2_string_cache[cmd] = (access_string,time.time()+secs)
-    return oauth2_string_cache[cmd][0]
+        regenerated = True
+    return oauth2_string_cache[cmd][0], regenerated
 
 def process_secondary_imap():
   global imap ; first=True
@@ -2333,8 +2347,9 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
         subMsg.add_header('Content-Disposition', 'attachment', filename=f)
         msg.attach(subMsg)
     import smtplib
-    if smtp_host=="localhost": s = smtplib.SMTP(smtp_host)
-    elif ':' in smtp_host: # e.g. smtp.office365.com:587
+    def getSMTP():
+      if smtp_host=="localhost": return smtplib.SMTP(smtp_host)
+      elif ':' in smtp_host: # e.g. smtp.office365.com:587
         host,port = smtp_host.split(':')
         port = int(port)
         import ssl
@@ -2343,15 +2358,29 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
         s.ehlo()
         s.starttls() # TODO: keyfile,certfile if want to check (Python 2's smtplib can't just take a context=ssl.create_default_context() instead)
         s.ehlo()
-    else: s = smtplib.SMTP_SSL(smtp_host)
+        return s
+      else: return smtplib.SMTP_SSL(smtp_host)
+    s = getSMTP()
     if smtp_user:
         if type(smtp_password)==tuple:
-            access_string = oauth2_get(smtp_password,smtp_user)
+            access_string, regenerated = oauth2_get(smtp_password,smtp_user)
             debug('Doing XOAUTH2 in SMTP')
             s.docmd('AUTH','XOAUTH2')
             ret = s.docmd(base64.encodestring(access_string))
             if "unsuccessful" in ret[1]:
-                debug(ret[1]) ; raise Exception(repr(ret))
+                if regenerated:
+                    debug(ret[1]) ; raise Exception(repr(ret))
+                else:
+                    debug("Trying again with force regenerate")
+                    # might need to reconnect
+                    try: s.quit()
+                    except: pass
+                    s = getSMTP()
+                    access_string,_ = oauth2_get(smtp_password,smtp_user,True)
+                    s.docmd('AUTH','XOAUTH2')
+                    ret = s.docmd(base64.encodestring(access_string))
+                    if "unsuccessful" in ret[1]:
+                        debug(ret[1]) ; raise Exception(repr(ret))
         else: s.login(smtp_user, smtp_password)
     debug("Doing sendmail")
     ret = s.sendmail(smtp_fromAddr,to_u8,myAsString(msg))
