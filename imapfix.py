@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.87 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.88 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -171,6 +171,8 @@ smtps_auth = None # or e.g. " with esmtpsa (LOGIN:me)"
 # might be useful for using --multinote with the real inbox).
 # You should therefore ensure that your local network ALWAYS
 # adds at least one Received header to incoming mail.
+debug_trusted_domain=False # if setting this to True, change
+# quiet to not be True
 
 # If handle_authenticated_message needs to send other mail
 # via SMTP, it can call
@@ -955,7 +957,8 @@ def authenticates(msg):
       rx = re.sub(r'\s+',' ',rx)
       m=re.match(r"from ([^ ]+)( \([^)]*\))* by ([^ ]+)( .*)",rx) # RFC 2821 section 4.4 extended a bit (not everybody follows this, but trusting the machines on our network implies trusting they'll follow at least this regex and cannot be tricked into not doing so)
       if not m:
-          # we can't process this one, but should it break the chain?
+          if debug_trusted_domain: debug("Cannot process ",repr(rx)," for trusted domains")
+          # but should it break the chain?
           if type(trusted_domain)==list and "" in trusted_domain:
               # option is set: non-"from" rx header doesn't interrupt scan
               continue
@@ -963,8 +966,12 @@ def authenticates(msg):
       claimed_from, tcp_from_and_other, receiving_machine, other = m.groups()
       # The identity of receiving_machine is trusted by induction: if all (0 or more) previous headers were trusted to correctly report both themselves and the next hop, and if said 'next hop' reports all identified trusted networks, then we trust the claim of the receiving machine on this header.  (This implies we always trust the claim of the first such header if any trusted_domain is set.)
       if type(trusted_domain)==list:
-          if not any(receiving_machine.endswith(t) for t in trusted_domain if t): break # (not on any of our networks: this normally means there will have been 0 previous headers and this message has been introduced by some other method, so don't trust it)
-      elif not receiving_machine.endswith(trusted_domain): break # (as above)
+          if not any(receiving_machine.endswith(t) for t in trusted_domain if t): # (not on any of our networks: this normally means there will have been 0 previous headers and this message has been introduced by some other method, so don't trust it)
+              if debug_trusted_domain: debug("Not on any trusted network: ",repr(rx))
+              break
+      elif not receiving_machine.endswith(trusted_domain):
+          if debug_trusted_domain: debug("Not on trusted network: ",repr(rx))
+          break
       # We are trusting all machines so far never to incorrectly report an authentication.  So if THIS machine reports an authentication (wherever the message came from on previous hop) then we pass it.
       if not tcp_from_and_other: tcp_from_and_other = ""
       if not other: other = ""
@@ -973,15 +980,23 @@ def authenticates(msg):
           if any((s in check_for_auth_info or len(s.split())==2 and s.split()[0]=="from" and s.split()[1]==claimed_from and not tcp_from_and_other) for s in smtps_auth): return True
       elif smtps_auth in check_for_auth_info or len(smtps_auth.split())==2 and smtps_auth.split()[0]=="from" and smtps_auth.split()[1]==claimed_from and not tcp_from_and_other: return True
       # Now check next-older hop.  If it is not on any of our trusted networks, then stop trusting, no matter what is claimed in further Received headers.
-      # We CANNOT trust claimed_from: we MUST check the first item in tcp_from_and_other.  If any server on your network fails to put a reverse-DNS in here then the IP address of the next hop must be included in the trusted_domain list.
+      # If any server on your network fails to put a reverse-DNS before the [...] the IP address of the next hop must be included in the trusted_domain list.  If there's no [...] then we assume that means claimed_from is correct.
       m = re.match(r" \(([^)\[]*)\[([^)\]]*)\][^)]*\)",tcp_from_and_other)
-      if not m: break
-      reverse_dns, ip = m.groups()
+      if m: reverse_dns, ip = m.groups()
+      elif re.match(r" \([0-9a-fA-F.:]+\)$",tcp_from_and_other): reverse_dns,ip = claimed_from,tcp_from_and_other[2:-1] # just IP + we're trusting the server to tell us that claimed_from is correct
+      else:
+          if debug_trusted_domain: debug("Can't parse from+other field ",repr(tcp_from_and_other),", assuming untrusted")
+          break
       reverse_dns = reverse_dns.strip()
       if reverse_dns.endswith('.'): reverse_dns=reverse_dns[:-1] # gmail bug
       if type(trusted_domain)==list:
-          if not any((reverse_dns.endswith(t) or ip==t) for t in trusted_domain if t): break
-      elif not reverse_dns.endswith(trusted_domain): break
+          if not any((reverse_dns.endswith(t) or ip==t) for t in trusted_domain if t):
+              if debug_trusted_domain: debug("Can't find any trusted domain in reverse DNS ",repr(reverse_dns)," in ",repr(rx))
+              break
+      elif not reverse_dns.endswith(trusted_domain):
+          if debug_trusted_domain: debug("Can't find trusted domain in reverse DNS ",repr(reverse_dns)," in ",repr(rx))
+          break
+    if debug_trusted_domain: debug("smtp_auth not found")
 
 def imapfixNote(): return "From: "+from_line+"\r\nSubject: Folder "+repr(filtered_inbox)+" has new mail\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n \n" # make sure there's at least one space in the message, for some clients that don't like empty body
 # (and don't put a date in the Subject line: the message's date is usually displayed anyway, and screen space might be in short supply)
