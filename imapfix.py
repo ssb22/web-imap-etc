@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.88 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.881 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -674,7 +674,6 @@ def run_spamprobe(action,message):
 
 def spamprobe_cleanup():
     if not spamprobe_command: return
-    make_sure_logged_out()
     debug("spamprobe cleanup")
     os.system(spamprobe_command+" cleanup")
 
@@ -1865,7 +1864,9 @@ def mainloop():
     if maildir_dedot: do_maildir_dedot()
     global filtered_inbox, sync_needed
     if filtered_inbox: process_imap_inbox()
+    rerun_before_idle = False
     if time.time() > secondary_imap_due and secondary_imap_hostname:
+        rerun_before_idle = True
         fiO = filtered_inbox
         if not filtered_inbox:
             make_sure_logged_in()
@@ -1873,9 +1874,10 @@ def mainloop():
         process_secondary_imap()
         filtered_inbox = fiO
         secondary_imap_due = time.time() + secondary_imap_delay
-    if logout_before_sleep or (sync_needed and (poll_interval=="idle" or not poll_interval)): make_sure_logged_out()
+    if logout_before_sleep or not poll_interval: make_sure_logged_out() # but stay logged in if it's "idle" as we want events received during sync_command to register if possible
     if sync_needed:
         debug("Running sync_command")
+        rerun_before_idle = sync_needed_only_if_wrote_maildirs
         os.system(sync_command) # might make a separate login, hence after logout_before_sleep
         debug("sync_command finished")
         if sync_needed_only_if_wrote_maildirs: sync_needed=False
@@ -1883,7 +1885,9 @@ def mainloop():
     if not done_spamprobe_cleanup_today:
         spamprobe_cleanup()
         done_spamprobe_cleanup_today = True
+        rerun_before_idle = not sync_command or sync_needed_only_if_wrote_maildirs
     if poll_interval=="idle":
+        if rerun_before_idle: continue # catch any messages that came in while we were running sync_command or whatever, since "idle" does not return immediately if there are pending ones (it's effectively a race condition, TODO: is there a better way to handle this?)
         make_sure_logged_in() ; imap.select()
         debug("Waiting for IMAP event")
         t = time.time()
