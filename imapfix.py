@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.881 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.882 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -839,6 +839,7 @@ def rewrite_return_path(msg):
     if not rewrite_return_path_SRS or not 'Return-Path' in msg: return
     rp = msg["Return-Path"]
     rp2 = re.sub(r"(?i)^<SRS(?:0|(?:1.*=))=[0-9a-z]+=[0-9a-z]+=([^=]+)=([^@]+)@.*$",r"\2@\1",rp)
+    if not (rp2.startswith('<') and rp2.endswith('>')): rp2='<'+rp2+'>' # even if not SRS (TODO: document that this is also controlled by rewrite_return_path_SRS; helps with rule portability, e.g. between gmail and outlook servers)
     if not rp==rp2:
         del msg["Return-Path"]
         msg["Return-Path"] = rp2 ; return True
