@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.882 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.883 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -192,6 +192,8 @@ rewrite_return_path_SRS=True # to undo the Sender Rewriting Scheme
 # in the Return-Path: you might want this if you rely on
 # Return-Path in extra rules and you want to be able to port
 # them to be behind a different forwarder
+
+add_return_path=True # if missing, before applying rules
 
 spamprobe_command = "spamprobe -H all" # (or = None)
 spam_folder = "spam"
@@ -877,7 +879,7 @@ def process_imap_inbox():
             changed = True
           if box and box[0]=='*': seenFlag="\\Seen"
           box=rename_folder(box,False) # don't set newmail markers for authenticated
-        if not box==None:
+        if not box==None: # authenticates didn't say delete
          # globalise charsets BEFORE the filtering rules
          # (especially if they've been developed based on
          # post-charset-conversion saved messages) - but
@@ -893,8 +895,11 @@ def process_imap_inbox():
          if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
          if changed: message = myAsString(msg)
          changed0 = changed # for change_message_id
-         if box==False:
+         if box==False: # authenticates didn't decide a box
           header = message[:message.find("\r\n\r\n")]
+          if add_return_path and not "\nReturn-Path" in header and "From" in msg:
+              header += "\r\nReturn-Path: <"+re.sub(">.*","",re.sub("^[^<]*<","",msg["From"]))+">" # to help processing rules depending on that, for locally-delivered messages without Return-Path or unixfrom
+              message = header+message[message.find("\r\n\r\n"):]
           box = process_header_rules(header)
           if box==False:
             try: box = rename_folder(extra_rules(message))
@@ -1270,6 +1275,10 @@ def rename_folder(folder,write_newmail=True):
 
 def listdir(d): return sorted(os.listdir(d))
 
+def destName(to):
+    if type(to)==tuple and to[0]=="maildir": return " ".join(to)
+    else: return "imap "+str(to)
+
 def do_maildirs_to_imap():
     mailbox.Maildir.colon = maildir_colon
     for d in listdir(maildirs_to_imap):
@@ -1277,7 +1286,7 @@ def do_maildirs_to_imap():
         if not os.path.exists(d2+os.sep+"cur"):
             continue # not a maildir
         to = rename_folder(d,False) # don't set newmail markers for maildirs_to_imap
-        debug("Moving messages from maildir ",d," to imap ",to)
+        debug("Moving messages from maildir ",d," to ",destName(to))
         m = get_maildir(d2)
         for k,msg in m.items():
             globalise_charsets(msg,imap_8bit)
@@ -1310,7 +1319,7 @@ def do_maildir_to_copyself():
     said = False
     for k,msg in m.items():
         if not said:
-            debug("Moving messages from ",maildir_to_copyself," to imap ",copyself_folder_name)
+            debug("Moving messages from ",maildir_to_copyself," to ",destName(copyself_folder_name))
             said = True
         globalise_charsets(msg,imap_8bit)
         if copyself_delete_attachments:
