@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.883 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.89 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -275,6 +275,13 @@ maildirs_to_imap = None # or path to a local directory of
 maildir_colon = ':'
 maildir_delete_emacs_backup_files = True # in case need to
 # edit any (e.g. postponed notes) directly in maildir
+
+maildir_to_process = None # or path to a local directory
+# which is assumed to be a maildir where unfiltered messages
+# are left, to be treated in same way as IMAP inbox
+# (use this for example if an imapfix on another machine
+# leaves notes there and you want them to be further
+# processed on this machine)
 
 maildir_dedot = None # or path to a local directory of
 # maildirs: any non-symlink Maildir++ "dot" folders
@@ -867,62 +874,8 @@ def process_imap_inbox():
             imapMsgid = msgID ; continue
         doneSomething = True
         msg = email.message_from_string(message)
-        box = changed = bypass_spamprobe = False ; seenFlag=""
-        if authenticates(msg):
-          # do auth'd-msgs processing before any convert-to-attachment etc
-          debug("Message authenticates")
-          bypass_spamprobe = True
-          box,newSubj = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject",""),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
-          if newSubj: # for postponed_foldercheck
-            del msg["Subject"]
-            msg["Subject"] = utf8_to_header(newSubj)
-            changed = True
-          if box and box[0]=='*': seenFlag="\\Seen"
-          box=rename_folder(box,False) # don't set newmail markers for authenticated
-        if not box==None: # authenticates didn't say delete
-         # globalise charsets BEFORE the filtering rules
-         # (especially if they've been developed based on
-         # post-charset-conversion saved messages) - but
-         # no point doing preview images or Office
-         # conversions for spam or to-delete messages
-         changed = globalise_charsets(msg,imap_8bit) or changed
-         changed = remove_blank_inline_parts(msg) or changed
-         changed = rewrite_deliveryfail(msg) or changed
-         changed = forced_from(msg) or changed
-         changed = quote_display_name_if_needed(msg) or changed
-         changed = rewrite_importance(msg) or changed
-         changed = rewrite_return_path(msg) or changed
-         if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
-         if changed: message = myAsString(msg)
-         changed0 = changed # for change_message_id
-         if box==False: # authenticates didn't decide a box
-          header = message[:message.find("\r\n\r\n")]
-          if add_return_path and not "\nReturn-Path" in header and "From" in msg:
-              header += "\r\nReturn-Path: <"+re.sub(">.*","",re.sub("^[^<]*<","",msg["From"]))+">" # to help processing rules depending on that, for locally-delivered messages without Return-Path or unixfrom
-              message = header+message[message.find("\r\n\r\n"):]
-          box = process_header_rules(header)
-          if box==False:
-            try: box = rename_folder(extra_rules(message))
-            except:
-                if not catch_extraRules_errors: raise
-                o = StringIO() ; traceback.print_exc(None,o)
-                save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(localtime=True),o.getvalue()))
-                box = filtered_inbox
-            if box==False:
-                if bypass_spamprobe: box = filtered_inbox
-                else: box = spamprobe_rules(message,is_additional and additional_inbox_train_spam)
+        box,message,changed,changed0,seenFlag = handleMsg(msg,message,is_additional)
         if box:
-            if not box==spam_folder:
-                if headers_to_delete and delete_headers(msg):
-                    changed0 = changed = True # for change_message_id
-                    added = True # so myAsString happens
-                else: added = False
-                if use_tnef: added = add_tnef(msg) or added
-                if image_size: added = add_previews(msg) or added
-                if office_convert: added = add_office(msg) or added
-                if pdf_convert: added = add_pdf(msg) or added
-                changed = added or changed # don't need to alter changed0 here, since if the only change is adding parts then change_message_id does not need to take effect (at least, not with Gmail January 2022)
-                if added: message = myAsString(msg)
             if seenFlag: copyWorked = False # unless we can get copy_to to set the Seen flag on the copy, which means the IMAP server must have an extension that causes COPY to return the new ID unless we want to search for it
             elif type(box)==tuple: copyWorked = False # e.g. imap to maildir
             elif not changed and saveImap == imap and (not imap_to_maildirs or box in imap_maildir_exceptions):
@@ -953,6 +906,82 @@ def process_imap_inbox():
         imap.store(imapMsgid, '-FLAGS', '\\Seen')
     check_ok(imap.expunge())
   if (not quiet) and imap==saveImap and not type(filtered_inbox)==tuple: debug("Quota ",repr(imap.getquotaroot(filtered_inbox)[1])) # RFC 2087 "All mailboxes that share the same named quota root share the resource limits of the quota root" - so if the IMAP server has been set up in a typical way with just one limit, this command should print the current and max values for that shared limit.  (STORAGE = size in Kb, MESSAGE = number)
+
+def handleMsg(msg,message=None,is_additional=True):
+    box = changed = changed0 = bypass_spamprobe = False ; seenFlag=""
+    if authenticates(msg):
+        # do auth'd-msgs processing before any convert-to-attachment etc
+        debug("Message authenticates")
+        bypass_spamprobe = True
+        box,newSubj = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject",""),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
+        if newSubj: # for postponed_foldercheck
+            del msg["Subject"]
+            msg["Subject"] = utf8_to_header(newSubj)
+            changed = True
+        if box and box[0]=='*': seenFlag="\\Seen"
+        box=rename_folder(box,False) # don't set newmail markers for authenticated
+    if not box==None: # authenticates didn't say delete
+        # globalise charsets BEFORE the filtering rules
+        # (especially if they've been developed based on
+        # post-charset-conversion saved messages) - but
+        # no point doing preview images or Office
+        # conversions for spam or to-delete messages
+        changed = globalise_charsets(msg,imap_8bit) or changed
+        changed = remove_blank_inline_parts(msg) or changed
+        changed = rewrite_deliveryfail(msg) or changed
+        changed = forced_from(msg) or changed
+        changed = quote_display_name_if_needed(msg) or changed
+        changed = rewrite_importance(msg) or changed
+        changed = rewrite_return_path(msg) or changed
+        if max_size_of_first_part and size_of_first_part(msg) > max_size_of_first_part: msg,changed = turn_into_attachment(msg),True
+        if changed or not message: message = myAsString(msg)
+        changed0 = changed # for change_message_id
+        if box==False: # authenticates didn't decide a box
+            header = message[:message.find("\r\n\r\n")]
+            if add_return_path and not "\nReturn-Path" in header and "From" in msg:
+                header += "\r\nReturn-Path: <"+re.sub(">.*","",re.sub("^[^<]*<","",msg["From"]))+">" # to help processing rules depending on that, for locally-delivered messages without Return-Path or unixfrom
+                message = header+message[message.find("\r\n\r\n"):]
+            box = process_header_rules(header)
+            if box==False:
+                try: box = rename_folder(extra_rules(message))
+                except:
+                    if not catch_extraRules_errors: raise
+                    o = StringIO() ; traceback.print_exc(None,o)
+                    save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(localtime=True),o.getvalue()))
+                    box = filtered_inbox
+                if box==False:
+                    if bypass_spamprobe: box = filtered_inbox
+                    else: box = spamprobe_rules(message,is_additional and additional_inbox_train_spam)
+    if box and not box==spam_folder:
+        if headers_to_delete and delete_headers(msg):
+            changed0 = changed = True # for change_message_id
+            added = True # so myAsString happens
+        else: added = False
+        if use_tnef: added = add_tnef(msg) or added
+        if image_size: added = add_previews(msg) or added
+        if office_convert: added = add_office(msg) or added
+        if pdf_convert: added = add_pdf(msg) or added
+        changed = added or changed # don't need to alter changed0 here, since if the only change is adding parts then change_message_id does not need to take effect (at least, not with Gmail January 2022)
+        if added: message = myAsString(msg)
+    return box,message,changed,changed0,seenFlag
+
+def process_maildir_inbox():
+    if not os.path.exists(maildir_to_process+os.sep+"cur"):
+        return # no error if it's not currently a maildir
+    mailbox.Maildir.colon = maildir_colon
+    m = get_maildir(maildir_to_process)
+    said = False
+    for k,msg in m.items():
+        if not said:
+            debug("Processing messages from ",maildir_to_process)
+            said = True
+        box,message,_,_,seenFlag = handleMsg(msg)
+        if box:
+            debug("Saving message to ",box)
+            save_to(box, message, seenFlag, False)
+        else: debug("Deleting message")
+        del m[k]
+    m.clean()
 
 def authenticates(msg):
     if not trusted_domain or not smtps_auth: return
@@ -1873,7 +1902,9 @@ def mainloop():
     if imap_to_maildirs: do_imap_to_maildirs()
     if maildir_dedot: do_maildir_dedot()
     global filtered_inbox, sync_needed
-    if filtered_inbox: process_imap_inbox()
+    if filtered_inbox:
+        process_imap_inbox()
+        if maildir_to_process: process_maildir_inbox()
     rerun_before_idle = False
     if time.time() > secondary_imap_due and secondary_imap_hostname:
         rerun_before_idle = True
@@ -2381,9 +2412,7 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
       elif ':' in smtp_host: # e.g. smtp.office365.com:587
         host,port = smtp_host.split(':')
         port = int(port)
-        import ssl
         s = smtplib.SMTP(host,port)
-        # s.set_debuglevel(1)
         s.ehlo()
         s.starttls() # TODO: keyfile,certfile if want to check (Python 2's smtplib can't just take a context=ssl.create_default_context() instead)
         s.ehlo()
