@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.583 (c) 2014-23 Silas S. Brown.
+# webcheck.py v1.584 (c) 2014-24 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -147,10 +147,10 @@ def read_input():
           if e.startswith(header+':'): extraHeaders.remove(e)
       if value: extraHeaders.append(line)
       continue
-    elif line.startswith("c://") and ' ; ' in line_withComment: # shell command
+    elif line.startswith("c://") and ' ; ' in line_withComment: # shell command (and if a comment character comes before the " ; " we can cope with that)
       url, text = line_withComment.split(' ; ',1)
-      # mainDomain = url # if can parallelise
-      mainDomain = "" # might be better not to, if it's ssh commands etc
+    elif line.startswith("c://"): # command that gives RSS
+      url, text = line, line_withComment[len(line):].lstrip() # RSS only, possibly with comment
     elif line.startswith('{') and '}' in line_withComment: # webdriver
       actions = line_withComment[1:line_withComment.index('}')].split()
       balanceBrackets(actions)
@@ -736,7 +736,7 @@ def parseRSS(url,content,comment):
   parser.StartElementHandler = StartElementHandler
   parser.EndElementHandler = EndElementHandler
   parser.CharacterDataHandler = CharacterDataHandler
-  if type(u"")==type(""): content = content.decode("utf-8") # Python 3 (expat needs 'strings' on each platform)
+  if type(u"")==type("") and not type(content)==type(""): content = content.decode("utf-8") # Python 3 (expat needs 'strings' on each platform)
   try: parser.Parse(re.sub("&[A-Za-z]*;",entityref,content),1)
   except expat.error as e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n(You might want to check if this URL is still serving RSS)\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
   for i in xrange(len(items)):
