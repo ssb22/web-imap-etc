@@ -29,7 +29,7 @@
 # and in China: https://gitee.com/ssb22/web-imap-etc
 
 max_threads = 10
-delay = 5 # seconds (3 insufficient for StackExchange rate limit)
+delay = 9 # seconds (5 insufficient for StackExchange rate limit)
 keep_etags = False # if True, will also keep any ETag headers as well as Last-Modified
 verify_SSL_certificates = False # webcheck's non-Webdriver URLs are for monitoring public services and there's not a lot of point in SSL authentication; failures due to server/client certificate misconfigurations are more trouble than they're worth
 
@@ -174,6 +174,7 @@ def read_input():
         # domains to treat as equivalent for rate reduce
         "superuser.com":"stackoverflow.com",
         "stackexchange.com":"stackoverflow.com",
+        "askubuntu.com":"stackoverflow.com",
       }.get(mainDomain,mainDomain),{}).setdefault(url,[])
       lastList.append((days,text,None))
   return ret
