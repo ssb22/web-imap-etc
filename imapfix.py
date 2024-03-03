@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.89 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.891 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -173,6 +173,13 @@ smtps_auth = None # or e.g. " with esmtpsa (LOGIN:me)"
 # adds at least one Received header to incoming mail.
 debug_trusted_domain=False # if setting this to True, change
 # quiet to not be True
+super_trusted_domain = None # like trusted_domain but assumes
+# messages delivered entirely within this domain (or list)
+# will not be allowed to have a fake From: smtp_fromHeader
+# (below), which can then be used to authenticate a message.
+# This is useful for services that don't add anything that
+# can be picked up from smtps_auth, but do block forged
+# From addresses on local messages.  Use carefully!
 
 # If handle_authenticated_message needs to send other mail
 # via SMTP, it can call
@@ -984,7 +991,8 @@ def process_maildir_inbox():
     m.clean()
 
 def authenticates(msg):
-    if not trusted_domain or not smtps_auth: return
+    return trusted_domain and smtps_auth and authenticates0(msg,trusted_domain,smtps_auth) or super_trusted_domain and authenticates0(msg,super_trusted_domain,None)
+def authenticates0(msg,trusted_domain,smtps_auth):
     rxd = msg.get_all("Received",[])
     if not rxd: return True # no Received headers = put in by imapfix on another machine
     for rx in rxd:
@@ -996,41 +1004,44 @@ def authenticates(msg):
           if type(trusted_domain)==list and "" in trusted_domain:
               # option is set: non-"from" rx header doesn't interrupt scan
               continue
-          else: break # if in doubt, don't trust this message
+          else: return False # if in doubt, don't trust this message
       claimed_from, tcp_from_and_other, receiving_machine, other = m.groups()
       # The identity of receiving_machine is trusted by induction: if all (0 or more) previous headers were trusted to correctly report both themselves and the next hop, and if said 'next hop' reports all identified trusted networks, then we trust the claim of the receiving machine on this header.  (This implies we always trust the claim of the first such header if any trusted_domain is set.)
       if type(trusted_domain)==list:
           if not any(receiving_machine.endswith(t) for t in trusted_domain if t): # (not on any of our networks: this normally means there will have been 0 previous headers and this message has been introduced by some other method, so don't trust it)
               if debug_trusted_domain: debug("Not on any trusted network: ",repr(rx))
-              break
+              return False
       elif not receiving_machine.endswith(trusted_domain):
           if debug_trusted_domain: debug("Not on trusted network: ",repr(rx))
-          break
+          return False
       # We are trusting all machines so far never to incorrectly report an authentication.  So if THIS machine reports an authentication (wherever the message came from on previous hop) then we pass it.
       if not tcp_from_and_other: tcp_from_and_other = ""
       if not other: other = ""
       check_for_auth_info = tcp_from_and_other + other # smtps_auth has been known to occur in EITHER of these places (Postfix puts it after the TCP info; Exim puts it after the receiver in the "with" section)
       if type(smtps_auth)==list:
           if any((s in check_for_auth_info or len(s.split())==2 and s.split()[0]=="from" and s.split()[1]==claimed_from and not tcp_from_and_other) for s in smtps_auth): return True
+      elif not smtps_auth: pass # for super_trusted_domain
       elif smtps_auth in check_for_auth_info or len(smtps_auth.split())==2 and smtps_auth.split()[0]=="from" and smtps_auth.split()[1]==claimed_from and not tcp_from_and_other: return True
       # Now check next-older hop.  If it is not on any of our trusted networks, then stop trusting, no matter what is claimed in further Received headers.
       # If any server on your network fails to put a reverse-DNS before the [...] the IP address of the next hop must be included in the trusted_domain list.  If there's no [...] then we assume that means claimed_from is correct.
-      m = re.match(r" \(([^)\[]*)\[([^)\]]*)\][^)]*\)",tcp_from_and_other)
+      m = re.match(r" \(([^)\[]+)\[([^)\]]*)\][^)]*\)",tcp_from_and_other) # after "from claimedDNS" we read " (reverseDNS [IP])"
       if m: reverse_dns, ip = m.groups()
-      elif re.match(r" \([0-9a-fA-F.:]+\)$",tcp_from_and_other): reverse_dns,ip = claimed_from,tcp_from_and_other[2:-1] # just IP + we're trusting the server to tell us that claimed_from is correct
+      elif re.match(r" \(\[?[0-9a-fA-F.:]+\]?\)$",tcp_from_and_other): reverse_dns,ip = claimed_from,tcp_from_and_other[2:-1].replace('[','').replace(']','') # just IP + we're trusting the server to tell us that claimed_from is correct
       else:
           if debug_trusted_domain: debug("Can't parse from+other field ",repr(tcp_from_and_other),", assuming untrusted")
-          break
+          return False
       reverse_dns = reverse_dns.strip()
       if reverse_dns.endswith('.'): reverse_dns=reverse_dns[:-1] # gmail bug
       if type(trusted_domain)==list:
           if not any((reverse_dns.endswith(t) or ip==t) for t in trusted_domain if t):
               if debug_trusted_domain: debug("Can't find any trusted domain in reverse DNS ",repr(reverse_dns)," in ",repr(rx))
-              break
+              return False
       elif not reverse_dns.endswith(trusted_domain):
           if debug_trusted_domain: debug("Can't find trusted domain in reverse DNS ",repr(reverse_dns)," in ",repr(rx))
-          break
-    if debug_trusted_domain: debug("smtp_auth not found")
+          return False
+    if smtps_auth:
+        if debug_trusted_domain: debug("Reached end of Received headers but smtps_auth not found")
+    else: return len(msg.get_all("From",[]))==1 and msg["From"].replace('"','')==smtp_fromHeader.replace('"','') # for super_trusted_domain
 
 def imapfixNote(): return "From: "+from_line+"\r\nSubject: Folder "+repr(filtered_inbox)+" has new mail\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n \n" # make sure there's at least one space in the message, for some clients that don't like empty body
 # (and don't put a date in the Subject line: the message's date is usually displayed anyway, and screen space might be in short supply)
