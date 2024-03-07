@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.891 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.892 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -2261,7 +2261,7 @@ def do_imap_to_maildirs():
 
 def do_maildir_dedot():
     for poss in os.listdir(maildir_dedot):
-        if poss.startswith(".") and not os.path.islink(maildir_dedot+os.sep+poss) and os.path.exists(maildir_dedot+os.sep+poss+os.sep+"cur"):
+        if poss.startswith(".") and not poss==".postponed" and not os.path.islink(maildir_dedot+os.sep+poss) and os.path.exists(maildir_dedot+os.sep+poss+os.sep+"cur"):
             debug("Moving messages from maildir ",poss," to maildir ",poss[1:])
             m = get_maildir(maildir_dedot+os.sep+poss)
             for k,msg in m.items():
