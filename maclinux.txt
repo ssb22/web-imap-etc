@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.599 (c) Silas S. Brown 2012-24.
+# Version 1.6 (c) Silas S. Brown 2012-24.
 
 # Tested in zsh on macOS 11.4 through 14.1,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -166,7 +166,7 @@ for App in sys.argv[1:]:
     . $T ; rm $T ; unset T; }
 else DefineApps () { false ; }; fi
 DefineApps /Applications /System/Applications /usr/local/Cellar/emacs
-if declare -f xcode >/dev/null; then DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; fi #'# (might find iphone-simulator etc there)
+if declare -f xcode >/dev/null; then DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Developer/Applications"; fi #'# (might find iphone-simulator etc there)
 unset DefineApps
 
 if [ -e /Applications/MacPorts/VLC.app/Contents/MacOS/VLC ]; then
