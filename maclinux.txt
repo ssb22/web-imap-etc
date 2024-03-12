@@ -2,7 +2,7 @@
 # Script to make the Mac more Linux-like
 # Version 1.6 (c) Silas S. Brown 2012-24.
 
-# Tested in zsh on macOS 11.4 through 14.1,
+# Tested in zsh on macOS 11.4 through 14.2,
 # and in bash on Mac OS X 10.7 through 10.14.
 
 # This script can go in your ~/.zshrc (10.15+)
