@@ -21,5 +21,5 @@ for F in *.jpg *.JPG; do if test -e "$F"; then
           echo "<img style=\"width:100%; height:auto;\" src=\"$F\">"
          ;;
       esac
-  echo "$F" 1>&2
+  echo "$F" >&2
 fi; done ) > index.html && du -h index.html && exit

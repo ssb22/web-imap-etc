@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.6 (c) Silas S. Brown 2012-24.
+# Version 1.601 (c) Silas S. Brown 2012-24.
 
 # Tested in zsh on macOS 11.4 through 14.2,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -134,7 +134,7 @@ alias battery-status='pmset -g batt' # for MacBook laptops
 # just make an 'update-functions' cmd for use when wanted?
 if [ -e /usr/bin/python3 ] ; then export DefineAppsPython=/usr/bin/python3
 elif [ -e /usr/bin/python2 ] ; then export DefineAppsPython=/usr/bin/python2
-else echo "maclinux cannot find system Python: most of our application shortcuts will NOT be defined" 1>&2; fi # TODO: search path for a user-installed Python?
+else echo "maclinux cannot find system Python: most of our application shortcuts will NOT be defined" >&2; fi # TODO: search path for a user-installed Python?
 if ! /usr/bin/which -s python2 && /usr/bin/which -s python2.7; then python2 () { python2.7 "$@" ; } ; export -f python2 >/dev/null; fi # e.g. MacPorts on macOS 12.3 (no system python2)
 if [ "$DefineAppsPython" ]; then
 if ! /usr/bin/which -s python; then python () { "$DefineAppsPython" "$@" ; } ; export -f python >/dev/null; fi
