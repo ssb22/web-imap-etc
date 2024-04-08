@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.584 (c) 2014-24 Silas S. Brown.
+# webcheck.py v1.59 (c) 2014-24 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@
 # and in China: https://gitee.com/ssb22/web-imap-etc
 
 max_threads = 10
-delay = 9 # seconds (5 insufficient for StackExchange rate limit)
+delay = 80 # seconds between fetches on same domain-set
 keep_etags = False # if True, will also keep any ETag headers as well as Last-Modified
 verify_SSL_certificates = False # webcheck's non-Webdriver URLs are for monitoring public services and there's not a lot of point in SSL authentication; failures due to server/client certificate misconfigurations are more trouble than they're worth
 
@@ -292,14 +292,19 @@ def worker_thread(*args):
           if (url,'lastFetch') in previous_timestamps and not '--test-all' in sys.argv: # (--test-all is different from removing .webcheck.last because it shouldn't also re-output old items in RSS feeds)
               minDays = min(d[0] for d in checklist)
               if minDays and previous_timestamps[(url,'lastFetch')]+minDays >= dayNo(): continue
+          oldPrev=previous_timestamps.get((url,'lastFetch'),None)
           previous_timestamps[(url,'lastFetch')] = dayNo() # (keep it even if minDays==0, because that might be changed by later edits of webcheck.list)
-          r = doJob(opener,delayer,url,checklist,extraHeaders)
+          try: r = doJob(opener,delayer,url,checklist,extraHeaders)
+          except CDNBackoff:
+            if oldPrev: previous_timestamps[(url,'lastFetch')] = oldPrev
+            break # skip all other items in this domain set
           if r: # elseLogic yielded more items for this job (don't give to another thread, we need the same delayer as it might be retry on same URL)
             r.reverse() ; items += r # try to keep pop() sequence in order
       except Exception as e:
         print ("Unhandled exception processing job "+repr(job))
         print (traceback.format_exc())
       jobs.task_done()
+class CDNBackoff(Exception): pass
 
 def doJob(opener,delayer,url,checklist,extraHeaders):
   failRet = [c[2] for c in checklist if c[2]]
@@ -392,13 +397,16 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       textContent = None
   delayer.done()
   if content==None: return # not modified (so nothing to report), or problem retrieving (which will have been reported by tryRead0: TODO: return failRet in these circumstances so elseLogic can proceed?)
+  if B(content).startswith(B("<!DOCTYPE html>")):
+    textContent,errmsg=htmlStrings(content)
+    if B(textContent)==B("Just a moment... Enable JavaScript and cookies to continue"): raise CDNBackoff() # might not be able to check the rest of this domain today (at least not without starting a webdriver, but for things like 'checking if my StackExchange answers have been vandalised' the site probably doesn't want too many automated fetches; would be easier if they provided an RSS feed for each user)
   if u:
       lm = u.info().get("Last-Modified",None)
       if lm: previous_timestamps[(url,'lastMod')] = lm
       if keep_etags:
         e = u.info().get("ETag",None)
         if e: previous_timestamps[(url,'ETag')] = e
-  toRet = []
+  toRet = [] ; errmsg = ""
   for item in checklist:
       t = item[1]
       if t.startswith('>'):
@@ -409,7 +417,6 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       else:
         if textContent==None:
           textContent,errmsg=htmlStrings(content)
-        else: errmsg = ""
         out=check(t,textContent,url,errmsg)
       if out:
         if item[2]: toRet.append(item[2])
@@ -708,7 +715,7 @@ def check(text,content,url,errmsg):
             return url+" contains "+text[1:]+comment+errmsg+"\n"
     elif not myFind(text,content): # alert if DOESN'T contain
         r=linkify(url)+" no longer contains "+text+comment+errmsg+"\n"
-        if '??show?' in orig_comment: writeBuf(sys.stdout,B("Debug: contents of "+linkify(url)+" is:\n")+content+B('\n')) # TODO: document this
+        if '??show?' in orig_comment: writeBuf(sys.stdout,B("Debug: contents of "+linkify(url)+" is:\n")+B(content)+B('\n')) # TODO: document this
         return r
 
 def parseRSS(url,content,comment):
@@ -792,7 +799,7 @@ def simplifyTag(match):
     if ' ' in m: return m.split()[0]+'>' # strip attributes
     else: return m
   else: return "" # strip entire tag
-def linkify(link): return link.replace("(","%28").replace(")","%29") # for email clients etc that terminate URLs at parens
+def linkify(link): return S(link).replace("(","%28").replace(")","%29") # for email clients etc that terminate URLs at parens
 
 def extract(url,content,startEndMarkers,comment):
   assert len(startEndMarkers)==2, "Should have exactly one '...' between the braces when extracting items"
