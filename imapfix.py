@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.892 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.893 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -660,11 +660,12 @@ if image_size:
 
 import commands
 
+running_mainloop = False
 def debug(*args):
-    if quiet==False: 
-        print (reduce((lambda a,b:a+str(b)), args, ""))
+    args = reduce((lambda a,b:a+str(b)), args, time.asctime()+": " if running_mainloop else "")
+    if quiet==False: print (args)
     elif not quiet: # quiet=None (not False) means use stderr.  (In Python, 0==False but None!=False)
-        sys.stderr.write(reduce((lambda a,b:a+str(b)), args, "")+"\n")
+        sys.stderr.write(args+"\n")
 
 def check_ok(r):
     "Checks that the return value of an IMAP call 'r' is OK, raises exception if not"
@@ -1889,6 +1890,7 @@ def checkAlarmDelay():
         setAlarmAt = time.time() + alarm_delay/2
 
 def mainloop():
+  global running_mainloop ; running_mainloop = poll_interval
   newDay = oldDay = time.localtime()[:3] # for midnight
   done_spamprobe_cleanup_today = False
   secondary_imap_due = 0
@@ -1903,7 +1905,6 @@ def mainloop():
   debug(__doc__)
   try:
    if postponed_foldercheck or postponed_daynames: do_postponed_foldercheck("old")
-   if poll_interval: debug("Starting loop at %d-%02d-%02d %d:%02d" % time.localtime()[:5])
    while True:
     if alarm_delay: checkAlarmDelay()
     if maildirs_to_imap: do_maildirs_to_imap()
