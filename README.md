@@ -1,10 +1,9 @@
 WebCheck
 ========
 
-From http://ssb22.user.srcf.net/setup/webcheck.html (also mirrored at http://ssb22.gitlab.io/setup/webcheck.html just in case)
+From http://ssb22.user.srcf.net/setup/webcheck.html (also mirrored at http://ssb22.gitlab.io/setup/webcheck.html just in case, or you can use `pip install webcheck-strings` or `pipx run webcheck-strings` if you prefer)
 
-webcheck.py requires Python, and is compatible with both Python 2 and Python 3.
-It is a program to check Web pages for changes to specific phrases of text. I currently use it to:
+WebCheck is a Python program (compatible with both Python 2 and Python 3) to check Web pages for changes to specific phrases (strings) of text. I currently use it to:
 
 * check that external links from my website still lead to the information that was there when I added them (I might need to update my links otherwise), and check whether or not I need to warn Lynx users about misguided blocking,
 * check the websites of companies, organisations or governments for changes to a specific rule to which I'd be interested in changes (for example because it applies to myself or someone I know, or because I've commented on it somewhere and my comment might need updating),
