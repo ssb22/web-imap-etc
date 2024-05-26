@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.59 (c) 2014-24 Silas S. Brown.
+# webcheck.py v1.6 (c) 2014-24 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,6 @@
 # and in China: https://gitee.com/ssb22/web-imap-etc
 
 max_threads = 10
-delay = 80 # seconds between fetches on same domain-set
 keep_etags = False # if True, will also keep any ETag headers as well as Last-Modified
 verify_SSL_certificates = False # webcheck's non-Webdriver URLs are for monitoring public services and there's not a lot of point in SSL authentication; failures due to server/client certificate misconfigurations are more trouble than they're worth
 
@@ -237,7 +236,8 @@ def main():
 
     # 1 job per domain:
     global jobs ; jobs = Queue.Queue()
-    for v in read_input().values(): jobs.put(v)
+    for mainDomain,jobItems in read_input().items():
+      jobs.put((mainDomain,jobItems))
     
     global previous_timestamps
     try: previous_timestamps = pickle.Unpickler(open(".webcheck-last","rb")).load()
@@ -268,19 +268,24 @@ default_ua = 'Mozilla/5.0 or whatever you like (actually Webcheck)'
 # people to hide their tools from webmasters unnecessarily.
 
 class Delayer:
-  def __init__(self): self.last_fetch_finished = 0
+  def __init__(self,mainDomain):
+    self.last_fetch_finished = 0
+    if mainDomain=="stackoverflow.com":
+      # (or other Stack Exchange sites)
+      self.delay = 80 # seconds between fetches to these sites
+    else: self.delay = 3 # (want small if checking many pages and the server doesn't mind, but still non-0)
   def wait(self):
-    time.sleep(max(0,self.last_fetch_finished+delay-time.time()))
+    time.sleep(max(0,self.last_fetch_finished+self.delay-time.time()))
     if sys.stderr.isatty(): sys.stderr.write('.'),sys.stderr.flush()
   def done(self): self.last_fetch_finished = time.time()
 
 def worker_thread(*args):
     opener = [None]
     while True:
-      try: job = jobs.get(False)
+      try: mainDomain,job = jobs.get(False)
       except: return # no more jobs left
       try:
-        delayer = Delayer()
+        delayer = Delayer(mainDomain)
         items = sorted(job.items()) # sorted will group http and https together
         items.reverse()
         while items:
@@ -306,6 +311,7 @@ def worker_thread(*args):
       jobs.task_done()
 class CDNBackoff(Exception): pass
 
+import threading ; lock = threading.Lock() # webcheck-debug
 def doJob(opener,delayer,url,checklist,extraHeaders):
   failRet = [c[2] for c in checklist if c[2]]
   delayer.wait()
@@ -502,7 +508,7 @@ def run_webdriver_inner(actionList,browser):
             # wait for "string" to appear in the source
             tries = 30
             while tries and not myFind(a[1:-1],getSrc()):
-              time.sleep(delay) ; tries -= 1
+              time.sleep(2) ; tries -= 1
             if not tries:
               try: current_url = browser.current_url
               except: current_url = "(unable to obtain)"
@@ -586,7 +592,7 @@ def run_webdriver_inner(actionList,browser):
         elif re.match("[0-9]+$",a): time.sleep(int(a))
         else: sys.stdout.write("Ignoring webdriver unknown action "+repr(a)+'\n')
         if sys.stderr.isatty(): sys.stderr.write(':'),sys.stderr.flush() # webdriver's '.'
-        time.sleep(delay)
+        time.sleep(2)
     snippets.append(getSrc())
     return B('\n').join(snippets)
 
