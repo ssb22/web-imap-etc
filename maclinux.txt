@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.61 (c) Silas S. Brown 2012-24.
+# Version 1.62 (c) Silas S. Brown 2012-24.
 
 # Tested in zsh on macOS 11.4 through 14.4,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -54,7 +54,7 @@ export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local
 export MANPATH=$MANPATH:/usr/local/opt/coreutils/libexec/gnuman
 [ ! "$ZSH_NAME" ] && [ -e /sw/bin/init.sh ] && . /sw/bin/init.sh
 
-for N in "$HOME"/Library/Python/*/bin; do [ -e "$N" ] && export PATH="$PATH:$N"; done # for pip install --user (without --user it's /usr/local/bin)
+for N in "$HOME"/Library/Python/*/bin "$HOME"/.local/bin; do [ -e "$N" ] && export PATH="$PATH:$N"; done # for pip and pipx installing packages as user
 
 if [ ! "$ZSH_NAME" ] && /usr/bin/which -s brew; then
   # don't need any of our aliases when running HomeBrew scripts & it's quicker to bypass this file when doing so
