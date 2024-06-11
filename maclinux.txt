@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.62 (c) Silas S. Brown 2012-24.
+# Version 1.63 (c) Silas S. Brown 2012-24.
 
 # Tested in zsh on macOS 11.4 through 14.5,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -48,8 +48,8 @@ export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV
 # Check SMART status of primary hard disk:
 diskutil info disk0|grep SMART|grep -v 'Status:[^A-z]*Verified$' && echo "Hard disk failing: backup NOW" && echo
 
-# Support installations of HomeBrew/MacTex/MacPorts/Fink:
-export PATH=/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
+# Support installations of HomeBrew/MacTex/MacPorts/Fink/Golang:
+export PATH=/usr/local/go/bin:/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
 # (gnubin (from coreutils package) comes last so Mac versions take priority, just in case; coreutils has some commands not otherwise available e.g. factor, md5sum)
 export MANPATH=$MANPATH:/usr/local/opt/coreutils/libexec/gnuman
 [ ! "$ZSH_NAME" ] && [ -e /sw/bin/init.sh ] && . /sw/bin/init.sh
