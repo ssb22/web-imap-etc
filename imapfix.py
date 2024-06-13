@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.893 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.894 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -2114,7 +2114,7 @@ def multinote(filelist,to_real_inbox,use_filename=False):
         if os.path.isdir(f):
             multinote([(f+os.sep+g) for g in listdir(f)],to_real_inbox,use_filename)
             continue
-        if not os.path.isfile(f):
+        if not os.path.isfile(f) and not f=="/dev/stdin":
             debug("Ignoring non-file non-directory ",f)
             continue
         if not f.endswith('~'):
@@ -2124,7 +2124,7 @@ def multinote(filelist,to_real_inbox,use_filename=False):
             else: subj = None
             r = do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj)
             if r: debug(r+" ",f)
-        tryRm(f)
+        if not f=="/dev/stdin": tryRm(f)
 
 def tryRm(f):
     try: os.remove(f)
@@ -2465,7 +2465,22 @@ import imapfix_config
 imapfix_config.send_mail = send_mail
 
 if __name__ == "__main__":
-  if '--archive' in sys.argv: do_archive()
+  if '--help' in sys.argv: print(" | ".join([
+          '--archive',
+          '--quicksearch <string>',
+          '--delete <folders>','--delete-secondary <folders>',
+          '--create <folders>','--create-secondary <folders>',
+          '--copy <folders to secondary>',
+          '--backup (to local)',
+          '--note <subject>','--note-inbox <subject>',
+          '--maybenote <subject>','--htmlnote <subject>',
+          '--multinote <files>','--multinote-inbox <files>',
+          '--multinote-fname <files>',
+          '--multinote-inbox-fname <files>',
+          '--upload <files>',
+          '--once','--fix-archives',
+          '--help']))
+  elif '--archive' in sys.argv: do_archive()
   elif '--quicksearch' in sys.argv: do_quicksearch(' '.join(sys.argv[sys.argv.index('--quicksearch')+1:]))
   elif '--delete' in sys.argv: do_delete(' '.join(sys.argv[sys.argv.index('--delete')+1:]))
   elif '--delete-secondary' in sys.argv:
