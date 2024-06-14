@@ -49,7 +49,7 @@ export __OldBashEnv="$BASH_ENV" ; unset BASH_ENV
 diskutil info disk0|grep SMART|grep -v 'Status:[^A-z]*Verified$' && echo "Hard disk failing: backup NOW" && echo
 
 # Support installations of HomeBrew/MacTex/MacPorts/Fink/Golang:
-export PATH=/usr/local/go/bin:/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
+export PATH=/usr/local/go/bin:$HOME/go/bin:/usr/texbin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/local/sbin:$PATH:/usr/local/opt/coreutils/libexec/gnubin
 # (gnubin (from coreutils package) comes last so Mac versions take priority, just in case; coreutils has some commands not otherwise available e.g. factor, md5sum)
 export MANPATH=$MANPATH:/usr/local/opt/coreutils/libexec/gnuman
 [ ! "$ZSH_NAME" ] && [ -e /sw/bin/init.sh ] && . /sw/bin/init.sh
@@ -164,7 +164,7 @@ for App in sys.argv[1:]:
  for Command in Commands: print (getF(orApp(Command),App))' >> $T
     . $T ; rm $T ; unset T; }
 else DefineApps () { false ; }; fi
-DefineApps /Applications /System/Applications /usr/local/Cellar/emacs
+DefineApps /Applications /System/Applications /System/Library/CoreServices/Applications /usr/local/Cellar/emacs
 if declare -f xcode >/dev/null; then DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Applications"; DefineApps "$(declare -f xcode|grep -i '^\s*open.*/Xcode.app'|head -1|sed -e 's/[^"]*"//' -e 's/".*//')/Contents/Developer/Applications"; fi #'# (might find iphone-simulator etc there)
 unset DefineApps
 
