@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.63 (c) Silas S. Brown 2012-24.
+# Version 1.64 (c) Silas S. Brown 2012-24.
 
 # Tested in zsh on macOS 11.4 through 14.5,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -138,6 +138,7 @@ if ! /usr/bin/which -s python2 && /usr/bin/which -s python2.7; then python2 () {
 if [ "$DefineAppsPython" ]; then
 if ! /usr/bin/which -s python; then python () { "$DefineAppsPython" "$@" ; } ; export -f python >/dev/null; fi
 if ! /usr/bin/which -s jq && [ $(python --version 2>&1|sed -e 's/.* //' -e 's/\.//' -e 's/\..*//') -ge 26 ]; then jq () { python -m json.tool "$@" ; } ; export -f jq >/dev/null; fi
+if ! /usr/bin/which -s factor && [ -e /opt/local/bin/gfactor ] ; then factor () { gfactor "$@" ; } ; export -f factor >/dev/null; fi # MacPorts coreutils
 DefineApps () {
     export T=$(mktemp /tmp/$PPID''XXXXXX)
     find "$@" '(' -type d -or -type l ')' -name '*.app' -prune -print0 2>/dev/null |
