@@ -1,5 +1,5 @@
 /*
-  Time and Item Counter (c) 2004-2023 Silas S. Brown.
+  Time and Item Counter (c) 2004-2024 Silas S. Brown.
   
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
   2010: Javascript version
   2019: Node.js option in JS version
   2023: support decimal fractions of hours
+  2024: 'undo' option in browser
 
   Command-line usage: echo "1234-507" | node timetrack.js
   
@@ -31,10 +32,14 @@
 
   */
 
-function save() { var v=document.forms[0].txt.value; if(window.localStorage!=undefined) localStorage.setItem('ttrk',v); else { document.cookie="ttrk="+escape(v)+"; path=/; expires=Sun, 27-Sep-2037 00:00:00 GMT"; if(document.cookie && getC()!=v && !this.alerted_already) { alert("Too much text to save as cookie (try add-up, or enable HTML-5 Storage)"); this.alerted_already=true } } }
+var undoStackLen = 10;
+function storeItem(k,v){if(v==null){if(localStorage.getItem(k)!=null)localStorage.removeItem(k)}else localStorage.setItem(k,v)}
+function save() { var v=document.forms[0].txt.value; if(window.localStorage!=undefined) {if(v!=localStorage.getItem('ttrk')) {for(i=undoStackLen;i>0;i--)storeItem('ttrk'+i,localStorage.getItem('ttrk'+(i-1)));storeItem('ttrk0',localStorage.getItem('ttrk'));for(i=0;i<undoStackLen;i++)storeItem('ttR'+i,null);document.forms[0].redoButton.disabled=true; document.forms[0].undoButton.disabled=false; localStorage.setItem('ttrk',v)} } else { document.cookie="ttrk="+escape(v)+"; path=/; expires=Sun, 27-Sep-2037 00:00:00 GMT"; if(document.cookie && getC()!=v && !this.alerted_already) { alert("Too much text to save as cookie (try add-up, or enable HTML-5 Storage)"); this.alerted_already=true } } }
 function load() { if(window.localStorage!=undefined) document.forms[0].txt.value=localStorage.getItem('ttrk'); else document.forms[0].txt.value=getC() }
 function getC() { var dc=document.cookie; var i=dc.indexOf("ttrk="); if(i==-1) return ""; i+=5; var e=dc.indexOf(";",i); if(e==-1) e=dc.length; return unescape(dc.substring(i,e)) }
-// TODO: undo/redo?  (for browsers that don't have it natively) as save is now automatic
+function clear() {document.forms[0].txt.value='';save(); if(window.localStorage!=undefined) for(i=0;i<=undoStackLen;i++){storeItem('ttrk'+i,null);storeItem('ttR'+i,null)} document.forms[0].undoButton.disabled=true; document.forms[0].redoButton.disabled=true; doOtherButtons(); } // in at least some versions of Chromium, we can't call confirm() from this script (it'll just return false with no error if called from an onclick handler, although works ok if called from the Developer Console), but we can call it from the onclick attribute itself and call this function only if clear is confirmed
+function undo() { if(window.localStorage!=undefined){for(i=undoStackLen;i>0;i--)storeItem('ttR'+i,localStorage.getItem('ttR'+(i-1)));storeItem('ttR0',localStorage.getItem('ttrk'));localStorage.setItem('ttrk',localStorage.getItem('ttrk0'));for(i=0;i<undoStackLen;i++)storeItem('ttrk'+i,localStorage.getItem('ttrk'+(i+1)));storeItem('ttrk'+undoStackLen,null);document.forms[0].undoButton.disabled=(localStorage.getItem('ttrk0')==null);document.forms[0].redoButton.disabled=false;load()} }
+function redo() { if(window.localStorage!=undefined){for(i=undoStackLen;i>0;i--)storeItem('ttrk'+i,localStorage.getItem('ttrk'+(i-1)));storeItem('ttrk0',localStorage.getItem('ttrk'));document.forms[0].undoButton.disabled=false;storeItem('ttrk',localStorage.getItem('ttR0'));load();for(i=0;i<undoStackLen;i++)storeItem('ttR'+i,localStorage.getItem('ttR'+(i+1)));storeItem('ttR'+undoStackLen,null);document.forms[0].redoButton.disabled=(localStorage.getItem('ttR0')==null)} }
 
 function doPredefinedText(txt) { document.forms[0].txt.value = txt+" "+document.forms[0].txt.value; save() }
 // TODO: option to auto doAddup() at end of doPredefinedText that isn't called from doNow?  but might be best NOT to do this if it adds to existing figures, making it less obvious how many times the button was pressed
