@@ -168,7 +168,7 @@ The script can be added to, or sourced from, your `~/.bashrc` and/or `~/.bash_pr
 timetrack.js
 ============
 
-This Javascript-based tool can be used to add up the time you spend on projects, and can also count arbitrary items along the way. The input is text-based (so it can be copied from a PDA or whatever) and can run either [in the browser](http://ssb22.user.srcf.net/gradint/timetrack.html) or on the command line via Node.js. You can enter:
+This Javascript-based tool can be used to add up the time you spend on projects, and can also count arbitrary items along the way. The input is text-based (so it can be copied from a PDA or whatever) and can run either [in the browser](http://ssb22.user.srcf.net/timetrack.html) or on the command line via Node.js. You can enter:
 
 * Hours and minutes e.g. `3h 5min` or decimal fractions of hours e.g. `1.5h` (start with e.g. `0.0h` to get *output* as decimal fractions)
 * Starting and finishing times e.g. `954-1023` for start at 9:54 and stop at 10:23 (if stopping in the same hour, you need specify only the 2-digit minute after the `-`); a button to start/stop at the current time is provided
