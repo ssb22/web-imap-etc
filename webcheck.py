@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.6 (c) 2014-24 Silas S. Brown.
+# webcheck.py v1.601 (c) 2014-24 Silas S. Brown.
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -103,7 +103,7 @@ def read_input():
   days = 0 ; extraHeaders = []
   url = mainDomain = None
   lines = read_input_file()
-  lastList = None
+  lastList = None # refs a list within ret, of [(days,text,elseLogic)]
   while lines:
     line = line_withComment = " ".join(lines.pop().split())
     if " #" in line: line = line[:line.index(" #")].strip()
@@ -167,7 +167,7 @@ def read_input():
     if isElse:
       assert lastList, "else without suitable rule before it"
       lastList[-1] = lastList[-1][:2] + ((url,[(0,text,None)]),) # must be days=0 because don't want to re-check the days count when just retrieved and failed something possibly on same URL ('else:' can be used for simple retrying)
-      lastList = lastList[-1][2][1] # so 'else' can be used as 'else if'
+      lastList = lastList[-1][2][1] # ref the above list (the one after url), so 'else' can be used as 'else if' and next iteration extends it
     else:
       lastList = ret.setdefault({
         # domains to treat as equivalent for rate reduce
@@ -419,13 +419,13 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
           out=check(t[1:],content,"Source of "+url,"")
       elif not t or t.startswith('#'):
           parseRSS(url,content,t.replace('#','',1).strip())
-          out = None
+          out = None # (no else: after real RSS, but you can do else: for no extracted items: that goes through check() above)
       else:
         if textContent==None:
           textContent,errmsg=htmlStrings(content)
         out=check(t,textContent,url,errmsg)
-      if out:
-        if item[2]: toRet.append(item[2])
+      if out: # something to alert, unless else:
+        if item[2]: toRet.append(item[2]) # else:
         else: sys.stdout.write(out) # don't use 'print' or may have problems with threads
   return toRet
 
@@ -714,7 +714,7 @@ def check(text,content,url,errmsg):
     if comment: comment="\n  "+paren(comment)
     text = text.strip()
     assert text # or should have gone to parseRSS instead
-    if text.startswith('{') and text.endswith('}') and '...' in text: extract(url,content,text[1:-1].split('...'),orig_comment)
+    if text.startswith('{') and text.endswith('}') and '...' in text: return extract(url,content,text[1:-1].split('...'),orig_comment)
     elif text.startswith("!"): # 'not', so alert if DOES contain
         if len(text)==1: return # TODO: print error?
         if myFind(text[1:],content):
@@ -820,8 +820,8 @@ def extract(url,content,startEndMarkers,comment):
     c = content[i+len(start):j].decode('utf-8').strip()
     if c: items.append(('Auto-extracted text:','',c,"")) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
     i = j+len(end)
-  if not items: print ("No items were extracted from "+url+" via "+S(start)+"..."+S(end)+" (check that site changes haven't invalidated this extraction rule)")
-  handleRSS(url,items,comment,"extracted")
+  if not items: return ("No items were extracted from "+url+" via "+S(start)+"..."+S(end)+" (check that site changes haven't invalidated this extraction rule)")
+  else: handleRSS(url,items,comment,"extracted")
 
 def myFind(text,content):
   text,content = B(text),B(content)
