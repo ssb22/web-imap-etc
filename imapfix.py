@@ -628,7 +628,10 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from imapfix_config import *
+import sys
+if not "--help" in sys.argv and not "--version" in sys.argv:
+    import imapfix_config
+    from imapfix_config import *
 import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback,mimetypes
 if not sys.version_info[0]==2:
     print ("ERROR: ImapFix is a Python 2 program and should be run with 'python2'.\nIt needs major revision for Python 3's version of the email library.\nTry compiling Python 2.7 in your home directory if it's no longer installed on your system.")
@@ -1895,7 +1898,6 @@ def mainloop():
   done_spamprobe_cleanup_today = False
   secondary_imap_due = 0
   if exit_if_imapfix_config_py_changes:
-    import imapfix_config
     mfile = imapfix_config.__file__ # might be in different directory on sys.path
     if mfile.endswith("pyc"): mfile=mfile[:-1]
     if exit_if_imapfix_config_py_changes=="stamp":
@@ -2461,11 +2463,12 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
         if copyself_delete_attachments:
             delete_attachments(msg)
         save_to(copyself_folder_name,myAsString(msg),"\\Seen")
-import imapfix_config
-imapfix_config.send_mail = send_mail
+try: imapfix_config.send_mail = send_mail
+except: pass # --help, --version
 
 if __name__ == "__main__":
-  if '--help' in sys.argv: print(" | ".join([
+  if '--version' in sys.argv: print(__doc__)
+  elif '--help' in sys.argv: print(" | ".join([
           '--archive',
           '--quicksearch <string>',
           '--delete <folders>','--delete-secondary <folders>',
@@ -2479,7 +2482,7 @@ if __name__ == "__main__":
           '--multinote-inbox-fname <files>',
           '--upload <files>',
           '--once','--fix-archives',
-          '--help']))
+          '--help','--version']))
   elif '--archive' in sys.argv: do_archive()
   elif '--quicksearch' in sys.argv: do_quicksearch(' '.join(sys.argv[sys.argv.index('--quicksearch')+1:]))
   elif '--delete' in sys.argv: do_delete(' '.join(sys.argv[sys.argv.index('--delete')+1:]))

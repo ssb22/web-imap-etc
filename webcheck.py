@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-# webcheck.py v1.601 (c) 2014-24 Silas S. Brown.
+"""webcheck.py v1.602 (c) 2014-24 Silas S. Brown.
+License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -103,6 +104,7 @@ def read_input():
   days = 0 ; extraHeaders = []
   url = mainDomain = None
   lines = read_input_file()
+  if not lines: print ("No input found")
   lastList = None # refs a list within ret, of [(days,text,elseLogic)]
   while lines:
     line = line_withComment = " ".join(lines.pop().split())
@@ -843,4 +845,7 @@ def normalisePunc(t):
       ]: t=t.replace(s,r)
   return re.sub(B(r"(\s)\s+"),B(r"\1"),t).lower()
 
-if __name__=="__main__": main()
+if __name__=="__main__":
+  if "--version" in sys.argv: print(__doc__)
+  elif "--help" in sys.argv: print("python webcheck.py [--single-thread] [--test-all] [--show-seen-rss] | --help | --version")
+  else: main()
