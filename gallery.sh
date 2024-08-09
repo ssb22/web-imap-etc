@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Create quick index.html from pictures directory
-# Silas S. Brown - public domain - v1.1
+# Silas S. Brown - public domain - v1.2
 
 # use with (e.g.) webfsd -f index.html   # port 8000
 
@@ -13,11 +13,12 @@ if [ -e "$Out" ]; then
     exit 1
 fi
 if [ "$Out" == index.html ] ; then echo '<html><body style="overflow-x:hidden;margin:0">' > "$Out"; fi
-for F in *; do case $F in *.jpg|*.JPG|*.png|*.PNG)
+file -- *|grep '^[^.\"$]*: .*image data'|sed -Ee 's/([^:]+): *([^ ]*) image data.*/mv -- "\1" "\1.\2"/'|sh # rename files with no extension, e.g. from /storage/emulated/0/Android/data/com.sec.android.gallery3d/files/.Trash if recovering from Samsung 'recycle bin'
+for F in *; do case $F in *.jpg|*.JPG|*.jpeg|*.JPEG|*.png|*.PNG)
     case "$Out" in
         (README.md) echo '!'"[]($F)" ;;
         (index.html)
-  case "$(exiftool -list "$F"|grep ^Orientation|sed -e 's/.*: //')" in
+  case "$(exiftool -list -- "$F"|grep ^Orientation|sed -e 's/.*: //')" in
       ("Rotate 90 CW")
           echo "<div style=\"display:table\"><div style=\"padding:50% 0;height:0\"><img style=\"width:auto;height:calc(100vw - 31px);display:block;transform-origin: top left; transform: rotate(90deg) translate(0,-100%) ; margin-top: -50%; image-orientation: none\" src=\"$F\"></div></div>"
           ;;
