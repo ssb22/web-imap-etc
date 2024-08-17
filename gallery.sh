@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Create quick index.html from pictures directory
-# Silas S. Brown - public domain - v1.3
+# Silas S. Brown - public domain - v1.4
 
 # use with (e.g.) webfsd -f index.html   # port 8000
 
@@ -15,7 +15,7 @@ if [ -e "$Out" ]; then
 fi
 if [ "$Out" == index.html ] ; then echo '<html><body style="overflow-x:hidden;margin:0">' > "$Out"; fi
 file -- *|grep '^[^.\"$]*: .*image data'|sed -Ee 's/([^:]+): *([^ ]*) image data.*/mv -- "\1" "\1.\2"/'|sh # rename files with no extension, e.g. from /storage/emulated/0/Android/data/com.sec.android.gallery3d/files/.Trash if recovering from Samsung 'recycle bin'
-if [ "$Out" == index.html ] ; then find -s . -type d -depth 1 -exec /bin/bash -c "cd '{}' && "'"'"$(readlink -f "$0")"'"'" >/dev/null && echo '<p><a href="'"'"{}/index.html"'"'">{}</a></p>'|sed -e s,[.]/,,g" ';' >> "$Out"; fi # subdirectories (TODO: could do an md version of this) or for ebook-convert
+if [ "$Out" == index.html ] ; then find -s . -type d -depth 1 -exec /bin/bash -c "cd '{}' && "'"'"$(readlink -f "$0")"'"'" >/dev/null && mv index.html '{}'.html && echo '<p><a href="'"'"{}/{}.html"'"'">{}</a></p>'|sed -e s,[.]/,,g" ';' >> "$Out"; fi # subdirectories (TODO: could do an md version of this) or for ebook-convert (using non-index.html for that so zip listing is clearer)
 for F in *; do case $F in *.jpg|*.JPG|*.jpeg|*.JPEG|*.png|*.PNG)
     case "$Out" in
         (README.md) echo '!'"[]($F)" ;;
