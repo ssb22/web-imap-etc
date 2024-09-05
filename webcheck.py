@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-"""webcheck.py v1.602 (c) 2014-24 Silas S. Brown.
+"""webcheck.py v1.603 (c) 2014-24 Silas S. Brown.
 License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
@@ -405,9 +405,9 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       textContent = None
   delayer.done()
   if content==None: return # not modified (so nothing to report), or problem retrieving (which will have been reported by tryRead0: TODO: return failRet in these circumstances so elseLogic can proceed?)
-  if B(content).startswith(B("<!DOCTYPE html>")):
+  if B(content).startswith(B("<!DOCTYPE html>")) or B(content).startswith(B('<html lang=')): # check for CloudFlare backoff
     textContent,errmsg=htmlStrings(content)
-    if B(textContent)==B("Just a moment... Enable JavaScript and cookies to continue"): raise CDNBackoff() # might not be able to check the rest of this domain today (at least not without starting a webdriver, but for things like 'checking if my StackExchange answers have been vandalised' the site probably doesn't want too many automated fetches; would be easier if they provided an RSS feed for each user)
+    if B(textContent).startswith(B("Just a moment...")) and B("Enable JavaScript and cookies to continue") in B(textContent): raise CDNBackoff() # might not be able to check the rest of this domain today
   if u:
       lm = u.info().get("Last-Modified",None)
       if lm: previous_timestamps[(url,'lastMod')] = lm
@@ -468,6 +468,8 @@ def run_webdriver(ua,actionList,reportErrors):
         return B(""), True
     r = "" ; wasError = False
     try: r = run_webdriver_inner(actionList,browser)
+    except CDNBackoff:
+      browser.quit() ; raise
     except NoTracebackException as e:
       if reportErrors: print (e.message)
       else: wasError = True
@@ -505,16 +507,20 @@ def run_webdriver_inner(actionList,browser):
       return f(browser).encode('utf-8')
     snippets = []
     for a in actionList:
-        if a.startswith('http'): browser.get(a)
+        if a.startswith('http'):
+          try: browser.get(a)
+          except: raise NoTracebackException("webdriver low-level timeout or error fetching "+a) # e.g. selenium.common.exceptions.TimeoutException
         elif a.startswith('"') and a.endswith('"'):
             # wait for "string" to appear in the source
             tries = 30
             while tries and not myFind(a[1:-1],getSrc()):
               time.sleep(2) ; tries -= 1
             if not tries:
+              src = getSrc() ; h=B(htmlStrings(src)[0])
+              if h.startswith(B("Just a moment...")) and B("Enable JavaScript and cookies to continue") in h: raise CDNBackoff() # 2024-07: can occur even in webdriver, even though that has JS + cookies
               try: current_url = browser.current_url
               except: current_url = "(unable to obtain)"
-              raise NoTracebackException("webdriver timeout while waiting for %s, current URL is %s content \"%s\"\n" % (repr(a[1:-1]),current_url,repr(getSrc()))) # don't quote current URL: if the resulting email is viewed in (at least some versions of) MHonArc, a bug can result in &quot being added to the href
+              raise NoTracebackException("webdriver timeout while waiting for %s, current URL is %s content \"%s\"\n" % (repr(a[1:-1]),current_url,repr(src))) # don't quote current URL: if the resulting email is viewed in (at least some versions of) MHonArc, a bug can result in &quot being added to the href
         elif a.startswith('[') and a.endswith(']'): # click
             findElem(a[1:-1]).click()
         elif a.startswith('/') and '/' in a[1:]: # click through items in a list to reveal each one (assume w/out Back)
