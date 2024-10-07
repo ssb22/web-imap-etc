@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.894 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.895 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -883,9 +883,12 @@ def process_imap_inbox():
             if imapMsgid: # somehow ended up with 2, delete one
                 imap.store(imapMsgid, '+FLAGS', '\\Deleted')
             imapMsgid = msgID ; continue
-        doneSomething = True
         msg = email.message_from_string(message)
-        box,message,changed,changed0,seenFlag = handleMsg(msg,message,is_additional)
+        box,message,changed,changed0,seenFlag = handleMsg(msg,message,is_additional,flags)
+        if box==("leave","as-is"):
+            imap.store(msgID, '+FLAGS', '\\Seen')
+            continue
+        doneSomething = True
         if box:
             if seenFlag: copyWorked = False # unless we can get copy_to to set the Seen flag on the copy, which means the IMAP server must have an extension that causes COPY to return the new ID unless we want to search for it
             elif type(box)==tuple: copyWorked = False # e.g. imap to maildir
@@ -918,7 +921,7 @@ def process_imap_inbox():
     check_ok(imap.expunge())
   if (not quiet) and imap==saveImap and not type(filtered_inbox)==tuple: debug("Quota ",repr(imap.getquotaroot(filtered_inbox)[1])) # RFC 2087 "All mailboxes that share the same named quota root share the resource limits of the quota root" - so if the IMAP server has been set up in a typical way with just one limit, this command should print the current and max values for that shared limit.  (STORAGE = size in Kb, MESSAGE = number)
 
-def handleMsg(msg,message=None,is_additional=True):
+def handleMsg(msg,message=None,is_additional=True,flags=None,is_maildir=False):
     box = changed = changed0 = bypass_spamprobe = False ; seenFlag=""
     if authenticates(msg):
         # do auth'd-msgs processing before any convert-to-attachment etc
@@ -964,6 +967,11 @@ def handleMsg(msg,message=None,is_additional=True):
                     if bypass_spamprobe: box = filtered_inbox
                     else: box = spamprobe_rules(message,is_additional and additional_inbox_train_spam)
     if box and not box==spam_folder:
+        if hostname=="outlook.office365.com" and type(box)==tuple and not is_maildir and has_rpmsg(msg):
+            # MS "security" that can be opened only in Outlook
+            # - do not transfer this from IMAP to a maildir
+            if not flags or not r"\Seen" in flags: save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: x-microsoft-rpmsg-message found\r\nDate: %s\r\n\r\n(From %s, Subject %s)\nimapfix encountered a Microsoft restricted-permission message, using a proprietary format which may be opened only on Outlook with the browser, and typically restricted from being forwarded etc.  This might be a targeted malware or 'phishing' attempt from a compromised Microsoft account, or it might be a real message from a misguided city council department or similar.  Third-party tools are unable to scan these messages.  Although these messages do contain links that supposedly allow you to log in from a browser attached to a third-party email client, these links rarely work in practice because Microsoft's broken system too easily selects the wrong account and fails to let you try another.  Therefore, imapfix has not copied this message to %s: you'll need to open your upstream inbox in Outlook and deal with it manually.\n" % (email.utils.formatdate(localtime=True),repr(msg.get("From",None)),repr(msg.get("Subject",None)),repr(box)))
+            return ("leave","as-is"),None,None,None,None
         if headers_to_delete and delete_headers(msg):
             changed0 = changed = True # for change_message_id
             added = True # so myAsString happens
@@ -986,7 +994,7 @@ def process_maildir_inbox():
         if not said:
             debug("Processing messages from ",maildir_to_process)
             said = True
-        box,message,_,_,seenFlag = handleMsg(msg)
+        box,message,_,_,seenFlag = handleMsg(msg,is_maildir=True)
         if box:
             debug("Saving message to ",box)
             save_to(box, message, seenFlag, False)
@@ -1593,6 +1601,10 @@ def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by defau
             if start <= m.start() < end: return m.group()
         return quopri.decodestring(m.group())
     return re.sub(r"(=(([C][2-9A-F]|[D][0-9A-F])|E0=[AB][0-9A-F]|(E[1-9A-CEF]|F0=[9AB][0-9A-F]|F4=8[0-F])(=\r?\n)?=[89AB][0-9A-F]|ED=[89][0-9A-F]|F[1-3]=[89AB][0-9A-F]=[89AB][0-9A-F])(=\r?\n)?=[89AB][0-9A-F])+",maybeDecode,s) # decodes only 8-bit utf-8 characters from the quoted-printable string, leaving alone any 7-bit characters that are encoded as quoted-printable ("^From" etc)
+
+def has_rpmsg(msg):
+    if msg.is_multipart(): return any(has_rpmsg(m) for m in msg.get_payload())
+    else: return msg.get("Content-Type","").startswith("application/x-microsoft-rpmsg-message")
 
 def walk_msg(message,partFunc,*args):
     if message.is_multipart():
