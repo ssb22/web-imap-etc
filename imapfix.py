@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.895 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.896 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -699,7 +699,7 @@ def spamprobe_cleanup():
 
 def process_header_rules(header):
   for box,matchList in header_rules:
-    for headerLine in header.split("\n"):
+    for headerLine in header.replace("\r\n "," ").split("\n"):
       for m in matchList:
         i=re.finditer(m,headerLine.rstrip())
         try: i.next()
