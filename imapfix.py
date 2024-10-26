@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.896 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.897 (c) 2013-24 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -84,8 +84,8 @@ office_convert = None # or "html" or "pdf", to use
 # Microsoft Calendar attachments.
 
 pdf_convert = False # True = use "pdftohtml" on pdf files
-
 use_tnef = False # True = use "tnef" command on winmail.dat
+use_msgconvert = False # True = use "msgconvert" (apt install libemail-outlook-message-perl) on Outlook .msg files
 
 headers_to_delete = [] # prefixes of headers to delete from all
 # messages, in case you use Mutt's "Edit Message" on notes to self
@@ -977,6 +977,7 @@ def handleMsg(msg,message=None,is_additional=True,flags=None,is_maildir=False):
             added = True # so myAsString happens
         else: added = False
         if use_tnef: added = add_tnef(msg) or added
+        if use_msgconvert: added = add_eml(msg) or added
         if image_size: added = add_previews(msg) or added
         if office_convert: added = add_office(msg) or added
         if pdf_convert: added = add_pdf(msg) or added
@@ -1683,7 +1684,15 @@ def filename_ext(message):
     else:
         s = re.search("filename=([^;]*)",fn)
         if s: fn = s.group(1)
-        else: return False
+        else:
+            i = 0 ; fn2 = ""
+            while True:
+                s = re.search('filename[*]%d="([^"]*)"' % i,fn)
+                i += 1
+                if s: fn2 += s.group(1)
+                else: break
+            if fn2: fn = fn2
+            else: return False
     fn = re.sub(header_charset_regex,header_to_u8,fn)
     if not '.' in fn: return False
     ext = fn[fn.rindex('.'):].lower()
@@ -1762,26 +1771,43 @@ def add_tnef0(message,accum):
     if not 'Content-Disposition' in message: return False
     fn = str(message['Content-Disposition'])
     if not 'winmail.dat' in fn.lower(): return False
-    ret = False
-    debug("Getting winmail.dat")
-    payload = message.get_payload(decode=True)
-    debug("Running tnef on winmail.dat")
     outdir = "tnefout-%d" % (os.getpid(),)
+    return add_tnef1(outdir,"tnef -C "+outdir+" --number-backups --unix-paths --save-body --ignore-checksum --ignore-encode --ignore-cruft",message,accum)
+def add_tnef1(outdir,cmd,message,accum):
+    debug("Getting MS payload")
+    payload = message.get_payload(decode=True)
+    debug("Running converter on MS payload")
     os.mkdir(outdir)
-    os.popen("tnef -C "+outdir+" --number-backups --unix-paths --save-body --ignore-checksum --ignore-encode --ignore-cruft","wb").write(payload)
+    os.popen(cmd,"wb").write(payload)
+    ret = False
     for f in listdir(outdir):
         debug("Adding ",repr(f))
         origF,f = f,outdir+os.sep+f
         b = getMimeBase(f)
         b.set_payload(open(f,"rb").read())
         tryRm(f)
-        b['Content-Disposition']='attachment; filename='+origF
+        b['Content-Disposition']='attachment; filename="'+origF+'"'
         encoders.encode_base64(b)
         to_attach.append(b) ; accum[0] += 1 ; ret = True
     try: os.rmdir(outdir)
     except: debug("Could not remove ",outdir)
-    if ret: message.set_payload("") # no point keeping the winmail.dat itself if we successfully got its contents out
+    if ret: message.set_payload("") # no point keeping the winmail.dat or *.msg itself if we successfully got its contents out (note: this will leave an empty message part, not remove it altogether)
     return ret
+def add_eml(message):
+    global to_attach ; to_attach = None
+    accum = [1]
+    return walk_msg(message,add_eml0,accum)
+def add_eml0(message,accum):
+    if to_attach == None: return False
+    if not 'Content-Type' in message: return False
+    ct = str(message['Content-Type'])
+    if not ct.startswith("application/vnd.ms-outlook"):
+        return False
+    fn = filename_ext(message)
+    if fn: fn = fn[0].replace('"','').replace('\\','').replace('$','').replace("`","").replace("!","").replace("\n","")
+    else: fn = "msgfile.msg"
+    outdir = "msgout-%d" % (os.getpid(),)
+    return add_tnef1(outdir,("cd "+outdir+" && cat > \"%s\" && msgconvert \"%s\" && rm \"%s\"" % (fn,fn,fn)),message,accum)
 
 def delete_headers(msg):
     changed = False
