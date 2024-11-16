@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Create quick index.html from pictures directory
-# Silas S. Brown - public domain - v1.5
+# Silas S. Brown - public domain - v1.6
 
 # use with (e.g.) webfsd -f index.html   # port 8000
 
@@ -14,8 +14,10 @@ if [ -e "$Out" ]; then
     exit 1
 fi
 if [ "$Out" == index.html ] ; then echo '<html><body style="overflow-x:hidden;margin:0">' > "$Out"; fi
+export LC_ALL=C # stabilise sorts across platforms
 file -- *|grep '^[^.\"$]*: .*image data'|sed -Ee 's/([^:]+): *([^ ]*) image data.*/mv -- "\1" "\1.\2"/'|sh # rename files with no extension, e.g. from /storage/emulated/0/Android/data/com.sec.android.gallery3d/files/.Trash if recovering from Samsung 'recycle bin'
-if [ "$Out" == index.html ] ; then find -s . -type d -depth 1 -exec /bin/bash -c "cd '{}' && "'"'"$(readlink -f "$0")"'"'" >/dev/null && mv index.html '{}'.html && echo '<p><a href="'"'"{}/{}.html"'"'">{}</a></p>'|sed -e s,[.]/,,g" ';' >> "$Out"; fi # subdirectories (TODO: could do an md version of this) or for ebook-convert (using non-index.html for that so zip listing is clearer)
+# BSD 'find' has -s to do it in sorted order, GNU/Linux doesn't, so sort o/p after:
+if [ "$Out" == index.html ] ; then find . -maxdepth 1 -type d -exec /bin/bash -c "cd '{}' && "'"'"$(readlink -f "$0")"'"'" >/dev/null && mv index.html '{}'.html && echo '<p><a href="'"'"{}/{}.html"'"'">{}</a></p>'|sed -e s,[.]/,,g" ';' | sort >> "$Out"; fi # subdirectories (TODO: could do an md version of this) or for ebook-convert (using non-index.html for that so zip listing is clearer)
 for F in *; do case $F in *.jpg|*.JPG|*.jpeg|*.JPEG|*.png|*.PNG)
     case "$Out" in
         (README.md) echo '!'"[]($F)" ;;
@@ -36,4 +38,5 @@ for F in *; do case $F in *.jpg|*.JPG|*.jpeg|*.JPEG|*.png|*.PNG)
 ;; esac; done >> "$Out"
 if [ "$1" == --epub ] ; then
 ebook-convert index.html pictures.epub --dont-split-on-page-breaks --no-default-epub-cover --title pictures
+mkdir .p0 && cd .p0 && unzip ../pictures.epub && rm ../pictures.epub && zip -9r ../pictures.epub -- * && cd .. && rm -rf .p0 # ensure files sorted
 else du -h "$Out"; fi
