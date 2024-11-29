@@ -1759,6 +1759,7 @@ def add_pdf0(message,accum):
     return True
 def clean_tmpdoc():
     # soffice sometimes leaves images also, so check all
+    # (we don't currently attach copies of these images to the email - jpg/gif/png - they're usually logos etc but might sometimes be more than that; TODO: option?)
     prefix = re.compile("tmpdoc-%d[^0-9]" % (os.getpid(),))
     for f in os.listdir('.'):
         if re.match(prefix,f): tryRm(f)
