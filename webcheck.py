@@ -273,7 +273,7 @@ class Delayer:
   def __init__(self,mainDomain):
     self.last_fetch_finished = 0
     if mainDomain=="stackoverflow.com":
-      # (or other Stack Exchange sites)
+      # (or other Stack Exchange sites as normalised to stackoverflow.com above) (although in 2024-12 I was able to confirm that Stack Exchange's own email notifications of others' edits to your answers _did_ work, so it might not be necessary to monitor for vandalism all your Stack Exchange answers from webcheck)
       self.delay = 80 # seconds between fetches to these sites
     else: self.delay = 3 # (want small if checking many pages and the server doesn't mind, but still non-0)
   def wait(self):
