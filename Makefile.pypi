@@ -1,6 +1,8 @@
 # -*- mode: Makefile -*-
-check-if-webcheck-version-is-changing:
+all: test check-if-webcheck-version-is-changing
+test:
 	@if python3 webcheck.py --version|grep 'v[0-9][^.]*[.][0-9][0-9][0-9][0-9]'; then echo "4+ decimal digits in version number will now need another -e 's/[.][0-9][0-9][0-9]$$/&0/' in Makefile.pypi's sed expression"; false; fi
+check-if-webcheck-version-is-changing:
 	if (git diff;git diff --staged)|grep '^[+]"""webcheck.py v[0-9]'; then make -f Makefile.pypi update-webcheck-pypi; else true; fi
 update-webcheck-pypi:
 	mkdir webcheck
@@ -13,4 +15,4 @@ update-webcheck-pypi:
 	mv ../README.md .
 	rm -r webcheck_strings.egg-info dist webcheck setup.py
 .PHONY: check-if-webcheck-version-is-changing
-.PHONY: update-webcheck-pypi
+.PHONY: update-webcheck-pypi all test
