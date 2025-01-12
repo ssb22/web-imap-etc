@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-"""webcheck.py v1.603 (c) 2014-24 Silas S. Brown.
+"""webcheck.py v1.604 (c) 2014-25 Silas S. Brown.
 License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
@@ -553,7 +553,7 @@ def run_webdriver_inner(actionList,browser):
                   if sys.stderr.isatty(): sys.stderr.write('*'),sys.stderr.flush()
                 except:
                   if sys.stderr.isatty(): sys.stderr.write('?'),sys.stderr.flush()
-                  if propagate_errors: raise NoTracebackException(a+" failed to open instance "+str(curNo))
+                  if propagate_errors: raise NoTracebackException(a+" failed to open instance "+str(curNo)+" (error because ! is set)")
                   else: continue
                 time.sleep(delayAfter)
                 snippets.append(getSrc())
@@ -577,7 +577,7 @@ def run_webdriver_inner(actionList,browser):
                 if sys.stderr.isatty(): sys.stderr.write('*'),sys.stderr.flush() # webdriver's '.' for click-multiple
               except:
                 if sys.stderr.isatty(): sys.stderr.write('?'),sys.stderr.flush()
-                if propagate_errors: raise NoTracebackException(a+" failed to open instance "+str(curNo))
+                if propagate_errors: raise NoTracebackException(a+" failed to open instance "+str(curNo)+" (error because ! is set)")
                 else: continue
               time.sleep(delayAfter)
               snippets.append(getSrc())
