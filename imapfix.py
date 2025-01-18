@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.897 (c) 2013-24 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.897 (c) 2013-25 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -634,7 +634,7 @@ if not "--help" in sys.argv and not "--version" in sys.argv:
     from imapfix_config import *
 import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback,mimetypes
 if not sys.version_info[0]==2:
-    print ("ERROR: ImapFix is a Python 2 program and should be run with 'python2'.\nIt needs major revision for Python 3's version of the email library.\nTry compiling Python 2.7 in your home directory if it's no longer installed on your system.")
+    print ("ERROR: ImapFix is a Python 2 program and should be run with 'python2'.\nIt needs major revision for Python 3's version of the email library.\nThere's still a python2 package in Ubuntu 22.04 LTS\n(the EOL of that distro was set at 2027, or ESM to 2032).") # (EOL = end of life, ESM = expanded security maintenance)
     # In particular, Python 3.3+ revised the Message class into an EmailMessage class (with Message as a compatibility option), need to use as_bytes rather than as_string; set_payload available only in compatibility mode and works in Python3 Unicode-strings so we'd need to figure out how to handle other charsets including invalid coding.
     # That's on top of the usual 'make sure all our code works whether or not type("")==type(u"")' issue.
     # (And imghdr is deprecated in 3.11 for removal in 3.13, so will need an alternative to imghdr.what())
