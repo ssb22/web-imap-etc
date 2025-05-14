@@ -2,7 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.898 (c) 2013-25 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.899 (c) 2013-25 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -525,6 +525,12 @@ alarm_delay = 0 # with some Unix networked filesystems it is
 # will be reset every half that number of seconds if imapfix
 # is still functioning.  Note that a long-running filter etc
 # could also cause imapfix to become "stuck" this long.
+
+detect_upload_cgi = False # if True, imapfix can detect if
+# it's running in a web server CGI-like environment and
+# allow an "upload a file" form to place files in the inbox
+# (it is assumed you give the link only to those authorised
+# to use it unless you want just anybody sending you files)
 
 # Command-line options
 # --------------------
@@ -1466,7 +1472,7 @@ def turn_into_attachment(message,covering_text=None,attach_raw=False):
     m2 = email.mime.multipart.MIMEMultipart()
     for k,v in message.items():
         if not k.lower() in ['content-length','content-type','content-transfer-encoding','lines','mime-version','content-disposition']: m2[k]=v
-    m2.attach(email.mime.text.MIMEText(covering_text))
+    m2.attach(email.mime.text.MIMEText(covering_text,"plain","utf-8"))
     if attach_raw: m2.attach(message)
     else: m2.attach(email.mime.message.MIMEMessage(message))
     return m2
@@ -2171,16 +2177,58 @@ def tryRm(f):
     try: os.remove(f)
     except: pass
 
-def do_upload(data,theDate,fname):
+def do_upload(data,theDate,fname,subj_prefix=""):
     b = getMimeBase(fname)
     b.set_payload(data)
-    b['Content-Disposition']='attachment; filename='+(os.sep+fname)[(os.sep+fname).rindex(os.sep)+1:]
+    b['Content-Disposition']='attachment; filename="'+(os.sep+fname)[(os.sep+fname).rindex(os.sep)+1:]+'"'
     encoders.encode_base64(b)
     message = turn_into_attachment(b,"Attached "+fname,True)
     message["From"] = from_line
-    message["Subject"] = fname
+    message["Subject"] = subj_prefix+fname
     message["Date"] = email.utils.formatdate(theDate,localtime=True)
     return save_to(filtered_inbox,myAsString(message))
+
+def do_cgi():
+    import cgi, cgitb; cgitb.enable()
+    try:
+        f=cgi.FieldStorage()['file']
+        fn = re.sub("&#[0-9]+;",lambda m:unichr(int(m.group()[2:-1])).encode('utf-8'),f.filename)
+    except: f=None
+    h='Content-type: text/html; charset=utf-8\n\n<html><head><meta name="mobileoptimized" content="0"><meta name="viewport" content="width=device-width"><script>if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)document.write("<style>body { background-color: black; color: #c0c000; } a { color: #00b000; }</style>");</script><title>'
+    if not f==None:
+        do_upload(f.file.read(),time.time(),fn,"Uploaded from "+os.environ["SCRIPT_NAME"]+": ")
+        print (h+"""Upload complete</title></head><body>
+<h1>Upload complete</h1><hr>Your file, <strong><em>FN</em></strong>,
+has been successfully uploaded.<p><a href="ACTION">Send another file</a>
+</body></html>""".replace("ACTION",os.environ["SCRIPT_NAME"]).replace("FN",fn.replace('&','&amp').replace('<','&lt;')))
+    else: print (h+"""Upload</title></head><body>
+<script>
+function keepThingsGoing0() {
+var req = new XMLHttpRequest(); req.open("GET","/",false); req.send(null);
+window.setTimeout(keepThingsGoing0, 120000);
+}
+function keepThingsGoing1() {
+document.getElementById("progress2").innerHTML="--- Uploading... --------- ---";
+window.setTimeout(keepThingsGoing2, 1000);
+}
+function keepThingsGoing2() {
+document.getElementById("progress2").innerHTML="--- --------- Uploading... ---";
+window.setTimeout(keepThingsGoing1, 1000);
+}
+function foolBrowser() {
+document.getElementById("progress").innerHTML="Please wait while the file uploads.";
+window.setTimeout(keepThingsGoing1, 100);
+window.setTimeout(keepThingsGoing0, 120000);
+return true;
+}
+</script>
+<form enctype="multipart/form-data" action="ACTION" method=post
+onsubmit="return foolBrowser();">
+Send this file: <input name="file" type="file">
+<input type="submit" value="Send File">
+<div id=progress></div><div id=progress2></div>
+</form>
+</body></html>""".replace("ACTION",os.environ["SCRIPT_NAME"]))
 
 def do_multinote(body,theDate,to_real_inbox,subject):
     body = re.sub("\r\n?","\n",body.strip())
@@ -2506,7 +2554,9 @@ try: imapfix_config.send_mail = send_mail
 except: pass # --help, --version
 
 if __name__ == "__main__":
-  if '--version' in sys.argv: print(__doc__)
+  if detect_upload_cgi and "SCRIPT_NAME" in os.environ:
+      do_cgi()
+  elif '--version' in sys.argv: print(__doc__)
   elif '--help' in sys.argv: print(" | ".join([
           '--archive',
           '--quicksearch <string>',
