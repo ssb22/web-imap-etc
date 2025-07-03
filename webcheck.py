@@ -307,7 +307,7 @@ def worker_thread(*args):
             break # skip all other items in this domain set
           if r: # elseLogic yielded more items for this job (don't give to another thread, we need the same delayer as it might be retry on same URL)
             r.reverse() ; items += r # try to keep pop() sequence in order
-      except Exception as e:
+      except:
         print ("Unhandled exception processing job "+repr(job))
         print (traceback.format_exc())
       jobs.task_done()
