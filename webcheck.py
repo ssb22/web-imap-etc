@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-"""webcheck.py v1.604 (c) 2014-25 Silas S. Brown.
+"""webcheck.py v1.605 (c) 2014-25 Silas S. Brown.
 License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
@@ -371,22 +371,18 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       r=Request(url[len("blocks-lynx://"):])
       r.get_method=lambda:'HEAD'
       r.add_header('User-agent','Lynx/2.8.9dev.4 libwww-FM/2.14')
-      u,content = None,B("no") # not blocking Lynx?
-      try: urlopen(r,timeout=60)
+      try:
+        urlopen(r,timeout=60)
+        u,content = None,B("no") # not blocking Lynx?
       except Exception as e:
         if type(e) in [HTTPError,socket.error,socket.timeout,ssl.SSLError]: # MIGHT be blocking Lynx (SSLError can be raised if hit the timeout), check:
           r.add_header('User-agent',default_ua)
           try:
             urlopen(r,timeout=60)
-            content = B("yes") # error ONLY with Lynx, not with default UA
+            u,content = None,B("yes") # error ONLY with Lynx, not with default UA
           except Exception as e:
-            print ("Info: "+url+" got "+str(type(e))+" even without Lynx header, so not flagging as Lynx-blocking")
-            try: print (e.message)
-            except: pass
-        else:
-          print ("Info: "+url+" got "+str(type(e))+" (check the server exists at all?)")
-          try: print (e.message)
-          except: pass
+            u,content = None,B("yes-no-unknown") # error with or without lynx, possibly intermittent server error, so try not to alert to a change in either expected lynx-blocking state
+        else: u,content = None,B("yes-no-unknown") # unknown urlopen exception, server might temporarily not exist at all, but anyway it's not a lynx change
       textContent = content
   elif url.startswith("head://"):
       r=Request(url[len("head://"):])
