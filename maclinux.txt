@@ -1,8 +1,8 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.64 (c) Silas S. Brown 2012-24.
+# Version 1.65 (c) Silas S. Brown 2012-25.
 
-# Tested in zsh on macOS 11.4 through 14.6,
+# Tested in zsh on macOS 11.4 through 14.6, and 15.5,
 # and in bash on Mac OS X 10.7 through 10.14.
 
 # This script can go in your ~/.zshrc (10.15+)
@@ -194,7 +194,7 @@ else
   export -f edit >/dev/null # and leave bbedit undefined
 fi
 
-if [ -e /usr/libexec/java_home ] && ! [ "$JAVA_HOME" ] ; then export JAVA_HOME=$(/usr/libexec/java_home); fi
+if [ -e /usr/libexec/java_home ] && ! [ "$JAVA_HOME" ] && /usr/libexec/java_home 2>/dev/null >/dev/null; then export JAVA_HOME=$(/usr/libexec/java_home); fi
 
 if [ -e /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/*/jsc ] ; then
   # command-line Javascript interpreter not in default PATH: might as well make this available
