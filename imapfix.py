@@ -2,7 +2,8 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.899 (c) 2013-25 Silas S. Brown.  License: Apache 2"
+"ImapFix v1.9 (c) 2013-25 Silas S. Brown.  License: Apache 2"
+# (.901 next if minor)
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -531,6 +532,10 @@ detect_upload_cgi = False # if True, imapfix can detect if
 # allow an "upload a file" form to place files in the inbox
 # (it is assumed you give the link only to those authorised
 # to use it unless you want just anybody sending you files)
+upload_cgi_auth_word = None # or "word" , use ?w=word to
+# allow files to be placed directly into:
+upload_cgi_area = "/var/www/area"
+upload_cgi_area_href = "/area"
 
 # Command-line options
 # --------------------
@@ -2189,18 +2194,21 @@ def do_upload(data,theDate,fname,subj_prefix=""):
     return save_to(filtered_inbox,myAsString(message))
 
 def do_cgi():
-    import cgi, cgitb; cgitb.enable()
+    import cgi, cgitb; cgitb.enable() ; fs=cgi.FieldStorage()
     try:
-        f=cgi.FieldStorage()['file']
+        f=fs['file']
         fn = re.sub("&#[0-9]+;",lambda m:unichr(int(m.group()[2:-1])).encode('utf-8'),f.filename)
     except: f=None
     h='Content-type: text/html; charset=utf-8\n\n<html><head><meta name="mobileoptimized" content="0"><meta name="viewport" content="width=device-width"><script>if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)document.write("<style>body { background-color: black; color: #c0c000; } a { color: #00b000; }</style>");</script><title>'
     if not f==None:
-        do_upload(f.file.read(),time.time(),fn,"Uploaded from "+os.environ["SCRIPT_NAME"]+": ")
+        if upload_cgi_auth_word and 'w' in fs and fs['w'].value==upload_cgi_auth_word:
+            while os.path.isfile(upload_cgi_area+'/'+fn): fn='new-'+fn # TODO: race condition if multiple cgi instances at once (but unlikely to be a problem for small teams private access, and if it is the email will make it obvious)
+            open(upload_cgi_area+'/'+fn,'wb').write(f.file.read())
+            save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: Uploaded from "+os.environ["SCRIPT_NAME"]+": "+fn+"\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),upload_cgi_area+'/'+fn+"\n"+upload_cgi_area_href+'/'+fn))
+        else: do_upload(f.file.read(),time.time(),fn,"Uploaded from "+os.environ["SCRIPT_NAME"]+": ")
         print (h+"""Upload complete</title></head><body>
-<h1>Upload complete</h1><hr>Your file, <strong><em>FN</em></strong>,
-has been successfully uploaded.<p><a href="ACTION">Send another file</a>
-</body></html>""".replace("ACTION",os.environ["SCRIPT_NAME"]).replace("FN",fn.replace('&','&amp').replace('<','&lt;')))
+<h1>Upload complete</h1><hr>Your file, <strong><em>"""+fn.replace('&','&amp').replace('<','&lt;')+"""</em></strong>,
+has been successfully uploaded.<p><a href="ACTION">Send another file</a>""".replace("ACTION",os.environ["SCRIPT_NAME"]+("?w="+fs['w'].value if upload_cgi_auth_word and 'w' in fs and fs['w'].value==upload_cgi_auth_word else ""))+cgi_list(fs)+"</body></html>")
     else: print (h+"""Upload</title></head><body>
 <script>
 function keepThingsGoing0() {
@@ -2226,9 +2234,8 @@ return true;
 onsubmit="return foolBrowser();">
 Send this file: <input name="file" type="file">
 <input type="submit" value="Send File">
-<div id=progress></div><div id=progress2></div>
-</form>
-</body></html>""".replace("ACTION",os.environ["SCRIPT_NAME"]))
+<div id=progress></div><div id=progress2></div>""".replace("ACTION",os.environ["SCRIPT_NAME"])+('<input type=hidden name=w value="'+fs['w'].value+'">' if upload_cgi_auth_word and 'w' in fs and fs['w'].value==upload_cgi_auth_word else "")+"</form>"+cgi_list(fs)+"</body></html>")
+def cgi_list(fs): return "<h3>Files already uploaded</h3>"+"<br>".join('<a href="'+upload_cgi_area_href+'/'+f+'">'+f+'</a>' for f in sorted(os.listdir(upload_cgi_area)) if os.path.isfile(upload_cgi_area+os.sep+f)) if upload_cgi_auth_word and 'w' in fs and fs['w'].value==upload_cgi_auth_word else ""
 
 def do_multinote(body,theDate,to_real_inbox,subject):
     body = re.sub("\r\n?","\n",body.strip())
