@@ -532,6 +532,8 @@ detect_upload_cgi = False # if True, imapfix can detect if
 # allow an "upload a file" form to place files in the inbox
 # (it is assumed you give the link only to those authorised
 # to use it unless you want just anybody sending you files)
+# - don't forget to adjust server settings like client_max_body_size (nginx)
+# to allow uploads more than 1M or whatever your server's default is
 upload_cgi_auth_word = None # or "word" , use ?w=word to
 # allow files to be placed directly into:
 upload_cgi_area = "/var/www/area"
