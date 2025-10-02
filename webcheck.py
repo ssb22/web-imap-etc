@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-"""webcheck.py v1.605 (c) 2014-25 Silas S. Brown.
+"""webcheck.py v1.606 (c) 2014-25 Silas S. Brown.
 License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
@@ -824,7 +824,7 @@ def extract(url,content,startEndMarkers,comment):
     c = content[i+len(start):j].decode('utf-8').strip()
     if c: items.append(('Auto-extracted text:','',c,"")) # NB the 'title' field must not be empty (unless we relocate that logic to parseRSS instead of handleRSS)
     i = j+len(end)
-  if not items: return ("No items were extracted from "+url+" via "+S(start)+"..."+S(end)+" (check that site changes haven't invalidated this extraction rule)")
+  if not items: return ("No items were extracted from "+url+" via "+S(start)+"..."+S(end)+" (check that site changes haven't invalidated this extraction rule)\n")
   else: handleRSS(url,items,comment,"extracted")
 
 def myFind(text,content):
