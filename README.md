@@ -1,7 +1,7 @@
 WebCheck
 ========
 
-From http://ssb22.user.srcf.net/setup/webcheck.html (also mirrored at http://ssb22.gitlab.io/setup/webcheck.html just in case, or you can use `pip install webcheck-strings` or `pipx run webcheck-strings` if you prefer)
+From https://ssb22.user.srcf.net/setup/webcheck.html (also mirrored at https://ssb22.gitlab.io/setup/webcheck.html just in case, or you can use `pip install webcheck-strings` or `pipx run webcheck-strings` if you prefer)
 
 WebCheck is a Python program (compatible with both Python 2 and Python 3) to check Web pages for changes to specific phrases (strings) of text. I currently use it to:
 
@@ -131,7 +131,7 @@ which specifies that the addresses below that line will be checked only if the d
 ImapFix
 =======
 
-From http://ssb22.user.srcf.net/setup/imapfix.html (also mirrored at http://ssb22.gitlab.io/setup/imapfix.html just in case)
+From https://ssb22.user.srcf.net/setup/imapfix.html (also mirrored at https://ssb22.gitlab.io/setup/imapfix.html just in case)
 
 ImapFix is a filter/fixer for IMAP mailboxes.  It requires Python 2 and is *not* compatible with Python 3.
 
@@ -155,8 +155,8 @@ Selected features: (see program for a full list)
 MacLinux
 ========
 
-From http://ssb22.user.srcf.net/setup/mac.html#maclinux
-(also mirrored at http://ssb22.gitlab.io/setup/mac.html#maclinux just in case)
+From https://ssb22.user.srcf.net/setup/mac.html#maclinux
+(also mirrored at https://ssb22.gitlab.io/setup/mac.html#maclinux just in case)
 
 `maclinux.txt` is a script to make the Mac more GNU/Linux-like by:
 
@@ -168,7 +168,7 @@ The script can be added to, or sourced from, your `~/.bashrc` and/or `~/.bash_pr
 timetrack.js
 ============
 
-This Javascript-based tool can be used to add up the time you spend on projects, and can also count arbitrary items along the way. The input is text-based (so it can be copied from a PDA or whatever) and can run either [in the browser](http://ssb22.user.srcf.net/timetrack.html) or on the command line via Node.js. You can enter:
+This Javascript-based tool can be used to add up the time you spend on projects, and can also count arbitrary items along the way. The input is text-based (so it can be copied from a PDA or whatever) and can run either [in the browser](https://ssb22.user.srcf.net/timetrack.html) or on the command line via Node.js. You can enter:
 
 * Hours and minutes e.g. `3h 5min` or decimal fractions of hours e.g. `1.5h` (start with e.g. `0.0h` to get *output* as decimal fractions)
 * Starting and finishing times e.g. `954-1023` for start at 9:54 and stop at 10:23 (if stopping in the same hour, you need specify only the 2-digit minute after the `-`); a button to start/stop at the current time is provided
