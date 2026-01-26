@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-"""webcheck.py v1.607 (c) 2014-26 Silas S. Brown.
+"""webcheck.py v1.608 (c) 2014-26 Silas S. Brown.
 License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
@@ -755,13 +755,13 @@ def parseRSS(url,content,comment):
   parser.EndElementHandler = EndElementHandler
   parser.CharacterDataHandler = CharacterDataHandler
   if type(u"")==type("") and not type(content)==type(""): content = content.decode("utf-8") # Python 3 (expat needs 'strings' on each platform)
-  try: parser.Parse(re.sub("&[A-Za-z0-9]*;",entityref,content),1)
+  try: parser.Parse(re.sub("&#?[A-Za-z0-9]+;",ampref,content),1)
   except expat.error as e: sys.stdout.write("RSS parse error in "+url+paren(comment)+":\n"+repr(e)+"\n(You might want to check if this URL is still serving RSS)\n\n") # and continue with handleRSS ?  (it won't erase our existing items if the new list is empty, as it will be in the case of the parse error having been caused by a temporary server error)
   for i in xrange(len(items)):
     items[i][1] = "".join(urlparse.urljoin(url,w) for w in "".join(items[i][1]).strip().split()).strip() # handle links relative to the RSS itself
     for j in [0,2,3]: items[i][j]=re.sub(r"\s+"," ",u"".join(U(x) for x in items[i][j])).strip()
   handleRSS(url,items,comment)
-def entityref(m):
+def ampref(m):
   m=m.group()[1:-1] ; m2 = None
   try: m2=unichr(htmlentitydefs.name2codepoint[m])
   except:
@@ -787,7 +787,7 @@ def handleRSS(url,items,comment,itemType="RSS/Atom"):
     pKeep.add(k)
     if k in previous_timestamps and not '--show-seen-rss' in sys.argv: continue # seen this one already
     previous_timestamps[k] = True
-    txt = re.sub("&[A-Za-z0-9]*;",entityref,txt) # (this leaves &lt; etc as-is so we'll know if not really HTML, but handles others)
+    txt = re.sub("&#?[A-Za-z0-9]+;",ampref,txt) # (this leaves &lt; etc as-is so we'll know if not really HTML, but handles others)
     txt = re.sub("</?[A-Za-z][^>]*>",simplifyTag,txt) # avoid overly-verbose HTML (but still allow some)
     txt = re.sub("<[pPbBiIuUsS]></[pPbBiIuUsS]>","",txt).strip() # sometimes left after simplifyTag removes img
     if txt: txt += '\n'
