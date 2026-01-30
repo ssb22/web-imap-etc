@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Create quick index.html from pictures directory
-# Silas S. Brown - public domain - v1.61
+# Silas S. Brown - public domain - v1.62
 
 # use with (e.g.) webfsd -f index.html   # port 8000
 
@@ -39,5 +39,5 @@ for F in *; do case $F in *.jpg|*.JPG|*.jpeg|*.JPEG|*.png|*.PNG)
 if [ "$1" == --epub ] ; then
 mv index.html toc.xhtml
 ebook-convert toc.xhtml pictures.epub --dont-split-on-page-breaks --no-default-epub-cover --title pictures
-mkdir .p0 && cd .p0 && unzip ../pictures.epub && rm ../pictures.epub && zip -9r ../pictures.epub -- * && cd .. && rm -rf .p0 # ensure files sorted
+mkdir .p0 && cd .p0 && unzip ../pictures.epub && rm ../pictures.epub && zip -0X ../pictures.epub mimetype && rm mimetype && zip -9rX ../pictures.epub -- * && cd .. && rm -rf .p0 # ensure files sorted (except mimetype still first and uncompressed for epub recognition)
 else du -h "$Out"; fi
