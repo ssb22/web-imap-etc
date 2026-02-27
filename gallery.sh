@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Create quick index.html from pictures directory
-# Silas S. Brown - public domain - v1.62
+# Silas S. Brown - public domain, no warranty - v1.62
 
 # use with (e.g.) webfsd -f index.html   # port 8000
 
