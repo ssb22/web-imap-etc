@@ -2,8 +2,7 @@
 # (Requires Python 2.x, not 3; search for "3.3+" in
 # comment below to see how awkward forward-port would be)
 
-"ImapFix v1.9 (c) 2013-25 Silas S. Brown.  License: Apache 2"
-# (.901 next if minor)
+"ImapFix v1.901 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -965,8 +964,8 @@ def handleMsg(msg,message=None,is_additional=True,flags=None,is_maildir=False):
         changed0 = changed # for change_message_id
         if box==False: # authenticates didn't decide a box
             header = message[:message.find("\r\n\r\n")]
-            if add_return_path and not "\nReturn-Path" in header and "From" in msg:
-                header += "\r\nReturn-Path: <"+re.sub(">.*","",re.sub("^[^<]*<","",msg["From"]))+">" # to help processing rules depending on that, for locally-delivered messages without Return-Path or unixfrom
+            if add_return_path and not "\nReturn-Path" in header and (msg.get_unixfrom() or "From" in msg):
+                header += "\r\nReturn-Path: <"+re.sub(">.*","",re.sub("^[^<]*<","",msg.get_unixfrom() or msg["From"]))+">" # to help processing rules depending on that, for locally-delivered messages without Return-Path or unixfrom
                 message = header+message[message.find("\r\n\r\n"):]
             box = process_header_rules(header)
             if box==False:
