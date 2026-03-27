@@ -1,6 +1,6 @@
 # -*- mode: shell-script -*-
 # Script to make the Mac more Linux-like
-# Version 1.65 (c) Silas S. Brown 2012-25.
+# Version 1.66 (c) Silas S. Brown 2012-26.
 
 # Tested in zsh on macOS 11.4 through 14.6, and 15.5,
 # and in bash on Mac OS X 10.7 through 10.14.
@@ -235,6 +235,10 @@ eject () { drutil eject ; } ; export -f eject >/dev/null # for CDs
 # scripts in Debian etc
 alias x-www-browser=open # should recognise a URL
 alias gnome-open=open
+if ! /usr/bin/which -s evince; then
+  # in case we're used to typing "evince file.pdf"
+  alias evince=open
+fi
 
 # If you have installed Macfusion (which requires MacFUSE
 # or the MacFUSE compatibility layer of OSXFUSE) then
