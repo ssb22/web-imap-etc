@@ -1,8 +1,8 @@
-#!/usr/bin/env python2
-# (Requires Python 2.x, not 3; search for "3.3+" in
-# comment below to see how awkward forward-port would be)
+#!/usr/bin/env python
+# (works on either Python 2 or Python 3)
 
-"ImapFix v1.901 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.0 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+# (next is probably 3.001: jumped major version for python3 compatibility)
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -112,7 +112,7 @@ header_rules = [
     
 ]
 
-def extra_rules(message_as_string): return False
+def extra_rules(message_as_bytestring): return False
 # you can override this to any function you want, which
 # returns the name of a folder (with or without a *), or
 # None to delete the message, or False = no decision,
@@ -185,8 +185,8 @@ super_trusted_domain = None # like trusted_domain but assumes
 # via SMTP, it can call
 # send_mail(to,subject_u8,txt,attachment_filenames=[],copyself=True)
 # if the following SMTP options are set:
-smtp_fromHeader = "Example Name <example@example.org>"
-smtp_fromAddr = "example@example.org"
+smtp_fromHeader = b"Example Name <example@example.org>"
+smtp_fromAddr = b"example@example.org"
 smtp_host = "localhost"
 smtp_user = ""
 smtp_password = "" # or e.g. ("oauth2 cmd",3600)
@@ -213,8 +213,9 @@ spamprobe_remove_images = True # work around a bug in some
 poll_interval = 4*60
 # Note: set poll_interval=False if you want just one run,
 # or poll_interval="idle" to use imap's IDLE command (this
-# requires the imaplib2 module; you can add to sys.path from
-# imapfix_config.py if you have it in your home directory).
+# requires Python 3.14+ or the imaplib2 module; you can add
+# to sys.path from imapfix_config.py if you have it in your
+# home directory).
 # imaplib2 writes debug information to the console unless
 # run with python -O; to suppress this, do
 # sed -e s/__debug__/False/g < imaplib2.py > i && mv i imaplib2.py
@@ -537,6 +538,7 @@ upload_cgi_auth_word = None # or "word" , use ?w=word to
 # allow files to be placed directly into:
 upload_cgi_area = "/var/www/area"
 upload_cgi_area_href = "/area"
+# In Python 3.13+ you will need: pip install legacy-cgi
 
 # Command-line options
 # --------------------
@@ -644,19 +646,28 @@ import sys
 if not "--help" in sys.argv and not "--version" in sys.argv:
     import imapfix_config
     from imapfix_config import *
-import email,email.utils,time,os,sys,re,base64,quopri,mailbox,traceback,mimetypes
+import email,email.utils,time,os,sys,re,quopri,mailbox,traceback,mimetypes
 if not sys.version_info[0]==2:
-    print ("ERROR: ImapFix is a Python 2 program and should be run with 'python2'.\nIt needs major revision for Python 3's version of the email library.\nThere's still a python2 package in Ubuntu 22.04 LTS\n(the EOL of that distro was set at 2027, or ESM to 2032).") # (EOL = end of life, ESM = expanded security maintenance)
-    # In particular, Python 3.3+ revised the Message class into an EmailMessage class (with Message as a compatibility option), need to use as_bytes rather than as_string; set_payload available only in compatibility mode and works in Python3 Unicode-strings so we'd need to figure out how to handle other charsets including invalid coding.
-    # That's on top of the usual 'make sure all our code works whether or not type("")==type(u"")' issue.
-    # (And imghdr is deprecated in 3.11 for removal in 3.13, so will need an alternative to imghdr.what())
-    sys.exit(1)
+    from email import message_from_bytes
+    from io import BytesIO
+    from subprocess import getoutput, run, PIPE
+    from base64 import encodebytes, decodebytes
+    from functools import reduce
+    unichr = chr
+else: # Python 2
+    from email import message_from_string as message_from_bytes
+    from cStringIO import StringIO as BytesIO
+    from commands import getoutput
+    from base64 import encodestring as encodebytes
+    from base64 import decodestring as decodebytes
 from email import encoders
-from cStringIO import StringIO
+import imaplib
 if poll_interval=="idle":
-    import imaplib2 as imaplib
+    try: imaplib.IMAP4.idle # Python 3.14+
+    except AttributeError: # we'll need imaplib2 instead
+        del imaplib
+        import imaplib2 as imaplib
     assert not logout_before_sleep, "Can't logout_before_sleep when poll_interval==\"idle\""
-else: import imaplib
 assert not secondary_imap_delay=="idle", "'idle' polling not implemented for secondary"
 
 if filtered_inbox==None: spamprobe_command = None
@@ -671,9 +682,7 @@ else: compression_ext = ""
 
 if image_size:
     from PIL import Image
-    import imghdr
-
-import commands
+    import imghdr # Python 3.13+ will require pip install standard-imghdr or apt install python3-standard-imghdr
 
 running_mainloop = False
 def debug(*args):
@@ -688,18 +697,21 @@ def check_ok(r):
     if not typ=='OK': raise Exception(typ+' '+repr(data))
 
 def spamprobe_rules(message,already_spam=False):
+  "Applies spamprobe rules and returns the mailbox to which to save"
   if already_spam: # additional_inbox_train_spam
       run_spamprobe("train-spam",message) # might help our own classifier to spot other features that weren't what the IMAP server's classifier picked up on (as long as we train-good if it wasn't)
       return spam_folder # (if JUST doing this, rename additional_inbox_train_spam to additional_inbox_direct_to_spam or something)
-  elif run_spamprobe("train",message).startswith("SPAM"): return spam_folder # "train" = classify + maybe update database if wasn't already confident ("receive" = always update database)
+  elif run_spamprobe("train",message).startswith(b"SPAM"): return spam_folder # "train" = classify + maybe update database if wasn't already confident ("receive" = always update database)
   else: return filtered_inbox
 
 def run_spamprobe(action,message):
+  "Runs the spamprobe command and returns its classification output"
   if not spamprobe_command: return ""
   if spamprobe_remove_images:
-      msg = email.message_from_string(message)
+      msg = message_from_bytes(message)
       if delete_images(msg):
           message=myAsString(msg)
+  if type("")==type(u""): return run((spamprobe_command+" "+action).split(),input=message,stdout=PIPE,stderr=PIPE,check=True).stdout
   cIn, cOut = os.popen2(spamprobe_command+" "+action)
   cIn.write(message); cIn.close()
   return cOut.read()
@@ -709,31 +721,39 @@ def spamprobe_cleanup():
     debug("spamprobe cleanup")
     os.system(spamprobe_command+" cleanup")
 
+def B(s):
+    if type(s)==type(b""): return s
+    return s.encode('utf-8')
+def S(s):
+    if type(s)==type(""): return s
+    return s.decode('utf-8')
+
 def process_header_rules(header):
   for box,matchList in header_rules:
-    for headerLine in header.replace("\r\n "," ").split("\n"):
+    for headerLine in B(header).replace(b"\r\n ",b" ").split(b"\n"):
       for m in matchList:
-        i=re.finditer(m,headerLine.rstrip())
-        try: i.next()
+        i=re.finditer(B(m),headerLine.rstrip())
+        try: next(i)
         except StopIteration: continue
         return rename_folder(box)
   return False
 
 def myAsString(msg):
-    message = msg.as_string()
-    if not "\r" in message: message=message.replace("\n","\r\n") # in case it came in from Maildir and the library didn't add the CRs back in
-    if not "\r\n\r\n" in message or ("\n\n" in message and message.index("\n\n")<message.index("\r\n\r\n")):
+    if type("")==type(u""): message = msg.as_bytes()
+    else: message = msg.as_string()
+    if not b"\r" in message: message=message.replace(b"\n",b"\r\n") # in case it came in from Maildir and the library didn't add the CRs back in
+    if not b"\r\n\r\n" in message or (b"\n\n" in message and message.index(b"\n\n")<message.index(b"\r\n\r\n")):
         # oops, broken library?
-        message=message.replace("\n\n","\r\n\r\n",1)
-        a,b = message.split("\r\n\r\n",1)
-        message = re.sub('\r*\n','\r\n',a)+"\r\n\r\n"+b
+        message=message.replace(b"\n\n",b"\r\n\r\n",1)
+        a,b = message.split(b"\r\n\r\n",1)
+        message = re.sub(b'\r*\n',b'\r\n',a)+b"\r\n\r\n"+b
     # Bug in python2.7/email/header.py: CRLF + whitespace sometimes added by _split_ascii after semicolons or commas, but if this occurs inside quoted-printable strings it'll break the display in some versions of alpine & mutt (RFC 2822 says CRLF + whitespace is interpreted as whitespace, and that's not allowed inside ?=..?= sections)
-    a,b = message.split("\r\n\r\n",1)
-    message = re.sub(header_charset_regex,lambda x:re.sub(r"\s_","_",re.sub("\r\n\s","",x.group())),a,flags=re.DOTALL)+"\r\n\r\n"+b
+    a,b = message.split(b"\r\n\r\n",1)
+    message = re.sub(header_charset_regex,lambda x:re.sub(br"\s_",b"_",re.sub(b"\r\n\s",b"",x.group())),a,flags=re.DOTALL)+b"\r\n\r\n"+b
     return message
 def headers(msg):
     # some Python libraries buggy, so do it ourselves
-    return set(l.split(None,1)[0][:-1] for l in myAsString(msg).split("\r\n\r\n",1)[0].split("\n") if l and l[0].strip())
+    return set(l.split(None,1)[0][:-1] for l in myAsString(msg).split(b"\r\n\r\n",1)[0].split(b"\n") if l and l[:1].strip())
 
 imapfix_name = sys.argv[0]
 if os.sep in imapfix_name: imapfix_name=imapfix_name[imapfix_name.rindex(os.sep)+1:]
@@ -751,28 +771,27 @@ del _a,_b
 
 def postponed_match(subject):
     if postponed_foldercheck:
-        m = re.match(isoDate,subject)
-        if m and m.group() >= isoToday(): return m.end() # TODO: Y10K (lexicographic comparison)
+        m = re.match(B(isoDate),B(subject))
+        if m and m.group() >= B(isoToday()): return m.end() # TODO: Y10K (lexicographic comparison)
     if postponed_daynames:
-        m = re.match(weekMonth,subject)
+        m = re.match(B(weekMonth),B(subject))
         if m: return m.end()
 
 def authenticated_wrapper(subject,firstPart,attach={}):
-    subject = subject.replace('\n',' ').replace('\r','') # in case the original header is corrupt (c.f. globalise_charsets)
+    subject = B(subject).replace(b'\n',b' ').replace(b'\r',b'') # in case the original header is corrupt (c.f. globalise_charsets)
     mLen = postponed_match(subject)
     if mLen:
-        newSubj = re.sub("^:","",subject[mLen:]).lstrip() # take the date itself out of the subject line before putting the message in that folder: it could take up valuable screen real-estate in summaries on large-print or mobile devices, and just duplicates information that can be found in the folder name (or in the Date: field after it's put back into filtered_inbox)
+        newSubj = re.sub(b"^:",b"",subject[mLen:]).lstrip() # take the date itself out of the subject line before putting the message in that folder: it could take up valuable screen real-estate in summaries on large-print or mobile devices, and just duplicates information that can be found in the folder name (or in the Date: field after it's put back into filtered_inbox)
         if not newSubj: # oops, subject contained only the date and nothing else: take from 1st line of text instead
-            newSubj = firstPart.lstrip().split('\n')[0]
-            if len(newSubj) > 60: newSubj = newSubj[:57] + "..." # TODO: configurable abbreviation length?
-        if postponed_maildir: box=('maildir',postponed_maildir+os.sep+subject[:mLen])
-        else: box=subject[:mLen] # don't resolve weekday/month names to a date here, because user might actually rely on the "doesn't check for past days on startup" behaviour to postpone to after a trip or something
+            newSubj = firstPart.lstrip().split(b'\n')[:1]
+            if len(newSubj) > 60: newSubj = newSubj[:57] + b"..." # TODO: configurable abbreviation length?
+        if postponed_maildir: box=('maildir',postponed_maildir+os.sep+S(subject[:mLen]))
+        else: box=S(subject[:mLen]) # don't resolve weekday/month names to a date here, because user might actually rely on the "doesn't check for past days on startup" behaviour to postpone to after a trip or something
         return box, newSubj
     try: r=handle_authenticated_message(subject,firstPart,attach)
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
-        o = StringIO() ; traceback.print_exc(None,o)
-        save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),o.getvalue()))
+        save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config exception in handle_authenticated_message, treating it as return False\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),traceback.format_exc()))
         r=False
     return r, None
 
@@ -794,14 +813,14 @@ def yield_all_messages(searchQuery=None,since=None):
         if not typ=='OK': continue
         flags = data[0]
         if not flags: flags = ""
-        if '\\Deleted' in flags: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
-        if '(' in flags: flags=flags[flags.rindex('('):flags.index(')')+1] # so it's suitable for imap.store below
+        if b'\\Deleted' in flags: continue # we don't mark messages deleted until they're processed; if imapfix was interrupted in the middle of a run, then don't process this message a second time
+        if b'(' in flags: flags=flags[flags.rindex(b'('):flags.index(b')')+1] # so it's suitable for imap.store below
         if bodyPeek_works:
             typ, data = imap.fetch(msgID, '(BODY.PEEK[])')
             if not typ=='OK': bodyPeek_works = False
         if not bodyPeek_works: # fall back to older RFC822:
             typ, data = imap.fetch(msgID, '(RFC822)')
-            if not "seen" in flags.lower(): # fetching RFC822 will set 'seen' flag, so we'll need to clear it again
+            if not b"seen" in flags.lower(): # fetching RFC822 will set 'seen' flag, so we'll need to clear it again
                 try: imap.store(msgID, 'FLAGS', flags)
                 except: imap.store(msgID, 'FLAGS', "()") # gmail can give a \Recent flag but not accept setting it
         if not typ=='OK': continue
@@ -848,8 +867,8 @@ def quote_display_name_if_needed(msg):
 
 def body_text(msg):
     "Returns a representation of the message's body text (all parts), for rules"
-    if msg.is_multipart(): return "\n".join(body_text(p) for p in msg.get_payload())
-    if not msg.get_content_type().startswith("text/"): return ""
+    if msg.is_multipart(): return b"\n".join(body_text(p) for p in msg.get_payload())
+    if not msg.get_content_type().startswith("text/"): return b""
     return msg.get_payload(decode=True).strip()
 
 def rewrite_importance(msg):
@@ -863,7 +882,7 @@ def rewrite_importance(msg):
             del msg[h] ; changed = True
     bTxt = body_text(msg)
     for r in important_regexps:
-        if re.search(r,bTxt):
+        if re.search(B(r),bTxt):
             msg['Importance'] = 'High'; changed=True; break
     return changed
 
@@ -876,6 +895,11 @@ def rewrite_return_path(msg):
         del msg["Return-Path"]
         msg["Return-Path"] = rp2 ; return True
 
+def select(folder=None):
+    if not folder: return imap.select()
+    elif type("")==type(u""): return imap.select('"'+folder+'"')
+    else: return imap.select(folder)
+
 def process_imap_inbox():
   make_sure_logged_in()
   doneSomething = True
@@ -885,17 +909,17 @@ def process_imap_inbox():
     if is_additional:
         if not additional_inbox: break
         if additional_inbox_might_not_exist:
-            typ, data = imap.select(additional_inbox)
+            typ, data = select(additional_inbox)
             if not typ=='OK': break
-        else: check_ok(imap.select(additional_inbox))
-    else: check_ok(imap.select()) # the inbox
+        else: check_ok(select(additional_inbox))
+    else: check_ok(select()) # the inbox
     imapMsgid = None ; newMail = False
     for msgID,flags,message in yield_all_messages():
         if not is_additional and leave_note_in_inbox and imap==saveImap and isImapfixNote(message):
             if imapMsgid: # somehow ended up with 2, delete one
                 imap.store(imapMsgid, '+FLAGS', '\\Deleted')
             imapMsgid = msgID ; continue
-        msg = email.message_from_string(message)
+        msg = message_from_bytes(message)
         box,message,changed,changed0,seenFlag = handleMsg(msg,message,is_additional,flags)
         if box==("leave","as-is"):
             imap.store(msgID, '+FLAGS', '\\Seen')
@@ -939,7 +963,7 @@ def handleMsg(msg,message=None,is_additional=True,flags=None,is_maildir=False):
         # do auth'd-msgs processing before any convert-to-attachment etc
         debug("Message authenticates")
         bypass_spamprobe = True
-        box,newSubj = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,msg.get("Subject",""),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
+        box,newSubj = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,B(str(msg.get("Subject",""))),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
         if newSubj: # for postponed_foldercheck
             del msg["Subject"]
             msg["Subject"] = utf8_to_header(newSubj)
@@ -963,17 +987,16 @@ def handleMsg(msg,message=None,is_additional=True,flags=None,is_maildir=False):
         if changed or not message: message = myAsString(msg)
         changed0 = changed # for change_message_id
         if box==False: # authenticates didn't decide a box
-            header = message[:message.find("\r\n\r\n")]
-            if add_return_path and not "\nReturn-Path" in header and (msg.get_unixfrom() or "From" in msg):
-                header += "\r\nReturn-Path: <"+re.sub(">.*","",re.sub("^[^<]*<","",msg.get_unixfrom() or msg["From"]))+">" # to help processing rules depending on that, for locally-delivered messages without Return-Path or unixfrom
-                message = header+message[message.find("\r\n\r\n"):]
+            header = message[:message.find(b"\r\n\r\n")]
+            if add_return_path and not b"\nReturn-Path" in header and (msg.get_unixfrom() or "From" in msg):
+                header += B("\r\nReturn-Path: <"+re.sub(">.*","",re.sub("^[^<]*<","",msg.get_unixfrom() or msg["From"]))+">") # to help processing rules depending on that, for locally-delivered messages without Return-Path or unixfrom
+                message = header+message[message.find(b"\r\n\r\n"):]
             box = process_header_rules(header)
             if box==False:
                 try: box = rename_folder(extra_rules(message))
                 except:
                     if not catch_extraRules_errors: raise
-                    o = StringIO() ; traceback.print_exc(None,o)
-                    save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(localtime=True),o.getvalue()))
+                    save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: imapfix_config exception in extra_rules (message has been saved to '%s')\r\nDate: %s\r\n\r\n%s\n" % (filtered_inbox,email.utils.formatdate(localtime=True),traceback.format_exc()))
                     box = filtered_inbox
                 if box==False:
                     if bypass_spamprobe: box = filtered_inbox
@@ -982,7 +1005,7 @@ def handleMsg(msg,message=None,is_additional=True,flags=None,is_maildir=False):
         if hostname=="outlook.office365.com" and type(box)==tuple and not is_maildir and has_rpmsg(msg):
             # MS "security" that can be opened only in Outlook
             # - do not transfer this from IMAP to a maildir
-            if not flags or not r"\Seen" in flags: save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: x-microsoft-rpmsg-message found\r\nDate: %s\r\n\r\n(From %s, Subject %s)\nimapfix encountered a Microsoft restricted-permission message, using a proprietary format which may be opened only on Outlook with the browser, and typically restricted from being forwarded etc.  This might be a targeted malware or 'phishing' attempt from a compromised Microsoft account, or it might be a real message from a misguided city council department or similar.  Third-party tools are unable to scan these messages.  Although these messages do contain links that supposedly allow you to log in from a browser attached to a third-party email client, these links rarely work in practice because Microsoft's broken system too easily selects the wrong account and fails to let you try another.  Therefore, imapfix has not copied this message to %s: you'll need to open your upstream inbox in Outlook and deal with it manually.\n" % (email.utils.formatdate(localtime=True),repr(msg.get("From",None)),repr(msg.get("Subject",None)),repr(box)))
+            if not flags or not br"\Seen" in flags: save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: x-microsoft-rpmsg-message found\r\nDate: %s\r\n\r\n(From %s, Subject %s)\nimapfix encountered a Microsoft restricted-permission message, using a proprietary format which may be opened only on Outlook with the browser, and typically restricted from being forwarded etc.  This might be a targeted malware or 'phishing' attempt from a compromised Microsoft account, or it might be a real message from a misguided city council department or similar.  Third-party tools are unable to scan these messages.  Although these messages do contain links that supposedly allow you to log in from a browser attached to a third-party email client, these links rarely work in practice because Microsoft's broken system too easily selects the wrong account and fails to let you try another.  Therefore, imapfix has not copied this message to %s: you'll need to open your upstream inbox in Outlook and deal with it manually.\n" % (email.utils.formatdate(localtime=True),repr(msg.get("From",None)),repr(msg.get("Subject",None)),repr(box)))
             return ("leave","as-is"),None,None,None,None
         if headers_to_delete and delete_headers(msg):
             changed0 = changed = True # for change_message_id
@@ -1085,7 +1108,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
     if not age==None:
       if spamprobe_action: extra = ", spamprobe="+spamprobe_action
       else: extra = ""
-      toDbg="Archiving from "+str(foldername)+" to "+str(mboxpath)+extra+"..."
+      toDbg="Archiving from "+str(foldername)+" to "+mboxpath+extra+"..."
       suf = "" ; sc = 0
       while os.path.exists(mboxpath+suf+compression_ext):
         sc += 1 ; suf = "."+str(sc)
@@ -1112,7 +1135,7 @@ def archive(foldername, mboxpath, age, spamprobe_action):
         toDel = []
     else:
         make_sure_logged_in() ; debug(toDbg)
-        typ, data = imap.select(foldername)
+        typ, data = select(foldername)
         if not typ=='OK': return # couldn't select folder
         generator = yield_all_messages
     for msgID,flags,message in generator():
@@ -1120,30 +1143,30 @@ def archive(foldername, mboxpath, age, spamprobe_action):
             # TODO: combine multiple messages first?
             run_spamprobe(spamprobe_action, message)
         if age==None: continue
-        if type(message)==type(''):
-            msg = email.message_from_string(message)
+        if type(message)==type(b''):
+            msg = message_from_bytes(message)
         else: # maildir returns it as a Message etc
             msg,message = message,myAsString(message)
         try: t = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date']))
         except: t = time.time() # undated message or invalid date (sometimes happens in spam for example)
         if t >= time.time() - age: continue
-        if not message.startswith("From "): # needed for Unix mbox, otherwise mbox lib fills it in with MAILER-DAEMON
+        if not message.startswith(b"From "): # needed for Unix mbox, otherwise mbox lib fills it in with MAILER-DAEMON
             f = []
             if 'From' in msg:
-                fr = msg['From']
+                fr = str(msg['From'])
                 if '<' in fr and '>' in fr[fr.index('<'):]:
                     fr = fr[fr.index('<')+1:fr.rindex('>')]
                 if not fr: fr = 'unknown'
-                f.append(fr)
-                f.append(time.asctime(time.gmtime(t))) # must be THIS format for at least some versions of mutt to parse the message
-                message="From "+' '.join(f)+"\r\n"+message
-                msg = email.message_from_string(message)
+                f.append(B(fr))
+                f.append(B(time.asctime(time.gmtime(t)))) # must be THIS format for at least some versions of mutt to parse the message
+                message=b"From "+b' '.join(f)+b"\r\n"+message
+                msg = message_from_bytes(message)
         globalise_charsets(msg,archive_8bit) # in case wasn't done on receive (this also makes sure UTF-8 is quopri if it would be shorter, which can make archives easier to search)
         if archived_attachments_path and (save_attachments_for_confirmed_spam_too or not spamprobe_action or not "spam" in spamprobe_action): save_attachments_separately(msg)
         mbox.add(msg) # TODO: .set_flags A=answered R=read ?  (or doesn't it matter so much for old-message archiving; flags aren't always right anyway as you might have answered some using another method)
         if is_maildir: toDel.append(msgID)
         else: imap.store(msgID, '+FLAGS', '\\Deleted')
-    if mbox:
+    if not mbox==None:
         mbox.close()
         if not os.stat(mboxpath).st_size: tryRm(mboxpath) # ended up with an empty file - delete it
         else:
@@ -1162,22 +1185,22 @@ def archive(foldername, mboxpath, age, spamprobe_action):
 def fix_archives_written_by_imapfix_v1_308():
     for f in listdir(archive_path):
         f = archive_path+os.sep+f
-        if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'r')
-        else: f2 = open(f)
+        if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'rb')
+        else: f2 = open(f,'rb')
         r = [] ; changed = False
         for l in f2:
-          if l.startswith("From "):
-            l2 = l.replace('<','')
-            try: t = email.utils.mktime_tz(email.utils.parsedate_tz(' '.join(l2.split()[-6:])))
+          if l.startswith(b"From "):
+            l2 = l.replace(b'<',b'')
+            try: t = email.utils.mktime_tz(email.utils.parsedate_tz(' '.join(S(l2).split()[-6:])))
             except: t = None
             if t:
-                l2 = ' '.join(l2.split()[:-6])+' '+time.asctime(time.gmtime(t))+'\r\n'
+                l2 = B(' '.join(S(l2).split()[:-6])+' '+time.asctime(time.gmtime(t))+'\r\n')
                 r.append(l2) ; changed = True ; continue
           r.append(l)
         if changed:
           print ("Fixing "+f)
-          if f.endswith(compression_ext): open_compressed(f[:-len(compression_ext)],'wb').write(''.join(r))
-          else: open(f,'wb').write(''.join(r))
+          if f.endswith(compression_ext): open_compressed(f[:-len(compression_ext)],'wb').write(b''.join(r))
+          else: open(f,'wb').write(b''.join(r))
         else: print ("No need to fix "+f)
 
 def get_attachments(msg):
@@ -1227,7 +1250,7 @@ def save_attachment_separately(msg):
         fname = fname[:attachment_filename_maxlen-len(fext)] + fext
     data = msg.get_payload(None,True)
     if not data: return
-    msg.set_payload("")
+    msg.set_payload(b"")
     try: os.mkdir(archived_attachments_path)
     except: pass # OK if exists
     f2 = archived_attachments_path+os.sep+fname
@@ -1242,13 +1265,13 @@ def save_attachment_separately(msg):
 def delete_attachments(msg):
     walk_msg(msg,delete_attachment)
 def delete_attachment(msg):
-    if msg.get_filename(): msg.set_payload("")
+    if msg.get_filename(): msg.set_payload(b"")
 
 def delete_images(msg):
     return walk_msg(msg,delete_image)
 def delete_image(msg):
     if msg.get("Content-Type","").startswith("image/"):
-        msg.set_payload("") # empty: this is enough to stop the spamprobe crash (don't need to remove the attachment altogether)
+        msg.set_payload(b"") # empty: this is enough to stop the spamprobe crash (don't need to remove the attachment altogether)
         return True
 
 def nightly_train(foldername, spamprobe_action):
@@ -1262,7 +1285,7 @@ def nightly_train(foldername, spamprobe_action):
             if t >= timeYesterday: run_spamprobe(spamprobe_action, myAsString(msg)) # TODO: combine multiple messages first?
         return
     make_sure_logged_in()
-    typ, data = imap.select(foldername)
+    typ, data = select(foldername)
     if not typ=='OK': return # couldn't select that folder
     for msgID,flags,message in yield_all_messages(since='-'.join(email.utils.formatdate(time.time()-24*3600,localtime=True).split()[1:4])): run_spamprobe(spamprobe_action, message) # TODO: combine multiple messages first?
     
@@ -1281,7 +1304,7 @@ def copy_to(mailbox, message_id):
     assert imap == saveImap, "Can't call copy_to if saveImap != imap"
     typ, data = imap.fetch(message_id, "(UID)")
     if not typ=='OK': return False
-    uid = data[0]
+    uid = S(data[0])
     if '(' in uid:
         uid=uid[uid.index('(')+1:uid.rindex(')')]
     if uid.startswith("UID "): uid=uid[4:]
@@ -1300,13 +1323,13 @@ def save_to(mailbox, message_as_string, flags="", mayNeedNewMsgID=True):
     if type(mailbox)==tuple and mailbox[0]=='maildir': return save_to_maildir(mailbox[1],message_as_string,flags)
     elif imap_to_maildirs and not mailbox in imap_maildir_exceptions: return save_to_maildir(imap_to_maildirs+os.sep+mailbox,message_as_string,flags) # might as well skip the intermediate step of putting it in an IMAP folder to be picked up by imap_to_maildirs on next cycle
     make_sure_logged_in() ; maybe_create(mailbox)
-    msg = email.message_from_string(message_as_string)
+    msg = message_from_bytes(B(message_as_string))
     if 'Date' in msg:
         try: imap_timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(msg['Date'])) # We'd better not set the IMAP timestamp to anything other than the Date line.  IMAP timestamps are sometimes used for ordering messages by Received (e.g. Mutt, Alpine, Windows Mobile 6), but not always (e.g. Android 4 can sort only by Date); they're sometimes displayed (e.g. WM6) but sometimes not (e.g. Alpine), and some IMAP servers have sometimes been known to set them to Date anyway, so we can't rely on a different value (e.g. for postponed_foldercheck) always working.
         except: imap_timestamp = time.time() # badly-formatted date (TODO: could try Received lines)
     else: imap_timestamp = time.time() # undated message ? (TODO: could parse Received lines)
-    if change_message_id and mayNeedNewMsgID and 'Message-ID' in msg: message_as_string = message_as_string.replace("Message-ID: <","Message-ID: <2",1) # .muttrc editor default adds '1', so let's add a '2'
-    if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # TODO: check the "Content-Transfer-Encoding" is in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
+    if change_message_id and mayNeedNewMsgID and 'Message-ID' in msg: message_as_string = B(message_as_string).replace(b"Message-ID: <",b"Message-ID: <2",1) # .muttrc editor default adds '1', so let's add a '2'
+    if imap_8bit and re.search(b"(?i)Content-Transfer-Encoding: quoted-printable",B(message_as_string)): message_as_string = quopri_to_u8_8bitOnly(B(message_as_string)) # TODO: check the "Content-Transfer-Encoding" is in the header or one of the MIME parts (don't do it if it's a non-MIME ascii-only message that happens to contain that text and perhaps some URLs with =(hex digits) in them)
     check_ok(saveImap.append(mailbox, flags, imaplib.Time2Internaldate(imap_timestamp), message_as_string))
     return "Uploaded"
 
@@ -1314,8 +1337,9 @@ sync_needed = not not sync_command
 def save_to_maildir(maildir_path, message_as_string, flags=""):
     mailbox.Maildir.colon = maildir_colon
     m = mailbox.Maildir(maildir_path,None)
-    if re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string)
-    msg = mailbox.MaildirMessage(email.message_from_string(message_as_string.replace("\r\n","\n")))
+    message_as_string = B(message_as_string)
+    if re.search(b"(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string)
+    msg = mailbox.MaildirMessage(message_from_bytes(message_as_string.replace(b"\r\n",b"\n")))
     msg.set_flags(maildir_flags_from_imap(flags))
     m.add(msg)
     if sync_needed_only_if_wrote_maildirs and sync_command:
@@ -1372,10 +1396,11 @@ def clean_empty_maildir(md):
 def imap_flags_from_maildir_msg(msg): return " ".join(" ".join({'S':r'\Seen','D':r'\Deleted','R':r'\Answered','F':r'\Flagged'}.get(flag,"") for flag in msg.get_flags()).split())
 def maildir_flags_from_imap(flags):
     r = ""
-    if r"\Deleted" in flags: r += 'D'
-    if r"\Flagged" in flags: r += 'F'
-    if r"\Answered" in flags: r += 'R'
-    if r"\Seen" in flags: r += 'S'
+    flags = B(flags)
+    if br"\Deleted" in flags: r += 'D'
+    if br"\Flagged" in flags: r += 'F'
+    if br"\Answered" in flags: r += 'R'
+    if br"\Seen" in flags: r += 'S'
     return r
 
 def do_maildir_to_copyself():
@@ -1401,14 +1426,15 @@ def do_copyself_to_copyself():
             debug("Cannot specify copyself_folder_name in copyself_alt_folder: skipping ",folder)
             continue
         make_sure_logged_in()
-        typ, data = imap.select(folder)
+        if type("")==type(u""): typ, data = select('"'+folder+'"')
+        else: typ, data = select(folder)
         if not typ=='OK': continue # skip non-selectable folder, without output: it may appear later if the relevant MUA is used
         said = False
         for msgID,flags,message in yield_all_messages():
             if not said: # don't say until we know there's at least some messages in the folder
                 debug("Moving messages from ",folder," to ",copyself_folder_name)
                 said = True
-            msg = email.message_from_string(message)
+            msg = message_from_bytes(message)
             charsets_changed = globalise_charsets(msg,imap_8bit)
             if copyself_delete_attachments:
                 delete_attachments(msg) # apparently deleting an attachment does not affect mayNeedNewMsgID, at least Gmail Jan 2022: use only charsets_changed for that
@@ -1419,7 +1445,7 @@ def do_copyself_to_copyself():
 def do_auto_delete():
     for folder in auto_delete_folder.split(","):
         make_sure_logged_in()
-        typ, data = imap.select(folder)
+        typ, data = select(folder)
         if not typ=='OK':
             debug("Skipping non-selectable folder ",folder)
             continue
@@ -1431,16 +1457,16 @@ def do_auto_delete():
             imap.store(msgID, '+FLAGS', '\\Deleted')
         if said: check_ok(imap.expunge())
 
-header_charset_regex = r'=\?(.*?)\?(.*?)\?(.*?)\?=' # RFC 2047
+header_charset_regex = br'=\?(.*?)\?(.*?)\?(.*?)\?=' # RFC 2047
 def header_to_u8(match):
     charset = match.group(1).lower()
-    if charset in ['gb2312','gbk']: charset='gb18030'
+    if charset in [b'gb2312',b'gbk']: charset=b'gb18030'
     encoding = match.group(2)
     text = match.group(3)
     try:
-        if encoding.upper()=='Q': text = quopri.decodestring(text,header=True)
-        else: text = base64.decodestring(text)
-        text = text.decode(charset)
+        if encoding.upper()==b'Q': text = quopri.decodestring(text,header=True)
+        else: text = decodebytes(text)
+        text = text.decode(S(charset))
     except:
         debug("Bad header line: exception decoding ",repr(text)," in ",charset,", leaving unchanged")
         return match.group()
@@ -1460,17 +1486,18 @@ def destylise_u8_header(u8):
     def sub(match):
         m=match.group()
         aNum = ((ord(m[2])-0x90)*(0xc0-0x80)+ord(m[3])-0x80) % 52
-        if aNum>=26: return chr(ord('a')+aNum-26)
-        else: return chr(ord('A')+aNum)
-    u8 = re.sub("\xf0\x9d[\x90-\x99][\x80-\xbf]",sub,re.sub("\xf0\x9d\x9a[\x80-\xa3]",sub,u8)) # U+1D400..U+1D6A3 (works even if Python is narrow build)
-    if re.search("\xef[\xbc\xbd]",u8): u8=re.sub(u"[\uFF01-\uFF5E]",lambda m:chr(ord(m.group())-0xFF01+ord('!')),u8.decode('utf-8')).encode('utf-8') # full-width ASCII
+        if aNum>=26: return B(chr(ord('a')+aNum-26))
+        else: return B(chr(ord('A')+aNum))
+    u8 = re.sub(b"\xf0\x9d[\x90-\x99][\x80-\xbf]",sub,re.sub(b"\xf0\x9d\x9a[\x80-\xa3]",sub,u8)) # U+1D400..U+1D6A3 (works even if Python is narrow build)
+    if re.search(b"\xef[\xbc\xbd]",u8): u8=re.sub(u"[\uFF01-\uFF5E]",lambda m:chr(ord(m.group())-0xFF01+ord('!')),u8.decode('utf-8')).encode('utf-8') # full-width ASCII
     return u8
 def utf8_to_header(u8):
-    if not ('=?' in u8 or re.search(r"[^ -~]",u8)): return u8 # ASCII and no encoding needed
-    ret = "B?"+base64.encodestring(u8).replace("\n","")
-    qp = "Q?"+re.sub("=?\n","",quopri.encodestring(u8,header=True)).replace('?','=3F') # must have header=True for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present)
+    u8 = B(u8)
+    if not (b'=?' in u8 or re.search(br"[^ -~]",u8)): return u8 # ASCII and no encoding needed
+    ret = b"B?"+encodebytes(u8).replace(b"\n",b"")
+    qp = b"Q?"+re.sub(b"=?\n",b"",quopri.encodestring(u8,header=True)).replace(b'?',b'=3F') # must have header=True for alpine (although mutt and Outlook etc may work either way, especially if the with-spaces version is not wrapped, but alpine fails to decode the quopri if any space is present)
     if len(qp) <= len(ret): ret = qp
-    return "=?UTF-8?"+ret+"?="
+    return b"=?UTF-8?"+ret+b"?="
 
 import email.mime.multipart,email.mime.message,email.mime.text,email.mime.image,email.charset,email.mime.base
 def turn_into_attachment(message,covering_text=None,attach_raw=False):
@@ -1493,9 +1520,9 @@ def getFirstPart(message):
     if message.is_multipart():
         for i in message.get_payload():
             return getFirstPart(i)
-        return ""
+        return b""
     try: pl = message.get_payload(decode=True)
-    except: return ""
+    except: return b""
     cs = message.get_content_charset(None)
     if cs in [None,'us-ascii','utf-8']: return pl
     if cs in ['gb2312','gbk']: cs = 'gb18030'
@@ -1514,9 +1541,9 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
     changed = False
     for line in ["From","To","Cc","Subject","Reply-To"]:
         if not line in message: continue
-        l = message[line]
+        l = str(message[line])
         l2 = l.replace(" ?utf-8?q?"," =?utf-8?q?") # bug observed in mail generated by "SOGoMail 2.3.23"
-        l2 = re.sub(header_charset_regex,globalise_header_charset,l2,flags=re.DOTALL).replace('\n','').replace('\r','') # the \n and \r replacements are in case the original header is corrupt
+        l2 = S(re.sub(header_charset_regex,globalise_header_charset,B(l2),flags=re.DOTALL).replace(b'\n',b'').replace(b'\r',b'')) # the \n and \r replacements are in case the original header is corrupt
         if l==l2: continue
         # debug("Changing ",line," from ",l," to ",l2)
         # message["X-Imapfix-Old-"+line] = l
@@ -1540,15 +1567,15 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
     except:
         message['X-ImapFix-Globalise-Charset-Decode-Error'] = repr(sys.exc_info()[1]).strip()
         return True
-    if specified_charset=='us-ascii' and re.search('[\x80-\xff]',p0): # mislabelled ASCII
+    if specified_charset=='us-ascii' and re.search(b'[\x80-\xff]',p0): # mislabelled ASCII
         force_change = is_unspecified = True
         specified_charset = None
         message.set_payload(p0,None)
         changed = True
     if is_unspecified:
-        if p0.startswith('\xfe\xff'): specified_charset = 'utf-16be'
-        elif p0.startswith('\xff\xfe'): specified_charset = 'utf-16le'
-        elif p0.startswith('\xef\xbb\xbf'): specified_charset = 'utf-8'
+        if p0.startswith(b'\xfe\xff'): specified_charset = 'utf-16be'
+        elif p0.startswith(b'\xff\xfe'): specified_charset = 'utf-16le'
+        elif p0.startswith(b'\xef\xbb\xbf'): specified_charset = 'utf-8'
         else:
             try:
                 import chardet
@@ -1563,10 +1590,10 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
     if not force_change: # should we SET force_change? :
       if 'Content-Transfer-Encoding' in message and not message['Content-Transfer-Encoding']=='quoted-printable': force_change = True # if it's base64, always see if we can change it
       elif specified_charset=='utf-8':
-       if p0.startswith('\xef\xbb\xbf'): force_change = True # we'll want to remove that "BOM"
+       if p0.startswith(b'\xef\xbb\xbf'): force_change = True # we'll want to remove that "BOM"
        elif will_use_8bit:
         try:
-          if re.search("[^\x00-\x80]",message.get_payload(decode=True)): force_change = True
+          if re.search(b"[^\x00-\x80]",message.get_payload(decode=True)): force_change = True
         except: pass # we would full back to return anyway on the 'problems decoding this message' below
     if specified_charset:
       if not force_change and specified_charset in ['us-ascii','utf-8'] and not is_html: return changed # no further conversion required
@@ -1593,7 +1620,7 @@ def setPayload(message,p,charset,will_use_8bit=False):
         del message['Content-Transfer-Encoding']
     else: isQP = False
     if not isQP: # not already decided on quoted-printable; SHOULD we?
-        b64len = len(base64.encodestring(p))
+        b64len = len(encodebytes(p))
         pp = quopri.encodestring(p)
         isQP = (len(pp) <= b64len or (will_use_8bit and len(quopri_to_u8_8bitOnly(pp)) <= b64len)) # use Quoted-Printable rather than Base64 for UTF-8 if the original was quopri or if doing so is shorter (besides anything else it's easier to search emails without tools that way)
     for i in [1,2]: # before AND after, just in case
@@ -1602,18 +1629,18 @@ def setPayload(message,p,charset,will_use_8bit=False):
         if i==2: return True
         message.set_payload(p,charset)
 def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by default).  Must ensure any header blocks in s are not touched!  (or imap server may substitute Xs etc)
-    if re.search('[\x80-\xff]',s): return s # message already contains 8-bit stuff: we probably shouldn't redo this in case of coincidental UTF-8 quoted-printable in a binary attachment (TODO: what if such an attachment happens to lack any bytes with the high bit set)
+    if re.search(b'[\x80-\xff]',s): return s # message already contains 8-bit stuff: we probably shouldn't redo this in case of coincidental UTF-8 quoted-printable in a binary attachment (TODO: what if such an attachment happens to lack any bytes with the high bit set)
     avoid = set()
     def avoidAdd(m):
         avoid.add((m.start(),m.end()))
         return m.group()
     re.sub(header_charset_regex,avoidAdd,s,flags=re.DOTALL) # don't want to interfere with MIME 'charset' etc in subject lines
-    re.sub(r'h(=\r?\n)?t(=\r?\n)?t(=\r?\n)?p(=\r?\n)?(s(=\r?\n)?)?:(=\r?\n)?/(=\r?\n)?/(=\r?\n)?([^ "<>^'+"`'"+'](=\r?\n)?)+',avoidAdd,s) # and don't want to interfere with =hex in URLs (the '=' of which should have been double-encoded anyway, but sometimes isn't)
+    re.sub(br'h(=\r?\n)?t(=\r?\n)?t(=\r?\n)?p(=\r?\n)?(s(=\r?\n)?)?:(=\r?\n)?/(=\r?\n)?/(=\r?\n)?([^ "<>^'+b"`'"+b'](=\r?\n)?)+',avoidAdd,s) # and don't want to interfere with =hex in URLs (the '=' of which should have been double-encoded anyway, but sometimes isn't)
     def maybeDecode(m):
         for start,end in avoid: # TODO: improve efficiency when dealing with a very large archive with many headers?
             if start <= m.start() < end: return m.group()
         return quopri.decodestring(m.group())
-    return re.sub(r"(=(([C][2-9A-F]|[D][0-9A-F])|E0=[AB][0-9A-F]|(E[1-9A-CEF]|F0=[9AB][0-9A-F]|F4=8[0-F])(=\r?\n)?=[89AB][0-9A-F]|ED=[89][0-9A-F]|F[1-3]=[89AB][0-9A-F]=[89AB][0-9A-F])(=\r?\n)?=[89AB][0-9A-F])+",maybeDecode,s) # decodes only 8-bit utf-8 characters from the quoted-printable string, leaving alone any 7-bit characters that are encoded as quoted-printable ("^From" etc)
+    return re.sub(br"(=(([C][2-9A-F]|[D][0-9A-F])|E0=[AB][0-9A-F]|(E[1-9A-CEF]|F0=[9AB][0-9A-F]|F4=8[0-F])(=\r?\n)?=[89AB][0-9A-F]|ED=[89][0-9A-F]|F[1-3]=[89AB][0-9A-F]=[89AB][0-9A-F])(=\r?\n)?=[89AB][0-9A-F])+",maybeDecode,s) # decodes only 8-bit utf-8 characters from the quoted-printable string, leaving alone any 7-bit characters that are encoded as quoted-printable ("^From" etc)
 
 def has_rpmsg(msg):
     if msg.is_multipart(): return any(has_rpmsg(m) for m in msg.get_payload())
@@ -1644,7 +1671,7 @@ def add_preview(message,accum):
     if to_attach == None: return False # TODO? (non-multipart message sent with a single image and nothing else)
     if not 'Content-Type' in message or message["Content-Type"].startswith("text/"): return False
     payload = message.get_payload(decode=True)
-    try: img=Image.open(StringIO(payload))
+    try: img=Image.open(BytesIO(payload))
     except: return False # not an image, or corrupt
     changed = False
     if message["Content-Type"].startswith("application/"):
@@ -1667,10 +1694,10 @@ def add_preview(message,accum):
     try: img.thumbnail(image_size,Image.ANTIALIAS)
     except: return changed # probably a JPEG-variant decoder not available
     try:
-      s1 = StringIO();img.save(s1,'JPEG');s1=s1.getvalue()
+      s1 = BytesIO();img.save(s1,'JPEG');s1=s1.getvalue()
     except: s1 = None
     try:
-      s2 = StringIO();img.save(s2,'PNG'); s2=s2.getvalue()
+      s2 = BytesIO();img.save(s2,'PNG'); s2=s2.getvalue()
     except: s2 = None
     if s1==None and s2==None: return changed
     elif s1==None: s,ext = s2,"png"
@@ -1705,19 +1732,19 @@ def filename_ext(message):
                 else: break
             if fn2: fn = fn2
             else: return False
-    fn = re.sub(header_charset_regex,header_to_u8,fn)
+    fn = S(re.sub(header_charset_regex,header_to_u8,B(fn)))
     if not '.' in fn: return False
     ext = fn[fn.rindex('.'):].lower()
     return fn,ext
 def add_office0(message,accum):
     if to_attach == None: return False # TODO? (non-multipart message sent with a single document and nothing else)
     if "Content-Type" in message and (str(message['Content-Type']).startswith("text/calendar") or str(message['Content-Type']).startswith("application/ics")):
-        cal = ["Calendar file:"]
-        for l in re.sub("LANGUAGE=[a-zA-Z-]*:","",message.get_payload(decode=True).replace("\r\n","\n").replace("\n "," ").replace("\nX-MICROSOFT-","\n").replace(";ROLE=REQ-PARTICIPANT","").replace(";PARTSTAT=NEEDS-ACTION","").replace(";RSVP=TRUE","").replace(";VALUE=DATE","").replace("mailto:","")).split("\n"):
-            if any(l.startswith(f) for f in ["TZID:","ORGANIZER","ATTENDEE","SUMMARY","DTSTART:2","DTEND:2","DTSTART;TZID=","DTEND;TZID=","LOCATIONDISPLAYNAME","LOCATIONSTREET","LOCATIONCITY"]) and ':' in l and l[l.index(':')+1:].replace(r'\n','').strip(): cal.append(" ".join(l.replace(";","; ").replace(":",": ").split()))
+        cal = [b"Calendar file:"]
+        for l in re.sub(b"LANGUAGE=[a-zA-Z-]*:",b"",message.get_payload(decode=True).replace(b"\r\n",b"\n").replace(b"\n ",b" ").replace(b"\nX-MICROSOFT-",b"\n").replace(b";ROLE=REQ-PARTICIPANT",b"").replace(b";PARTSTAT=NEEDS-ACTION",b"").replace(b";RSVP=TRUE",b"").replace(b";VALUE=DATE",b"").replace(b"mailto:",b"")).split(b"\n"):
+            if any(l.startswith(f) for f in [b"TZID:",b"ORGANIZER",b"ATTENDEE",b"SUMMARY",b"DTSTART:2",b"DTEND:2",b"DTSTART;TZID=",b"DTEND;TZID=",b"LOCATIONDISPLAYNAME",b"LOCATIONSTREET",b"LOCATIONCITY"]) and b':' in l and l[l.index(b':')+1:].replace(br'\n',b'').strip(): cal.append(b" ".join(l.replace(b";",b"; ").replace(b":",b": ").split()))
         if len(cal)==1: return False # no details found
         b = email.mime.base.MIMEBase("text","plain")
-        b.set_payload("\n".join(cal))
+        b.set_payload(b"\n".join(cal))
         to_attach.append(b) ; return True
     fn = filename_ext(message)
     if fn==False: return False
@@ -1825,13 +1852,13 @@ def add_eml0(message,accum):
 def delete_headers(msg):
     changed = False
     for h in headers(msg):
-        if any(h.startswith(hd) for hd in headers_to_delete):
+        if any(h.startswith(B(hd)) for hd in headers_to_delete):
             while h in msg: del msg[h]
             changed = True
     return changed
 
 def getMimeBase(f):
-    mimeType = mimetypes.guess_type(f)[0]
+    mimeType = mimetypes.guess_type(S(f))[0]
     if not mimeType: mimeType = "application/binary"
     mT,subT = mimeType.split("/")
     return email.mime.base.MIMEBase(mT,subT)
@@ -1840,7 +1867,7 @@ def folderList(pattern="*"):
     make_sure_logged_in()
     typ,data = imap.list(pattern=pattern)
     if not typ=='OK': return []
-    return [re.sub('.*"." ','',i).replace('"','') for i in data if i and not r"\Noselect" in i]
+    return [re.sub('.*"." ','',S(i)).replace('"','') for i in data if i and not r"\Noselect" in S(i)]
 
 isoDate = "[1-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]"
 if postponed_daynames:
@@ -1887,17 +1914,17 @@ def do_postponed_foldercheck(dayToCheck="today"):
             clean_empty_maildir(postponed_maildir+os.sep+dayToCheck)
     f = folderList(dayToCheck)
     if not len(f)==1: return # no folder of that name
-    folder = f[0] ; imap.select(folder) ; said = False
+    folder = f[0] ; select(folder) ; said = False
     for msgID,flags,message in yield_all_messages():
         if not said:
             debug("Moving messages from ",folder," to ",filtered_inbox)
             said = True
-        msg = email.message_from_string(message)
+        msg = message_from_bytes(message)
         reDate(msg)
         save_to(filtered_inbox,myAsString(msg))
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if said: check_ok(imap.expunge())
-    check_ok(imap.select()) ; do_delete(folder)
+    check_ok(select()) ; do_delete(folder)
 
 def reDate(msg):
     theFrom = msg.get('From','').replace('"','').strip()
@@ -1913,16 +1940,16 @@ def reDate(msg):
 def getAddr(a): return ''.join(a.split()[-1:]).replace('<','').replace('>','')
 def addOldDateFunc(old_date):
     def addOldDate(message):
-        newPara = ""
+        newPara = b""
         if 'Content-Type' in message:
             if not message["Content-Type"].startswith("text/"): return False
-            if message["Content-Type"].startswith("text/html"): newPara = "<p>" # TODO: might end up being before the HTML tag; depends which browser you use
+            if message["Content-Type"].startswith("text/html"): newPara = b"<p>" # TODO: might end up being before the HTML tag; depends which browser you use
         if 'Content-Disposition' in message and message['Content-Disposition'].startswith('attachment'): return False
         changed = globalise_charsets(message, imap_8bit) # just in case
-        dateIntro = from_name+": original Date: "
+        dateIntro = B(from_name+": original Date: ")
         if message.get_payload(decode=True).startswith(dateIntro): return changed
         if not changed: globalise_charsets(message, imap_8bit, True) # ensure set up for:
-        return setPayload(message,dateIntro + old_date + newPara + "\n\n" + message.get_payload(decode=True),'utf-8') # Fixed in v1.498: postponing a message previously caused quopri to be decoded but still declared, invalidating URLs that had = followed by hex code in them, breaking links on commercial mailing-list trackers like MailChimp
+        return setPayload(message,dateIntro + B(old_date) + newPara + b"\n\n" + message.get_payload(decode=True),'utf-8') # Fixed in v1.498: postponing a message previously caused quopri to be decoded but still declared, invalidating URLs that had = followed by hex code in them, breaking links on commercial mailing-list trackers like MailChimp
     return addOldDate
 
 def do_calendar():
@@ -1994,11 +2021,14 @@ def mainloop():
         rerun_before_idle = not sync_command or sync_needed_only_if_wrote_maildirs
     if poll_interval=="idle":
         if rerun_before_idle: continue # catch any messages that came in while we were running sync_command or whatever, since "idle" does not return immediately if there are pending ones (it's effectively a race condition, TODO: is there a better way to handle this?)
-        make_sure_logged_in() ; imap.select()
+        make_sure_logged_in() ; select()
         debug("Waiting for IMAP event")
         t = time.time()
         try:
-            imap.idle() # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
+            i=imap.idle() # Can take a timeout parameter, default 29 mins.  TODO: allow shorter timeouts for clients behind NAT boxes or otherwise needing more keepalive?  IDLE can still be useful in these circumstances if the server's 'announce interval' is very short but we don't want across-network polling to be so short, e.g. slow link (however you probably don't want to be running imapfix over slow/wobbly links - it's better to run it on a well-connected server)
+            if hasattr(i,"__enter__"): # Python 3.14+'s:
+                i.__enter__()
+                for j in i: pass
             debug("Wait finished after ",int((time.time()-t)/60),"mins")
         except: # e.g. imaplib2.abort, fall back on delay
             M = int((time.time()-t)/60)
@@ -2081,9 +2111,9 @@ def oauth2_get(pwd,user,force_regenerate=False):
     cmd,secs = pwd ; regenerated = False
     if oauth2_string_cache.setdefault(cmd,(None,0))[1] < time.time() or force_regenerate:
         debug("Generating OAuth2 access string for ",user)
-        access_string = commands.getoutput(cmd).strip()
-        if re.match("[A-Za-z0-9/+]+=*$",access_string): access_string = base64.decodestring(access_string)
-        if not access_string.startswith("user="): access_string="user="+user+"\x01auth=Bearer "+access_string+"\x01\x01"
+        access_string = B(getoutput(cmd).strip())
+        if re.match(b"[A-Za-z0-9/+]+=*$",access_string): access_string = decodebytes(access_string)
+        if not access_string.startswith(b"user="): access_string=b"user="+B(user)+b"\x01auth=Bearer "+access_string+b"\x01\x01"
         oauth2_string_cache[cmd] = (access_string,time.time()+secs)
         regenerated = True
     return oauth2_string_cache[cmd][0], regenerated
@@ -2134,9 +2164,10 @@ def yield_folders():
     "iterates through folders in imap, selecting each one as it goes"
     make_sure_logged_in()
     for foldername in imap.list()[1]:
+        foldername = S(foldername)
         if '"/"' in foldername: foldername=foldername[foldername.index('"/"')+3:].lstrip()
         if foldername.startswith('"') and foldername.endswith('"'): foldername=foldername[1:-1] # TODO: check if any other unquoting is needed
-        typ, data = imap.select(foldername)
+        typ, data = select(foldername)
         if not typ=='OK': continue
         yield foldername
 
@@ -2146,13 +2177,14 @@ def do_note(subject,ctype="text/plain",maybe=0,to_real_inbox=False):
     if isatty(sys.stdin):
         sys.stderr.write("Type the note, then EOF\n")
     body = sys.stdin.read()
+    if type(body)==type(u""): body=body.encode('utf-8')
     if maybe and not body.strip(): return
-    if not body: body = " " # make sure there's at least one space in the message, for some clients that don't like empty body
+    if not body: body = b" " # make sure there's at least one space in the message, for some clients that don't like empty body
     if filtered_inbox==None or to_real_inbox:
         saveTo = ""
     else: saveTo = filtered_inbox
-    save_to(saveTo,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n")
-def from_mangle(body): return re.sub('(?<![^\n])From ','>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
+    save_to(saveTo,B("From: "+from_line+"\r\nSubject: ")+utf8_to_header(subject)+B("\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: "+ctype+"; charset=utf-8\r\n\r\n")+from_mangle(body)+b"\n")
+def from_mangle(body): return re.sub(b'(?<![^\n])From ',b'>From ',body) # (Not actually necessary for IMAP, but might be useful if the message is later processed by something that expects a Unix mailbox.  Could MIME-encode instead, but not so convenient for editing.)
 
 def upload(filelist):
     for f in filelist:
@@ -2175,7 +2207,7 @@ def multinote(filelist,to_real_inbox,use_filename=False):
                 subj = f
                 if os.sep in subj: subj=subj[subj.rindex(os.sep)+1:]
             else: subj = None
-            r = do_multinote(open(f).read(),os.stat(f).st_mtime,to_real_inbox,subj)
+            r = do_multinote(open(f,'rb').read(),os.stat(f).st_mtime,to_real_inbox,subj)
             if r: debug(r+" ",f)
         if not f=="/dev/stdin": tryRm(f)
 
@@ -2186,11 +2218,11 @@ def tryRm(f):
 def do_upload(data,theDate,fname,subj_prefix=""):
     b = getMimeBase(fname)
     b.set_payload(data)
-    b['Content-Disposition']='attachment; filename="'+(os.sep+fname)[(os.sep+fname).rindex(os.sep)+1:]+'"'
+    b['Content-Disposition']='attachment; filename="'+(os.sep+S(fname))[(os.sep+S(fname)).rindex(os.sep)+1:]+'"'
     encoders.encode_base64(b)
-    message = turn_into_attachment(b,"Attached "+fname,True)
+    message = turn_into_attachment(b,b"Attached "+B(fname),True)
     message["From"] = from_line
-    message["Subject"] = subj_prefix+fname
+    message["Subject"] = subj_prefix+S(fname)
     message["Date"] = email.utils.formatdate(theDate,localtime=True)
     return save_to(filtered_inbox,myAsString(message))
 
@@ -2198,18 +2230,18 @@ def do_cgi():
     import cgi, cgitb; cgitb.enable() ; fs=cgi.FieldStorage()
     try:
         f=fs['file']
-        fn = re.sub("&#[0-9]+;",lambda m:unichr(int(m.group()[2:-1])).encode('utf-8'),f.filename)
-    except: f=None
+        fn = re.sub(b"&#[0-9]+;",lambda m:unichr(int(m.group()[2:-1])).encode('utf-8'),B(f.filename))
+    except: f=fn=None
     h='Content-type: text/html; charset=utf-8\n\n<html><head><meta name="mobileoptimized" content="0"><meta name="viewport" content="width=device-width"><script>if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)document.write("<style>body { background-color: black; color: #c0c000; } a { color: #00b000; }</style>");</script><title>'
-    if not f==None:
-        if upload_cgi_auth_word and 'w' in fs and fs['w'].value==upload_cgi_auth_word:
-            while os.path.isfile(upload_cgi_area+'/'+fn): fn='new-'+fn # TODO: race condition if multiple cgi instances at once (but unlikely to be a problem for small teams private access, and if it is the email will make it obvious)
-            open(upload_cgi_area+'/'+fn,'wb').write(f.file.read())
-            save_to(filtered_inbox,"From: "+from_line+"\r\nSubject: Uploaded from "+os.environ["SCRIPT_NAME"]+": "+fn+"\r\nDate: %s\r\n\r\n%s\n" % (email.utils.formatdate(localtime=True),upload_cgi_area+'/'+fn+"\n"+upload_cgi_area_href+'/'+fn))
+    if fn:
+        if upload_cgi_auth_word and 'w' in fs and S(fs['w'].value)==upload_cgi_auth_word:
+            while os.path.isfile(B(upload_cgi_area+'/')+fn): fn=b'new-'+fn # TODO: race condition if multiple cgi instances at once (but unlikely to be a problem for small teams private access, and if it is the email will make it obvious)
+            open(B(upload_cgi_area+'/')+fn,'wb').write(f.file.read())
+            save_to(filtered_inbox,B("From: "+from_line+"\r\nSubject: Uploaded from "+os.environ["SCRIPT_NAME"]+": ")+fn+B("\r\nDate: %s\r\n\r\n" % (email.utils.formatdate(localtime=True),))+B(upload_cgi_area+'/')+fn+B("\non HTTP server at "+upload_cgi_area_href+'/')+fn+b"\n")
         else: do_upload(f.file.read(),time.time(),fn,"Uploaded from "+os.environ["SCRIPT_NAME"]+": ")
         print (h+"""Upload complete</title></head><body>
-<h1>Upload complete</h1><hr>Your file, <strong><em>"""+fn.replace('&','&amp').replace('<','&lt;')+"""</em></strong>,
-has been successfully uploaded.<p><a href="ACTION">Send another file</a>""".replace("ACTION",os.environ["SCRIPT_NAME"]+("?w="+fs['w'].value if upload_cgi_auth_word and 'w' in fs and fs['w'].value==upload_cgi_auth_word else ""))+cgi_list(fs)+"</body></html>")
+<h1>Upload complete</h1><hr>Your file, <strong><em>"""+re.sub("^b","",repr(fn).replace('&','&amp').replace('<','&lt;'))+"""</em></strong>,
+has been successfully uploaded.<p><a href="ACTION">Send another file</a>""".replace("ACTION",os.environ["SCRIPT_NAME"]+("?w="+S(fs['w'].value) if upload_cgi_auth_word and 'w' in fs and S(fs['w'].value)==upload_cgi_auth_word else ""))+cgi_list(fs)+"</body></html>")
     else: print (h+"""Upload</title></head><body>
 <script>
 function keepThingsGoing0() {
@@ -2235,15 +2267,15 @@ return true;
 onsubmit="return foolBrowser();">
 Send this file: <input name="file" type="file">
 <input type="submit" value="Send File">
-<div id=progress></div><div id=progress2></div>""".replace("ACTION",os.environ["SCRIPT_NAME"])+('<input type=hidden name=w value="'+fs['w'].value+'">' if upload_cgi_auth_word and 'w' in fs and fs['w'].value==upload_cgi_auth_word else "")+"</form>"+cgi_list(fs)+"</body></html>")
-def cgi_list(fs): return "<h3>Files already uploaded</h3>"+"<br>".join('<a href="'+upload_cgi_area_href+'/'+f+'">'+f+'</a>' for f in sorted(os.listdir(upload_cgi_area)) if os.path.isfile(upload_cgi_area+os.sep+f)) if upload_cgi_auth_word and 'w' in fs and fs['w'].value==upload_cgi_auth_word else ""
+<div id=progress></div><div id=progress2></div>""".replace("ACTION",os.environ["SCRIPT_NAME"])+('<input type=hidden name=w value="'+S(fs['w'].value)+'">' if upload_cgi_auth_word and 'w' in fs and S(fs['w'].value)==upload_cgi_auth_word else "")+"</form>"+cgi_list(fs)+"</body></html>")
+def cgi_list(fs): return "<h3>Files already uploaded</h3>"+"<br>".join('<a href="'+upload_cgi_area_href+'/'+f+'">'+f+'</a>' for f in sorted(os.listdir(upload_cgi_area)) if os.path.isfile(upload_cgi_area+os.sep+f)) if upload_cgi_auth_word and 'w' in fs and S(fs['w'].value)==upload_cgi_auth_word else ""
 
 def do_multinote(body,theDate,to_real_inbox,subject):
-    body = re.sub("\r\n?","\n",body.strip())
+    body = re.sub(b"\r\n?",b"\n",body.strip())
     if not body and not subject:
         debug("Not creating message from blank file")
         return False
-    if not subject: subject,body = (body+"\n").split("\n",1)
+    if not subject: subject,body = (body+b"\n").split(b"\n",1)
     seenFlag = ""
     if to_real_inbox: box = ""
     else:
@@ -2253,7 +2285,7 @@ def do_multinote(body,theDate,to_real_inbox,subject):
         if newSubj: subject = newSubj
     if box==False: box=filtered_inbox
     if box==None: return "Deleted" # (if this happens on multinote, you might want to check your authenticated_wrapper rules)
-    else: return save_to(box,"From: "+from_line+"\r\nSubject: "+utf8_to_header(subject)+"\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n"+from_mangle(body)+"\n",seenFlag)
+    else: return save_to(box,B("From: "+from_line+"\r\nSubject: ")+utf8_to_header(subject)+B("\r\nDate: "+email.utils.formatdate(theDate,localtime=True)+"\r\nMIME-Version: 1.0\r\nContent-type: text/plain; charset=utf-8\r\n\r\n")+from_mangle(body)+b"\n",seenFlag)
 
 def isatty(f): return hasattr(f,"isatty") and f.isatty()
 if quiet==2: quiet = not isatty(sys.stdout)
@@ -2280,41 +2312,41 @@ def do_create(foldername):
 
 def secondary_security(message_as_string):
     oms = message_as_string
-    if imap_8bit and re.search("(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # because saveTo will do this (same TODO as there) so normalise for comparing across servers
-    if secondary_is_insecure: message_as_string = re.sub(addr_regex,"email.removed@example.org",message_as_string[:secLimit])+message_as_string[secLimit:] # NB the substitute email MUST fit into the original pattern: in particular the top-level domain must be between 2 and 5 letters, otherwise reapplying this function will get different text (e.g. ".removeded" if using @email.removed)
-    if not message_as_string == oms: message_as_string = re.sub("\r\nContent-Length: [0-9]+\r\n","\r\n",message_as_string) # secondary IMAP will likely fix or delete this anyway
+    if imap_8bit and re.search(b"(?i)Content-Transfer-Encoding: quoted-printable",message_as_string): message_as_string = quopri_to_u8_8bitOnly(message_as_string) # because saveTo will do this (same TODO as there) so normalise for comparing across servers
+    if secondary_is_insecure: message_as_string = re.sub(addr_regex,b"email.removed@example.org",message_as_string[:secLimit])+message_as_string[secLimit:] # NB the substitute email MUST fit into the original pattern: in particular the top-level domain must be between 2 and 5 letters, otherwise reapplying this function will get different text (e.g. ".removeded" if using @email.removed)
+    if not message_as_string == oms: message_as_string = re.sub(b"\r\nContent-Length: [0-9]+\r\n",b"\r\n",message_as_string) # secondary IMAP will likely fix or delete this anyway
     return message_as_string
-def ccnl(c): return c+r'+(?:=\r?\n'+c+'*)?' # character class + maybe newline: for speed we limit the number of line breaks that occur in each ccnl to one
-def cnl(c): return c+r'(?:=\r?\n)?' # char + opt newline
-addr_regex = re.compile("".join([
+def ccnl(c): return c+br'+(?:=\r?\n'+c+b'*)?' # character class + maybe newline: for speed we limit the number of line breaks that occur in each ccnl to one
+def cnl(c): return c+br'(?:=\r?\n)?' # char + opt newline
+addr_regex = re.compile(b"".join([
     # TODO: need to make this faster.  (Or can we be more selective about which parts of the message get it i.e. not images etc)
-    ccnl('[a-zA-Z0-9_\-\.]'),
-    cnl('@'),
-    '(?:'+ccnl('[a-zA-Z0-9\-]')+cnl(r'(?:\.|=2E)')+')+',
-    '(?:'+cnl('[a-zA-Z]')+'){2,5}(?![a-zA-Z])'])) # TODO: this deals with the header easily, and with SOME quoted-printable-in-long-HTML-line situations, but should also rm from Base64 in body (if quoting) (+ email at very end of msg w. no trailing \n)
+    ccnl(b'[a-zA-Z0-9_\-\.]'),
+    cnl(b'@'),
+    b'(?:'+ccnl(b'[a-zA-Z0-9\-]')+cnl(br'(?:\.|=2E)')+b')+',
+    b'(?:'+cnl(b'[a-zA-Z]')+b'){2,5}(?![a-zA-Z])'])) # TODO: this deals with the header easily, and with SOME quoted-printable-in-long-HTML-line situations, but should also rm from Base64 in body (if quoting) (+ email at very end of msg w. no trailing \n)
 
 def do_backup():
     for foldername in folderList():
-        check_ok(imap.select(foldername))
+        check_ok(select(foldername))
         fname = foldername.replace("/","-").replace('"','')+"-backup.mbox"
         if os.path.exists(fname): # must create new
             os.rename(fname,fname+"~")
         mbox = mailbox.mbox(fname)
         print ("Backing up "+foldername+" to "+fname)
         for msgID,flags,message in yield_all_messages():
-            msg = email.message_from_string(message)
+            msg = message_from_bytes(message)
             if not message.startswith("From "): # as above
                 if 'From' in msg:
                     fr = msg['From']
                     if '<' in fr and '>' in fr[fr.index('<'):]: fr = fr[fr.index('<')+1:fr.rindex('>')]
                     if not fr: fr = 'unknown'
                     message="From "+fr+"\r\n"+message
-                    msg = email.message_from_string(message)
+                    msg = message_from_bytes(message)
             globalise_charsets(msg,archive_8bit)
             k=mbox.add(msg)
             newFlags = ""
-            if "\\seen" in flags.lower() and not "old" in flags.lower(): newFlags += "R"
-            if "\\answered" in flags.lower(): newFlags += "A"
+            if b"\\seen" in flags.lower() and not b"old" in flags.lower(): newFlags += "R"
+            if b"\\answered" in flags.lower(): newFlags += "A"
             if newFlags:
                 msg = mbox.get(k) # to mailbox.mboxMessage
                 msg.set_flags(newFlags)
@@ -2330,7 +2362,7 @@ def do_imap_to_maildirs():
     mailbox.Maildir.colon = maildir_colon
     for foldername in folderList():
         if foldername in imap_maildir_exceptions: continue
-        typ, data = imap.select(foldername)
+        typ, data = select(foldername)
         if not typ=='OK': continue
         m = None
         for msgID,flags,message in yield_all_messages():
@@ -2342,11 +2374,11 @@ def do_imap_to_maildirs():
                     if f.lower() == foldr.lower():
                         foldr = f ; break
                 m = mailbox.Maildir(imap_to_maildirs+os.sep+foldr,None)
-            msg = email.message_from_string(message)
+            msg = message_from_bytes(message)
             globalise_charsets(msg,imap_8bit)
             msg = myAsString(msg)
             if re.search("(?i)Content-Transfer-Encoding: quoted-printable",msg): msg = quopri_to_u8_8bitOnly(msg)
-            msg = mailbox.MaildirMessage(email.message_from_string(msg.replace("\r\n","\n")))
+            msg = mailbox.MaildirMessage(message_from_bytes(msg.replace("\r\n","\n")))
             msg.set_flags(maildir_flags_from_imap(flags))
             m.add(msg)
             imap.store(msgID, '+FLAGS', '\\Deleted')
@@ -2354,7 +2386,7 @@ def do_imap_to_maildirs():
         folders_to_keep = [copyself_folder_name]+[f[0] for f in header_rules] # (no point deleting THOSE folders, even if empty, if on imap: will be re-used soon enough)
         if copyself_alt_folder: folders_to_keep += copyself_alt_folder.split(',') # deleting these could result in some applications failing to save sent mail
         if not foldername in folders_to_keep:
-            check_ok(imap.select())
+            check_ok(select())
             do_delete(foldername)
 
 def do_maildir_dedot():
@@ -2376,11 +2408,11 @@ def do_copy(foldername):
     make_sure_logged_in()
     global imap,saveImap,imap_to_maildirs
     imap_to_maildirs = None
-    check_ok(imap.select(foldername))
+    check_ok(select(foldername))
     # Work out which messages need to be deleted:
     do_not_delete = set() ; do_not_copy = set()
     debug("Checking primary messages")
-    def zapSpace(m): return re.sub(r"\s+","",m) # for comparing modulo trailing newlines, different line splitting in the header, etc
+    def zapSpace(m): return re.sub(br"\s+",b"",m) # for comparing modulo trailing newlines, different line splitting in the header, etc
     for msgID,flags,message in yield_all_messages():
         do_not_delete.add(zapSpace(secondary_security(message)))
     make_sure_logged_out() # as the next step might cause the first imap to time out on us while it's waiting
@@ -2390,7 +2422,7 @@ def do_copy(foldername):
         return
     debug("Checking secondary messages; removing old ones")
     imap.create(foldername) # error if exists OK
-    check_ok(imap.select(foldername))
+    check_ok(select(foldername))
     tot=rm=0
     for msgID,flags,message in yield_all_messages():
         tot += 1
@@ -2403,17 +2435,17 @@ def do_copy(foldername):
     imap,_saveImap = None,imap
     make_sure_logged_in() ; saveImap=_saveImap
     debug("Copying new messages to secondary")
-    check_ok(imap.select(foldername))
+    check_ok(select(foldername))
     tot = cp = 0
     for msgID,flags,message in yield_all_messages():
         tot += 1
         message = secondary_security(message)
         if not zapSpace(message) in do_not_copy:
             flags2 = [] # don't just copy them over, as the secondary IMAP might not understand all the same flags
-            if "\\answered" in flags.lower(): flags2.append("\\Answered")
-            if "\\seen" in flags.lower() and not "old" in flags.lower(): flags2.append("\\Seen")
+            if b"\\answered" in flags.lower(): flags2.append(b"\\Answered")
+            if b"\\seen" in flags.lower() and not "old" in flags.lower(): flags2.append(b"\\Seen")
             # Not sure if all secondary IMAPs will understand \Flagged (called "star" in some clients e.g. K9 Mail; mutt default keybindings set with w ! and clear with W ! )
-            flags = " ".join(flags2)
+            flags = b" ".join(flags2)
             save_to(foldername,message,flags,False)
             cp += 1
     debug("... ",cp," of ",tot," added")
@@ -2423,7 +2455,7 @@ def do_quicksearch(s):
     global quiet ; quiet = True # don't need "Logging in" etc
     for foldername in yield_folders():
         for msgID, flags, message in yield_all_messages(s):
-            matching_lines = filter(lambda l:s.lower() in l.lower(), message.split('\n'))
+            matching_lines = filter(lambda l:s.lower() in l.lower(), message.split(b'\n'))
             for m in matching_lines:
                 try_print(foldername,m.strip())
     if not archive_path: return
@@ -2433,14 +2465,14 @@ def do_quicksearch(s):
         dirlist = []
     for f in dirlist:
         f = archive_path+os.sep+f
-        if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'r')
-        else: f2 = open(f) # ?? (shouldn't happen, as all the files we put there should end with compression_ext, but just in case; TODO other forms of compression?)
+        if f.endswith(compression_ext): f2 = open_compressed(f[:-len(compression_ext)],'rb')
+        else: f2 = open(f,'rb') # ?? (shouldn't happen, as all the files we put there should end with compression_ext, but just in case; TODO other forms of compression?)
         for l in f2:
             if s.lower() in l.lower(): try_print(f,l.strip())
 
 def try_print(folder,line):
     try:
-        sys.stdout.write(folder+": "+line+"\n")
+        (sys.stdout.buffer if type(u"")==type("") else sys.stdout).write(B(folder+": ")+line+b"\n")
         sys.stdout.flush()
     except IOError: # probably the pager quit on us
         raise SystemExit
@@ -2451,7 +2483,7 @@ imap = None
 def make_sure_logged_in():
     global imap, saveImap
     if imap:
-        try: check_ok(imap.select()) # can raise exception here on Outlook, requiring re-login
+        try: check_ok(select()) # can raise exception here on Outlook, requiring re-login
         except: imap = None
     while imap==None:
         try: imap = saveImap = get_logged_in_imap(hostname,username,password)
@@ -2470,7 +2502,7 @@ def make_sure_logged_out():
         imap = saveImap = None
 
 def other_running():
-    ps = commands.getoutput("ps auxwww").split('\n')
+    ps = getoutput("ps auxwww").split('\n')
     numCols = len(ps[0].split())
     lineFormat = r"^(.*[^\s])\s+([0-9]+)"+r"\s+[^\s]+"*(numCols-3)+r"\s+([^\s].*)$" # this assumes the PID will be the first numeric thing that comes after whitespace (which should cope with usernames that have whitespace in them as long as they don't have whitespace followed by number)
     thisPIDuser = "" ; otherPIDusers = set()
@@ -2497,7 +2529,7 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
         if toSleep: debug("Sleeping for another ",toSleep," seconds before reconnecting to SMTP")
         time.sleep(toSleep)
     debug("SMTP to ",repr(to_u8))
-    msg = email.mime.text.MIMEText(re.sub('\r?\n','\r\n',txt),ttype,charset) # RFC 2822 says MUST use CRLF; some mail clients get confused by just \n (e.g. some versions of MPro on RISC OS when replying with quote)
+    msg = email.mime.text.MIMEText(re.sub(b'\r?\n',b'\r\n',B(txt)),ttype,charset) # RFC 2822 says MUST use CRLF; some mail clients get confused by just \n (e.g. some versions of MPro on RISC OS when replying with quote)
     if attachment_filenames:
         from email.mime.multipart import MIMEMultipart
         msg2 = msg
@@ -2533,7 +2565,7 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
             access_string, regenerated = oauth2_get(smtp_password,smtp_user)
             debug('Doing XOAUTH2 in SMTP')
             s.docmd('AUTH','XOAUTH2')
-            ret = s.docmd(base64.encodestring(access_string))
+            ret = s.docmd(encodebytes(access_string))
             if "unsuccessful" in ret[1]:
                 if regenerated:
                     debug(ret[1]) ; raise Exception(repr(ret))
@@ -2545,7 +2577,7 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
                     s = getSMTP()
                     access_string,_ = oauth2_get(smtp_password,smtp_user,True)
                     s.docmd('AUTH','XOAUTH2')
-                    ret = s.docmd(base64.encodestring(access_string))
+                    ret = s.docmd(encodebytes(access_string))
                     if "unsuccessful" in ret[1]:
                         debug(ret[1]) ; raise Exception(repr(ret))
         else: s.login(smtp_user, smtp_password)

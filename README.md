@@ -133,7 +133,7 @@ ImapFix
 
 From https://ssb22.user.srcf.net/setup/imapfix.html (also mirrored at https://ssb22.gitlab.io/setup/imapfix.html just in case)
 
-ImapFix is a filter/fixer for IMAP mailboxes.  It requires Python 2 and is *not* compatible with Python 3.
+ImapFix is a filter/fixer for IMAP mailboxes, compatible with both Python 2 and Python 3.
 
 You can leave it running on a server somewhere and connect to your IMAP account from different machines/devices. Processed messages are moved from the inbox to a folder called `in` unless otherwise directed by your filters.
 
