@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.0 (c) 2013-26 Silas S. Brown.  License: Apache 2"
-# (next is probably 3.001: jumped major version for python3 compatibility)
+"ImapFix v3.001 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -661,12 +660,14 @@ else: # Python 2
     from base64 import encodestring as encodebytes
     from base64 import decodestring as decodebytes
 from email import encoders
-import imaplib
+import imaplib, warnings
 if poll_interval=="idle":
     try: imaplib.IMAP4.idle # Python 3.14+
     except AttributeError: # we'll need imaplib2 instead
         del imaplib
-        import imaplib2 as imaplib
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore",category=SyntaxWarning)
+            import imaplib2 as imaplib
     assert not logout_before_sleep, "Can't logout_before_sleep when poll_interval==\"idle\""
 assert not secondary_imap_delay=="idle", "'idle' polling not implemented for secondary"
 
@@ -682,7 +683,9 @@ else: compression_ext = ""
 
 if image_size:
     from PIL import Image
-    import imghdr # Python 3.13+ will require pip install standard-imghdr or apt install python3-standard-imghdr
+    with warnings.catch_warnings():
+      warnings.filterwarnings("ignore",category=DeprecationWarning)
+      import imghdr # Python 3.13+ will require pip install standard-imghdr or apt install python3-standard-imghdr
 
 running_mainloop = False
 def debug(*args):
@@ -749,7 +752,7 @@ def myAsString(msg):
         message = re.sub(b'\r*\n',b'\r\n',a)+b"\r\n\r\n"+b
     # Bug in python2.7/email/header.py: CRLF + whitespace sometimes added by _split_ascii after semicolons or commas, but if this occurs inside quoted-printable strings it'll break the display in some versions of alpine & mutt (RFC 2822 says CRLF + whitespace is interpreted as whitespace, and that's not allowed inside ?=..?= sections)
     a,b = message.split(b"\r\n\r\n",1)
-    message = re.sub(header_charset_regex,lambda x:re.sub(br"\s_",b"_",re.sub(b"\r\n\s",b"",x.group())),a,flags=re.DOTALL)+b"\r\n\r\n"+b
+    message = re.sub(header_charset_regex,lambda x:re.sub(br"\s_",b"_",re.sub(b"\r\n\\s",b"",x.group())),a,flags=re.DOTALL)+b"\r\n\r\n"+b
     return message
 def headers(msg):
     # some Python libraries buggy, so do it ourselves
@@ -2158,7 +2161,7 @@ def do_archive():
 
 def do_nightly_train():
     for foldername,age,action in archive_rules:
-        nightly_train(foldername, action)
+        if action: nightly_train(foldername, action)
         
 def yield_folders():
     "iterates through folders in imap, selecting each one as it goes"
@@ -2320,9 +2323,9 @@ def ccnl(c): return c+br'+(?:=\r?\n'+c+b'*)?' # character class + maybe newline:
 def cnl(c): return c+br'(?:=\r?\n)?' # char + opt newline
 addr_regex = re.compile(b"".join([
     # TODO: need to make this faster.  (Or can we be more selective about which parts of the message get it i.e. not images etc)
-    ccnl(b'[a-zA-Z0-9_\-\.]'),
+    ccnl(br'[a-zA-Z0-9_\-\.]'),
     cnl(b'@'),
-    b'(?:'+ccnl(b'[a-zA-Z0-9\-]')+cnl(br'(?:\.|=2E)')+b')+',
+    b'(?:'+ccnl(br'[a-zA-Z0-9\-]')+cnl(br'(?:\.|=2E)')+b')+',
     b'(?:'+cnl(b'[a-zA-Z]')+b'){2,5}(?![a-zA-Z])'])) # TODO: this deals with the header easily, and with SOME quoted-printable-in-long-HTML-line situations, but should also rm from Base64 in body (if quoting) (+ email at very end of msg w. no trailing \n)
 
 def do_backup():

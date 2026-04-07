@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-"""webcheck.py v1.608 (c) 2014-26 Silas S. Brown.
+"""webcheck.py v1.609 (c) 2014-26 Silas S. Brown.
 License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
@@ -436,9 +436,13 @@ def run_webdriver(ua,actionList,reportErrors):
         print ("webcheck misconfigured: can't import selenium (did you forget to set PYTHONPATH?)")
         return B(""), True
     try:
+      from selenium.webdriver.firefox.service import Service
       from selenium.webdriver.firefox.options import Options
+      import shutil
       options = Options() ; options.headless = True
-      browser = webdriver.Firefox(options=options)
+      service = Service(executable_path=shutil.which("geckodriver")) # explicit path needed on Ubuntu 24.04 (not on 22.04)
+      options.add_argument('--headless') # ditto
+      browser = webdriver.Firefox(service=service,options=options)
     except Exception as eFfx: # probably no Headless Firefox, try Headless Chrome
      try:
       from selenium.webdriver.chrome.options import Options
@@ -462,6 +466,16 @@ def run_webdriver(ua,actionList,reportErrors):
       except Exception as ePJS:
         print ("webcheck misconfigured: can't create Headless Firefox (%s), Headless Chrome (%s) or PhantomJS (%s).  Check installation.  (PATH=%s, cwd=%s, webdriver version %s)" % (str(eFfx),str(eChrome),str(ePJS),repr(os.environ.get("PATH","")),repr(os.getcwd()),repr(webdriver.__version__)))
         return B(""), True
+    try: from selenium.webdriver.common.by import By
+    except ImportError: By = None
+    if By: # patch in old methods to Selenium 4.3+
+      browser.find_element_by_xpath = lambda a: browser.find_element(By.XPATH, a)
+      browser.find_element_by_id = lambda a: browser.find_element(By.ID, a)
+      browser.find_element_by_name = lambda a: browser.find_element(By.NAME, a)
+      browser.find_element_by_class_name = lambda a: browser.find_element(By.CLASS_NAME, a)
+      browser.find_element_by_link_text = lambda a: browser.find_element(By.LINK_TEXT, a)
+      browser.find_elements_by_tag_name = lambda a: browser.find_elements(By.TAG_NAME, a)
+      browser.find_elements_by_class_name = lambda a: browser.find_elements(By.CLASS_NAME, a)
     r = "" ; wasError = False
     try: r = run_webdriver_inner(actionList,browser)
     except CDNBackoff:
@@ -489,7 +503,7 @@ def run_webdriver_inner(actionList,browser):
     def getSrc():
       def f(b,switchBack=[]):
         try: src = b.find_element_by_xpath("//*").get_attribute("outerHTML")
-        except: return u"getSrc webdriver exception but can retry" # can get timing-related WebDriverException: Message: Error - Unable to load Atom 'find_element'
+        except Exception as e: return u"getSrc webdriver exception but can retry: "+str(e) # can get timing-related WebDriverException: Message: Error - Unable to load Atom 'find_element'
         for el in ['frame','iframe']:
           for frame in b.find_elements_by_tag_name(el):
             try: b.switch_to.frame(frame)
