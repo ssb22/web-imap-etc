@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.001 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.002 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -871,7 +871,7 @@ def quote_display_name_if_needed(msg):
 def body_text(msg):
     "Returns a representation of the message's body text (all parts), for rules"
     if msg.is_multipart(): return b"\n".join(body_text(p) for p in msg.get_payload())
-    if not msg.get_content_type().startswith("text/"): return b""
+    if not msg.get("Content-Type","").startswith("text/"): return b""
     return msg.get_payload(decode=True).strip()
 
 def rewrite_importance(msg):
@@ -1429,8 +1429,7 @@ def do_copyself_to_copyself():
             debug("Cannot specify copyself_folder_name in copyself_alt_folder: skipping ",folder)
             continue
         make_sure_logged_in()
-        if type("")==type(u""): typ, data = select('"'+folder+'"')
-        else: typ, data = select(folder)
+        typ, data = select(folder)
         if not typ=='OK': continue # skip non-selectable folder, without output: it may appear later if the relevant MUA is used
         said = False
         for msgID,flags,message in yield_all_messages():
@@ -1519,6 +1518,9 @@ def size_of_first_part(message):
         return 0
     return len(message.get_payload())
 
+def getCharset(message):
+    t=message.get("Content-Type","")
+    if "charset=" in t: return t[t.index("charset=")+len("charset="):]
 def getFirstPart(message):
     if message.is_multipart():
         for i in message.get_payload():
@@ -1526,7 +1528,7 @@ def getFirstPart(message):
         return b""
     try: pl = message.get_payload(decode=True)
     except: return b""
-    cs = message.get_content_charset(None)
+    cs = getCharset(message)
     if cs in [None,'us-ascii','utf-8']: return pl
     if cs in ['gb2312','gbk']: cs = 'gb18030'
     return pl.decode(cs).encode('utf-8')
@@ -1557,10 +1559,10 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         for i in message.get_payload():
             if globalise_charsets(i,will_use_8bit,force_change): changed = True
         return changed
-    cType = message.get_content_type()
+    cType = message.get("Content-Type","")
     if not cType.startswith("text/") and ('Content-Disposition' in message or cType.startswith("image/")): return changed # don't risk messing up PDF attachments, images etc
     is_html = cType and cType.startswith("text/html")
-    specified_charset = message.get_content_charset(None)
+    specified_charset = getCharset(message)
     while specified_charset and specified_charset.startswith("charset="):
         # bug in some mailers: charset=charset=
         specified_charset = specified_charset[len("charset="):]
