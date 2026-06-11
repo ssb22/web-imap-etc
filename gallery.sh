@@ -1,7 +1,12 @@
 #!/bin/bash
 
 # Create quick index.html from pictures directory
-# Silas S. Brown - public domain, no warranty - v1.62
+# v1.62 (c) Silas S. Brown.  License: Apache 2
+# (I did say "public domain no warranty" but apparently
+# some corporate offices don't trust that.  Apache 2 lets
+# them know I don't have a silly patent up my sleeve that
+# I'd try to enforce, so their policy might accept it more
+# easily if you need to use this at work.)
 
 # use with (e.g.) webfsd -f index.html   # port 8000
 
