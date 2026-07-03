@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.002 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.003 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -1459,7 +1459,7 @@ def do_auto_delete():
             imap.store(msgID, '+FLAGS', '\\Deleted')
         if said: check_ok(imap.expunge())
 
-header_charset_regex = br'=\?(.*?)\?(.*?)\?(.*?)\?=' # RFC 2047
+header_charset_regex = br'=\?([^?]+)\?([BbQq])\?([^?]*)\?=(?:\s+(?==\?))?' # RFC 2047 (and match trailing whitespace if another one follows, otherwise we'll get mid-word spaces, fixed v3.003)
 def header_to_u8(match):
     charset = match.group(1).lower()
     if charset in [b'gb2312',b'gbk']: charset=b'gb18030'
