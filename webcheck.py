@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-"""webcheck.py v1.609 (c) 2014-26 Silas S. Brown.
+"""webcheck.py v1.610 (c) 2014-26 Silas S. Brown.
 License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
@@ -345,7 +345,8 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       except OSError:
         print ("webcheck misconfigured: couldn't run edbrowse")
         return # no need to update delayer, and probably no need to return failRet if it's an edbrowse misconfiguration
-      edcmd = B("b "+url[4:].replace('\\','\n')+"\n,p\nqt\n") # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
+      child.stdin.write(B("b "+url[4:].replace('\\','\n')+"\n")),child.stdin.flush(),time.sleep(3) # some pages now take extra time to JS-render and get messages like "lines 57 through 740 have been updated"
+      edcmd = B(",p\nqt\n") # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
       u = None
       if TimeoutExpired:
         try: content,stderr = child.communicate(edcmd,60)
@@ -390,8 +391,10 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       for h in extraHeaders: r.add_header(*tuple(x.strip() for x in h.split(':',1)))
       if not any(h.lower().startswith("user-agent:") for h in extraHeaders): r.add_header('User-agent',default_ua)
       u=None
-      if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=B(str(urlopen(r,context=ssl._create_unverified_context(),timeout=60).info()))
-      else: content=textContent=B(str(urlopen(r,timeout=60).info()))
+      try:
+        if sys.version_info >= (2,7,9) and not verify_SSL_certificates: content=textContent=B(str(urlopen(r,context=ssl._create_unverified_context(),timeout=60).info()))
+        else: content=textContent=B(str(urlopen(r,timeout=60).info()))
+      except HTTPError as e: content=textContent=B(str(e.info()))
   elif url.startswith("gemini://"):
       u = None
       content,textContent = get_gemini(url)
