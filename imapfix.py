@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.003 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.004 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -969,7 +969,7 @@ def handleMsg(msg,message=None,is_additional=True,flags=None,is_maildir=False):
         box,newSubj = authenticated_wrapper(re.sub(header_charset_regex,header_to_u8,B(str(msg.get("Subject",""))),flags=re.DOTALL),getFirstPart(msg).lstrip(),get_attachments(msg))
         if newSubj: # for postponed_foldercheck
             del msg["Subject"]
-            msg["Subject"] = utf8_to_header(newSubj)
+            msg["Subject"] = S(utf8_to_header(newSubj))
             changed = True
         if box and box[0]=='*': seenFlag="\\Seen"
         box=rename_folder(box,False) # don't set newmail markers for authenticated
@@ -2540,9 +2540,9 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
         msg2 = msg
         msg = MIMEMultipart()
         msg.attach(msg2)
-    msg['Subject'] = utf8_to_header(subject_u8)
+    msg['Subject'] = S(utf8_to_header(subject_u8))
     msg['From'] = smtp_fromHeader
-    msg['To'] = ' '.join(utf8_to_header(h) for h in to_u8.split()) # just the name part needs utf8_to_header, TODO: parse properly instead of going through every word?  + what if it's a list?
+    msg['To'] = ' '.join(S(utf8_to_header(h)) for h in to_u8.split()) # just the name part needs utf8_to_header, TODO: parse properly instead of going through every word?  + what if it's a list?
     msg['Date'] = email.utils.formatdate(localtime=True)
     msg['X-Mailer'] = __doc__[:__doc__.index(" (c)")] # in case somebody needs to audit
     for f in attachment_filenames:
