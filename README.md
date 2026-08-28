@@ -149,7 +149,8 @@ Selected features: (see program for a full list)
   * Periodically check additional IMAP accounts and process their mail as if it had been sent to the first
   * Rewrite delivery failure reports, adding the failed address to the Subject when possible
   * Rewrite the “importance” flag according to your own rules
-  * Manage folders named after dates, for postponing messages and notes to a specific future date
+  * Manage folders named after dates, for postponing messages and notes to a specific future date (with LLM assistance if you must)
+  * Optionally allow web-based file uploads to your inbox etc
   * Can add arbitrary Python code to the rules, and/or run extra code on messages that were SSL-authenticated as from yourself (for email-based remote control) 
 
 MacLinux

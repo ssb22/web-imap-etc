@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.004 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.005 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -269,6 +269,20 @@ postponed_maildir = None # or "path/to/maildir", will
 # subfolders of this maildir as well as the IMAP server,
 # and authenticated messages for postponing being written
 # to subfolders of this maildir instead of the server
+
+# If you want LLM assistance with your postponed messages,
+# have an API key (gratis tier available), and can ensure
+# what you expose to it is appropriate for their policy,
+postpone_Gemini_API_key = None # or "key"
+postpone_Gemini_model = "gemini-2.5-flash"
+postpone_Gemini_voice = "Sulafat" # for MP3 attachment (empty=omit)
+postpone_Gemini_voice_model = "gemini-2.5-flash-preview-tts"
+postpone_Gemini_retries,postpone_Gemini_retryDelay = 3,5
+postpone_LLM_subject_end = '[L]' # case-insensitive, must occur at end of Subject in a postponed message for LLM to 'see' it, or of authenticated message to be postponed to next day for LLM to see (latter assumes postponed_foldercheck is True either here or on another instance)
+postpone_LLM_subject_keep_end = '[LK]' # as postpone_LLM_subject_end but does not delete original message after merging its text into the LLM thread
+postpone_LLM_info_about_user = "(not filled in)"
+postpone_LLM_day2extra = [""]*7 # ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], add extra sentences about your normal schedule on each day of the week
+postpone_LLM_reply_via_plus_addr = True # set to False if your SMTP cannot support 'plus addressing' i.e. user+1@domain
 
 quiet = True # False = print messages (including quota)
 # If you set quiet = 2, will be quiet if and only if the
@@ -661,6 +675,12 @@ else: # Python 2
     from base64 import decodestring as decodebytes
 from email import encoders
 import imaplib, warnings
+if postpone_Gemini_API_key:
+    from google import genai # pip install google-genai
+    if postpone_Gemini_voice:
+        import wave
+        try: import lameenc,miniaudio
+        except: lameenc=miniaudio=None
 if poll_interval=="idle":
     try: imaplib.IMAP4.idle # Python 3.14+
     except AttributeError: # we'll need imaplib2 instead
@@ -791,6 +811,10 @@ def authenticated_wrapper(subject,firstPart,attach={}):
         if postponed_maildir: box=('maildir',postponed_maildir+os.sep+S(subject[:mLen]))
         else: box=S(subject[:mLen]) # don't resolve weekday/month names to a date here, because user might actually rely on the "doesn't check for past days on startup" behaviour to postpone to after a trip or something
         return box, newSubj
+    elif postpone_Gemini_API_key and (S(subject).lower().endswith(postpone_LLM_subject_end.lower()) or S(subject).lower().endswith(postpone_LLM_subject_keep_end.lower())):
+        box = time.strftime("%Y-%m-%d",time.localtime(time.time()+24*3600))
+        if postponed_maildir: box=('maildir',postponed_maildir+os.sep+box)
+        return box, subject
     try: r=handle_authenticated_message(subject,firstPart,attach)
     except:
         if not catch_extraRules_errors: raise # TODO: document it's also catch_authMsg_errors, or have another variable for that
@@ -1092,7 +1116,7 @@ def authenticates0(msg,trusted_domain,smtps_auth):
           return False
     if smtps_auth:
         if debug_trusted_domain: debug("Reached end of Received headers but smtps_auth not found")
-    else: return len(msg.get_all("From",[]))==1 and msg["From"].replace('"','')==smtp_fromHeader.replace('"','') # for super_trusted_domain
+    else: return len(msg.get_all("From",[]))==1 and msg["From"].replace('"','')==S(smtp_fromHeader).replace('"','') # for super_trusted_domain
 
 def imapfixNote(): return "From: "+from_line+"\r\nSubject: Folder "+repr(filtered_inbox)+" has new mail\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n \n" # make sure there's at least one space in the message, for some clients that don't like empty body
 # (and don't put a date in the Subject line: the message's date is usually displayed anyway, and screen space might be in short supply)
@@ -1501,7 +1525,7 @@ def utf8_to_header(u8):
     if len(qp) <= len(ret): ret = qp
     return b"=?UTF-8?"+ret+b"?="
 
-import email.mime.multipart,email.mime.message,email.mime.text,email.mime.image,email.charset,email.mime.base
+import email.mime.multipart,email.mime.message,email.mime.text,email.mime.image,email.mime.audio,email.charset,email.mime.base
 def turn_into_attachment(message,covering_text=None,attach_raw=False):
     if covering_text==None: covering_text = "Large message converted to attachment" # by imapfix, but best not mention this as it might bias the filters?
     m2 = email.mime.multipart.MIMEMultipart()
@@ -1886,6 +1910,62 @@ def check_todays_dayname():
         do_postponed_foldercheck(time.strftime("%a").lower()) # weekday
         if time.localtime()[2]==1: # 1st of the month
             do_postponed_foldercheck(time.strftime("%b").lower()) # month
+def wrapped_postponed_foldercheck(dayToCheck="today"):
+    global context ; context = []
+    do_postponed_foldercheck(dayToCheck) # may recurse
+    if context or dayToCheck=="today" and postpone_LLM_day2extra[time.localtime()[6]]: # need to call the LLM (TODO: option to call it even when no specific context messages?)
+        prompt0 = "\n-----\n".join(sorted(context,key=lambda c:len(c))) ; del context
+        # Gemini policy in 3rd-party programs: don't call itself Gemini (or anything similar) or the application, must give it another name.  Hard to find a not-quite-human name not already taken by a prominent "AI" project.  Diode/Filament/Dioptre/Aspheric seemed search clear in August 2026.
+        prompt = time.strftime("Your name is Diode. You are assisting a user of ImapFix, a free+libre server tool to organise IMAP inboxes. You run overnight only. You look at messages the user left for you, and leave a morning check-in, delivered as voice so keep it speech-friendly. Please generate the check-in for %A %d %B. Answer specific questions; help cope with overload or avoidance by guiding focus to concrete actions; gently but firmly sustain momentum. Any limitations mentioned should be treated as practical context, not constant fragility: consider what constraint applies to tasks but don't overly soften every ask. If appropriate, you can ask the user to reply to your check-in with progress: you'll see any reply tomorrow night.\nInfo about user: ")+postpone_LLM_info_about_user+("\nNormal schedule for today: " if postpone_LLM_day2extra[time.localtime()[6]] else "")+postpone_LLM_day2extra[time.localtime()[6]]+"\n\n"+prompt0
+        debug("Calling Gemini")
+        error = False
+        for attempt in range(postpone_Gemini_retries,-1,-1):
+          try:
+            client = genai.Client(api_key=postpone_Gemini_API_key)
+            response = client.models.generate_content(model=postpone_Gemini_model,contents=prompt)
+            response = response.text.strip()
+            break
+          except: pass
+          if attempt:
+              debug("Gemini error, sleeping for retry")
+              time.sleep(postpone_Gemini_retryDelay)
+          else: response,error = "LLM unavailable: "+repr(sys.exc_info()), True
+        response = re.sub(r"(?i)(?<![A-Z0-9*])\*\*?([^ *]|[^ *][^*]*[^ *])\*\*?(?=$|[^A-Z0-9*])",r"\1"," "+response)[1:] # rm markdown emph (synth "asterisk asterisk" unhelpful and no model seems to infer it shouldn't use it if asked to be 'speech friendly')
+        msg = email.mime.multipart.MIMEMultipart()
+        user,domain = S(smtp_fromAddr).split("@")
+        msg["From"]="LLM Diode <"+user+"@"+domain+">" # must be replyable so use an external from address
+        if postpone_LLM_reply_via_plus_addr: msg["Reply-To"]=user+"+diode@"+domain
+        msg["Subject"]="check-in "+postpone_LLM_subject_end
+        msg["Date"]=email.utils.formatdate(localtime=True)
+        msg.attach(email.mime.text.MIMEText(response+"\n\nInput was:\n"+"".join("> "+L+"\n" for L in prompt0.split("\n")),"plain","utf-8"))
+        globalise_charsets(msg)
+        if postpone_Gemini_voice and not error:
+         debug("Calling Gemini voice")
+         for attempt in range(postpone_Gemini_retries,-1,-1):
+          try:
+              readout = client.models.generate_content(model=postpone_Gemini_voice_model,contents=response,config=genai.types.GenerateContentConfig(response_modalities=["AUDIO"],speech_config=genai.types.SpeechConfig(voice_config=genai.types.VoiceConfig(prebuilt_voice_config=genai.types.PrebuiltVoiceConfig(voice_name=postpone_Gemini_voice)))))
+              b=BytesIO(); w=wave.open(b,'w')
+              w.setnchannels(1),w.setsampwidth(2),w.setframerate(24000),w.writeframes(readout.candidates[0].content.parts[0].inline_data.data),w.close()
+              if lameenc:
+                  debug("Encoding as MP3")
+                  enc = lameenc.Encoder()
+                  enc.set_vbr(4),enc.set_vbr_quality(9)
+                  enc.set_channels(1)
+                  enc.set_in_sample_rate(24000)
+                  a=email.mime.audio.MIMEAudio(enc.encode(miniaudio.decode(b.getvalue(),nchannels=1,sample_rate=24000).samples.tobytes())+enc.flush(),_subtype="mp3")
+                  a['Content-Disposition']='attachment; filename=check-in.mp3'
+              else:
+                  debug("No lameenc/miniaudio packages: skipping MP3 conversion")
+                  a=email.mime.audio.MIMEAudio(b.getvalue(),_subtype="wav")
+                  a['Content-Disposition']='attachment; filename=check-in.wav'
+              msg.attach(a) ; break
+          except: pass
+          if attempt:
+              debug("Gemini voice error, sleeping for retry")
+              time.sleep(postpone_Gemini_retryDelay)
+        debug("Saving Gemini response")
+        save_to(filtered_inbox,myAsString(msg))
+
 def do_postponed_foldercheck(dayToCheck="today"):
     today = isoToday()
     if dayToCheck=="old": # called only on startup (and only if postponed_foldercheck)
@@ -1903,6 +1983,14 @@ def do_postponed_foldercheck(dayToCheck="today"):
         check_todays_dayname()
         if postponed_foldercheck: dayToCheck = today
         else: return
+    def LLM_check(msg):
+        if not postpone_Gemini_API_key or not "Subject" in msg: return True # just save as normal
+        subject = msg["Subject"]
+        L,Lkeep = S(subject).lower().endswith(postpone_LLM_subject_end.lower()),S(subject).lower().endswith(postpone_LLM_subject_keep_end.lower())
+        if L: subject=subject[:-len(postpone_LLM_subject_end)]
+        elif Lkeep: subject=subject[:-len(postpone_LLM_subject_keep_end)]
+        if L or Lkeep: context.append("\nFrom: "+("note to self" if msg["From"]==from_line or msg["From"].replace('"','')==S(smtp_fromHeader).replace('"','') else msg["From"])+("\nSubject: "+subject.strip() if subject.strip() else "")+"\n\n"+S(body_text(msg))) # LLM does not currently get to see non-text attachments by default unless these have already been converted (in which case can use up token quota quickly).  Date here is useless because caller just did reDate (could swap but probably still not very useful if no original date stamp inserted)
+        return Lkeep or not L
     if postponed_maildir:
         try: maildir = get_maildir(postponed_maildir+os.sep+dayToCheck,False) # don't create if not exist
         except: maildir = None
@@ -1913,7 +2001,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
                     debug("Moving messages from maildir ",postponed_maildir+os.sep+dayToCheck," to ",filtered_inbox)
                     said = True
                 reDate(msg)
-                save_to(filtered_inbox,myAsString(msg),mayNeedNewMsgID=False)
+                if LLM_check(msg): save_to(filtered_inbox,myAsString(msg),mayNeedNewMsgID=False)
                 toDel.append(msgID)
             for msgID in toDel: del maildir[msgID]
             clean_empty_maildir(postponed_maildir+os.sep+dayToCheck)
@@ -1926,7 +2014,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
             said = True
         msg = message_from_bytes(message)
         reDate(msg)
-        save_to(filtered_inbox,myAsString(msg))
+        if LLM_check(msg): save_to(filtered_inbox,myAsString(msg))
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if said: check_ok(imap.expunge())
     check_ok(select()) ; do_delete(folder)
@@ -1989,7 +2077,7 @@ def mainloop():
     mtime = os.stat(mfile).st_mtime
   debug(__doc__)
   try:
-   if postponed_foldercheck or postponed_daynames: do_postponed_foldercheck("old")
+   if postponed_foldercheck or postponed_daynames: wrapped_postponed_foldercheck("old")
    while True:
     if alarm_delay: checkAlarmDelay()
     if maildirs_to_imap: do_maildirs_to_imap()
@@ -2051,7 +2139,7 @@ def mainloop():
       if midnight_command: os.system(midnight_command)
       if calendar_file: do_calendar()
       if postponed_foldercheck or postponed_daynames:
-          do_postponed_foldercheck()
+          wrapped_postponed_foldercheck()
       if train_spamprobe_nightly: do_nightly_train()
       done_spamprobe_cleanup_today = False
     if exit_if_imapfix_config_py_changes and not near_equal(mtime,os.stat(mfile).st_mtime):
@@ -2536,9 +2624,8 @@ def send_mail(to_u8,subject_u8,txt,attachment_filenames=[],copyself=True,ttype="
     debug("SMTP to ",repr(to_u8))
     msg = email.mime.text.MIMEText(re.sub(b'\r?\n',b'\r\n',B(txt)),ttype,charset) # RFC 2822 says MUST use CRLF; some mail clients get confused by just \n (e.g. some versions of MPro on RISC OS when replying with quote)
     if attachment_filenames:
-        from email.mime.multipart import MIMEMultipart
         msg2 = msg
-        msg = MIMEMultipart()
+        msg = email.mime.multipart.MIMEMultipart()
         msg.attach(msg2)
     msg['Subject'] = S(utf8_to_header(subject_u8))
     msg['From'] = smtp_fromHeader
