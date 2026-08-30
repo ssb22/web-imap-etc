@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.005 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.006 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -283,6 +283,7 @@ postpone_LLM_subject_keep_end = '[LK]' # as postpone_LLM_subject_end but does no
 postpone_LLM_info_about_user = "(not filled in)"
 postpone_LLM_day2extra = [""]*7 # ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], add extra sentences about your normal schedule on each day of the week
 postpone_LLM_reply_via_plus_addr = True # set to False if your SMTP cannot support 'plus addressing' i.e. user+1@domain
+postpone_LLM_rm_sig_and_html_from_self = True
 
 quiet = True # False = print messages (including quota)
 # If you set quiet = 2, will be quiet if and only if the
@@ -892,10 +893,10 @@ def quote_display_name_if_needed(msg):
     if not f==f2:
         del msg['From'] ; msg['From'] = f2 ; return True
 
-def body_text(msg):
+def body_text(msg,omit_html=False):
     "Returns a representation of the message's body text (all parts), for rules"
     if msg.is_multipart(): return b"\n".join(body_text(p) for p in msg.get_payload())
-    if not msg.get("Content-Type","").startswith("text/"): return b""
+    if not msg.get("Content-Type","").startswith("text/") or omit_html and "html" in msg["Content-Type"]: return b""
     return msg.get_payload(decode=True).strip()
 
 def rewrite_importance(msg):
@@ -1989,7 +1990,12 @@ def do_postponed_foldercheck(dayToCheck="today"):
         L,Lkeep = S(subject).lower().endswith(postpone_LLM_subject_end.lower()),S(subject).lower().endswith(postpone_LLM_subject_keep_end.lower())
         if L: subject=subject[:-len(postpone_LLM_subject_end)]
         elif Lkeep: subject=subject[:-len(postpone_LLM_subject_keep_end)]
-        if L or Lkeep: context.append("\nFrom: "+("note to self" if msg["From"]==from_line or msg["From"].replace('"','')==S(smtp_fromHeader).replace('"','') else msg["From"])+("\nSubject: "+subject.strip() if subject.strip() else "")+"\n\n"+S(body_text(msg))) # LLM does not currently get to see non-text attachments by default unless these have already been converted (in which case can use up token quota quickly).  Date here is useless because caller just did reDate (could swap but probably still not very useful if no original date stamp inserted)
+        if L or Lkeep:
+            isSelf = msg["From"]==from_line or msg["From"].replace('"','')==S(smtp_fromHeader).replace('"','')
+            doStrip = isSelf and postpone_LLM_rm_sig_and_html_from_self
+            body = S(body_text(msg,doStrip)) # LLM does not currently get to see non-text attachments by default unless these have already been converted (in which case can use up token quota quickly)
+            if doStrip: body=body.split("\n-- \n")[0]
+            context.append("\nFrom: "+("note to self" if isSelf else msg["From"])+("\nSubject: "+subject.strip() if subject.strip() else "")+"\n\n"+body) # Date here is useless because caller just did reDate (could swap but probably still not very useful if no original date stamp inserted)
         return Lkeep or not L
     if postponed_maildir:
         try: maildir = get_maildir(postponed_maildir+os.sep+dayToCheck,False) # don't create if not exist
@@ -2026,7 +2032,7 @@ def reDate(msg):
     old_date = msg.get("Date","")
     if old_date:
         if theFrom.endswith(from_addr): pass # no need to add old date if it's a --note or --multinote
-        elif authenticates(msg) and 'To' in msg and (username in msg['To'] or getAddr(msg['To'])==getAddr(msg.get('From',''))): pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
+        elif authenticates(msg) and 'To' in msg and (username in msg['To'] or re.sub("[+][^@+ ]*@","@",getAddr(msg['To']))==re.sub("[+][^@+ ]*@","@",getAddr(msg.get('From','')))): pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
         else: walk_msg(msg,addOldDateFunc(old_date))
         del msg['Date']
     msg['Date'] = email.utils.formatdate(localtime=True)
