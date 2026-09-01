@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.006 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.007 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -284,6 +284,7 @@ postpone_LLM_info_about_user = "(not filled in)"
 postpone_LLM_day2extra = [""]*7 # ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], add extra sentences about your normal schedule on each day of the week
 postpone_LLM_reply_via_plus_addr = True # set to False if your SMTP cannot support 'plus addressing' i.e. user+1@domain
 postpone_LLM_rm_sig_and_html_from_self = True
+voiceUplPath,voiceUplUrl = "","" # pathname + resulting (non-world-readable) URL to save a copy of the mp3 to work around some mobile clients making you scroll all the way to the bottom of a long conversation (possibly in large print) with no shortcut before you can access the attachments
 
 quiet = True # False = print messages (including quota)
 # If you set quiet = 2, will be quiet if and only if the
@@ -1932,14 +1933,7 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
               time.sleep(postpone_Gemini_retryDelay)
           else: response,error = "LLM unavailable: "+repr(sys.exc_info()), True
         response = re.sub(r"(?i)(?<![A-Z0-9*])\*\*?([^ *]|[^ *][^*]*[^ *])\*\*?(?=$|[^A-Z0-9*])",r"\1"," "+response)[1:] # rm markdown emph (synth "asterisk asterisk" unhelpful and no model seems to infer it shouldn't use it if asked to be 'speech friendly')
-        msg = email.mime.multipart.MIMEMultipart()
-        user,domain = S(smtp_fromAddr).split("@")
-        msg["From"]="LLM Diode <"+user+"@"+domain+">" # must be replyable so use an external from address
-        if postpone_LLM_reply_via_plus_addr: msg["Reply-To"]=user+"+diode@"+domain
-        msg["Subject"]="check-in "+postpone_LLM_subject_end
-        msg["Date"]=email.utils.formatdate(localtime=True)
-        msg.attach(email.mime.text.MIMEText(response+"\n\nInput was:\n"+"".join("> "+L+"\n" for L in prompt0.split("\n")),"plain","utf-8"))
-        globalise_charsets(msg)
+        aBytes = aMsg = None
         if postpone_Gemini_voice and not error:
          debug("Calling Gemini voice")
          for attempt in range(postpone_Gemini_retries,-1,-1):
@@ -1953,18 +1947,30 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
                   enc.set_vbr(4),enc.set_vbr_quality(9)
                   enc.set_channels(1)
                   enc.set_in_sample_rate(24000)
-                  a=email.mime.audio.MIMEAudio(enc.encode(miniaudio.decode(b.getvalue(),nchannels=1,sample_rate=24000).samples.tobytes())+enc.flush(),_subtype="mp3")
-                  a['Content-Disposition']='attachment; filename=check-in.mp3'
+                  aBytes = enc.encode(miniaudio.decode(b.getvalue(),nchannels=1,sample_rate=24000).samples.tobytes())+enc.flush()
+                  aMsg=email.mime.audio.MIMEAudio(aBytes,_subtype="mp3");aMsg['Content-Disposition']='attachment; filename=check-in.mp3'
               else:
                   debug("No lameenc/miniaudio packages: skipping MP3 conversion")
-                  a=email.mime.audio.MIMEAudio(b.getvalue(),_subtype="wav")
-                  a['Content-Disposition']='attachment; filename=check-in.wav'
-              msg.attach(a) ; break
+                  aBytes = b.getvalue()
+                  aMsg=email.mime.audio.MIMEAudio(aBytes,_subtype="wav");aMsg['Content-Disposition']='attachment; filename=check-in.wav'
+              break
           except: pass
           if attempt:
               debug("Gemini voice error, sleeping for retry")
               time.sleep(postpone_Gemini_retryDelay)
         debug("Saving Gemini response")
+        msg = email.mime.multipart.MIMEMultipart()
+        user,domain = S(smtp_fromAddr).split("@")
+        msg["From"]="LLM Diode <"+user+"@"+domain+">" # must be replyable so use an external from address
+        if postpone_LLM_reply_via_plus_addr: msg["Reply-To"]=user+"+diode@"+domain
+        msg["Subject"]="check-in "+postpone_LLM_subject_end
+        msg["Date"]=email.utils.formatdate(localtime=True)
+        if aBytes and voiceUplPath:
+            open(voiceUplPath,"wb").write(aBytes)
+            if voiceUplUrl: response = voiceUplUrl+"\n\n"+response
+        msg.attach(email.mime.text.MIMEText(response+"\n\nInput was:\n"+"".join("> "+L+"\n" for L in prompt0.split("\n")),"plain","utf-8"))
+        if aMsg: msg.attach(aMsg)
+        globalise_charsets(msg)
         save_to(filtered_inbox,myAsString(msg))
 
 def do_postponed_foldercheck(dayToCheck="today"):
@@ -1995,6 +2001,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
             doStrip = isSelf and postpone_LLM_rm_sig_and_html_from_self
             body = S(body_text(msg,doStrip)) # LLM does not currently get to see non-text attachments by default unless these have already been converted (in which case can use up token quota quickly)
             if doStrip: body=body.split("\n-- \n")[0]
+            if voiceUplUrl and isSelf: body=body.replace(voiceUplUrl,"",1) # save putting that in token stream + it might contain credentials
             context.append("\nFrom: "+("note to self" if isSelf else msg["From"])+("\nSubject: "+subject.strip() if subject.strip() else "")+"\n\n"+body) # Date here is useless because caller just did reDate (could swap but probably still not very useful if no original date stamp inserted)
         return Lkeep or not L
     if postponed_maildir:
