@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.007 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.008 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -273,15 +273,18 @@ postponed_maildir = None # or "path/to/maildir", will
 # If you want LLM assistance with your postponed messages,
 # have an API key (gratis tier available), and can ensure
 # what you expose to it is appropriate for their policy,
-postpone_Gemini_API_key = None # or "key"
-postpone_Gemini_model = "gemini-2.5-flash"
-postpone_Gemini_voice = "Sulafat" # for MP3 attachment (empty=omit)
-postpone_Gemini_voice_model = "gemini-2.5-flash-preview-tts"
-postpone_Gemini_retries,postpone_Gemini_retryDelay = 3,5
+postpone_LLM_model = "gemini/gemini-2.5-flash" # LiteLLM format (groq/qwen-2.5-72b-instruct etc also available, + OpenRouter, Cerebras...)
+# (last time I checked: Gemini = ~0.25 watt-hours, ~0.03g/CO2 per query; Groq less clear due to "neocloud" space rentals)
+# gemini-2.5-flash actually works better than gemini-3.8-flash for the current setup: 2.5 tends to get into a pattern of reading pending items from the previous day, whereas 3.8 may find some earlier in the thread but fail to 'notice' they were later changed to Done; needs a better context tracker than a thread of prose but meanwhile 2.5's shorter-range attention filter actually gives it an advantage in this situation
+postpone_LLM_API_key = None # or "key", obtain one from your provider
+postpone_LLM_voice = "Sulafat" # for MP3 attachment (empty=omit)
+postpone_LLM_voice_model = "gemini/gemini-2.5-flash-preview-tts" # or "openai/tts-1" etc if you've paid; check voice setting when changing
+postpone_LLM_API_voice_key = None # leave at None = same as other API key
+postpone_LLM_retries,postpone_LLM_retryDelay = 3,5
 postpone_LLM_subject_end = '[L]' # case-insensitive, must occur at end of Subject in a postponed message for LLM to 'see' it, or of authenticated message to be postponed to next day for LLM to see (latter assumes postponed_foldercheck is True either here or on another instance)
 postpone_LLM_subject_keep_end = '[LK]' # as postpone_LLM_subject_end but does not delete original message after merging its text into the LLM thread
 postpone_LLM_info_about_user = "(not filled in)"
-postpone_LLM_day2extra = [""]*7 # ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], add extra sentences about your normal schedule on each day of the week
+def postpone_LLM_day2extra(): return [""]*7 # ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], add extra sentences about your normal schedule on each day of the week; function so can vary with week number if needed
 postpone_LLM_reply_via_plus_addr = True # set to False if your SMTP cannot support 'plus addressing' i.e. user+1@domain
 postpone_LLM_rm_sig_and_html_from_self = True
 voiceUplPath,voiceUplUrl = "","" # pathname + resulting (non-world-readable) URL to save a copy of the mp3 to work around some mobile clients making you scroll all the way to the bottom of a long conversation (possibly in large print) with no shortcut before you can access the attachments
@@ -677,9 +680,9 @@ else: # Python 2
     from base64 import decodestring as decodebytes
 from email import encoders
 import imaplib, warnings
-if postpone_Gemini_API_key:
-    from google import genai # pip install google-genai
-    if postpone_Gemini_voice:
+if postpone_LLM_API_key:
+    import litellm # pip install litellm
+    if postpone_LLM_voice:
         import wave
         try: import lameenc,miniaudio
         except: lameenc=miniaudio=None
@@ -813,7 +816,7 @@ def authenticated_wrapper(subject,firstPart,attach={}):
         if postponed_maildir: box=('maildir',postponed_maildir+os.sep+S(subject[:mLen]))
         else: box=S(subject[:mLen]) # don't resolve weekday/month names to a date here, because user might actually rely on the "doesn't check for past days on startup" behaviour to postpone to after a trip or something
         return box, newSubj
-    elif postpone_Gemini_API_key and (S(subject).lower().endswith(postpone_LLM_subject_end.lower()) or S(subject).lower().endswith(postpone_LLM_subject_keep_end.lower())):
+    elif postpone_LLM_API_key and (S(subject).lower().endswith(postpone_LLM_subject_end.lower()) or S(subject).lower().endswith(postpone_LLM_subject_keep_end.lower())):
         box = time.strftime("%Y-%m-%d",time.localtime(time.time()+24*3600))
         if postponed_maildir: box=('maildir',postponed_maildir+os.sep+box)
         return box, subject
@@ -1915,50 +1918,50 @@ def check_todays_dayname():
 def wrapped_postponed_foldercheck(dayToCheck="today"):
     global context ; context = []
     do_postponed_foldercheck(dayToCheck) # may recurse
-    if context or dayToCheck=="today" and postpone_LLM_day2extra[time.localtime()[6]]: # need to call the LLM (TODO: option to call it even when no specific context messages?)
+    extra = postpone_LLM_day2extra()[time.localtime()[6]]
+    if context or dayToCheck=="today" and extra: # need to call the LLM (TODO: option to call it even when no specific context messages?)
         prompt0 = "\n-----\n".join(sorted(context,key=lambda c:len(c))) ; del context
         # Gemini policy in 3rd-party programs: don't call itself Gemini (or anything similar) or the application, must give it another name.  Hard to find a not-quite-human name not already taken by a prominent "AI" project.  Diode/Filament/Dioptre/Aspheric seemed search clear in August 2026.
-        prompt = time.strftime("Your name is Diode. You are assisting a user of ImapFix, a free+libre server tool to organise IMAP inboxes. You run overnight only. You look at messages the user left for you, and leave a morning check-in, delivered as voice so keep it speech-friendly. Please generate the check-in for %A %d %B. Answer specific questions; help cope with overload or avoidance by guiding focus to concrete actions; gently but firmly sustain momentum. Any limitations mentioned should be treated as practical context, not constant fragility: consider what constraint applies to tasks but don't overly soften every ask. If appropriate, you can ask the user to reply to your check-in with progress: you'll see any reply tomorrow night.\nInfo about user: ")+postpone_LLM_info_about_user+("\nNormal schedule for today: " if postpone_LLM_day2extra[time.localtime()[6]] else "")+postpone_LLM_day2extra[time.localtime()[6]]+"\n\n"+prompt0
-        debug("Calling Gemini")
+        prompt = time.strftime("Your name is Diode. You are assisting a user of ImapFix, a free+libre server tool to organise IMAP inboxes. You run overnight only. You look at messages the user left for you, and leave a morning check-in, delivered as voice so keep it speech-friendly. Please generate the check-in for %A %d %B. Answer specific questions; help cope with overload or avoidance by guiding focus to concrete actions; gently but firmly sustain momentum. Any limitations mentioned should be treated as practical context, not constant fragility: consider what constraint applies to tasks but don't overly soften every ask. If appropriate, you can ask the user to reply to your check-in with progress: you'll see any reply tomorrow night.\nInfo about user: ")+postpone_LLM_info_about_user+("\nNormal schedule for today: " if extra else "")+extra+"\n\n"+prompt0
+        debug("Calling LLM")
         error = False
-        for attempt in range(postpone_Gemini_retries,-1,-1):
+        for attempt in range(postpone_LLM_retries,-1,-1):
           try:
-            client = genai.Client(api_key=postpone_Gemini_API_key)
-            response = client.models.generate_content(model=postpone_Gemini_model,contents=prompt)
-            response = response.text.strip()
+            response = litellm.completion(model=postpone_LLM_model,messages=[{"role":"user","content":prompt}],api_key=postpone_LLM_API_key).choices[0].message.content.strip()
             break
           except: pass
           if attempt:
-              debug("Gemini error, sleeping for retry")
-              time.sleep(postpone_Gemini_retryDelay)
+              debug("LLM error, sleeping for retry")
+              time.sleep(postpone_LLM_retryDelay)
           else: response,error = "LLM unavailable: "+repr(sys.exc_info()), True
         response = re.sub(r"(?i)(?<![A-Z0-9*])\*\*?([^ *]|[^ *][^*]*[^ *])\*\*?(?=$|[^A-Z0-9*])",r"\1"," "+response)[1:] # rm markdown emph (synth "asterisk asterisk" unhelpful and no model seems to infer it shouldn't use it if asked to be 'speech friendly')
         aBytes = aMsg = None
-        if postpone_Gemini_voice and not error:
-         debug("Calling Gemini voice")
-         for attempt in range(postpone_Gemini_retries,-1,-1):
+        if postpone_LLM_voice and not error:
+         debug("Calling LLM voice")
+         if postpone_LLM_voice_model.startswith("gemini/"): os.environ["GEMINI_API_KEY"] = postpone_LLM_API_voice_key or postpone_LLM_API_key # workaround for at least some versions of litellm that seem unable to pass api_key properly to Gemini for speech (hope they still work for openai etc)
+         for attempt in range(postpone_LLM_retries,-1,-1):
           try:
-              readout = client.models.generate_content(model=postpone_Gemini_voice_model,contents=response,config=genai.types.GenerateContentConfig(response_modalities=["AUDIO"],speech_config=genai.types.SpeechConfig(voice_config=genai.types.VoiceConfig(prebuilt_voice_config=genai.types.PrebuiltVoiceConfig(voice_name=postpone_Gemini_voice)))))
-              b=BytesIO(); w=wave.open(b,'w')
-              w.setnchannels(1),w.setsampwidth(2),w.setframerate(24000),w.writeframes(readout.candidates[0].content.parts[0].inline_data.data),w.close()
-              if lameenc:
+              aBytes = litellm.speech(model=postpone_LLM_voice_model,input=response,voice=postpone_LLM_voice,api_key=postpone_LLM_API_voice_key or postpone_LLM_API_key).content
+              if aBytes.startswith(b"RIFF") and lameenc:
                   debug("Encoding as MP3")
                   enc = lameenc.Encoder()
                   enc.set_vbr(4),enc.set_vbr_quality(9)
                   enc.set_channels(1)
                   enc.set_in_sample_rate(24000)
-                  aBytes = enc.encode(miniaudio.decode(b.getvalue(),nchannels=1,sample_rate=24000).samples.tobytes())+enc.flush()
+                  aBytes = enc.encode(miniaudio.decode(aBytes,nchannels=1,sample_rate=24000).samples.tobytes())+enc.flush()
                   aMsg=email.mime.audio.MIMEAudio(aBytes,_subtype="mp3");aMsg['Content-Disposition']='attachment; filename=check-in.mp3'
-              else:
+              elif aBytes.startswith(b"RIFF"):
                   debug("No lameenc/miniaudio packages: skipping MP3 conversion")
-                  aBytes = b.getvalue()
                   aMsg=email.mime.audio.MIMEAudio(aBytes,_subtype="wav");aMsg['Content-Disposition']='attachment; filename=check-in.wav'
+              elif aBytes.startswith(b"ID3") or aBytes.startswith(b"\xFF") and aBytes[1:2]>=b'\xE2':
+                  debug("Looks like it's already an MP3 file")
+                  aMsg=email.mime.audio.MIMEAudio(aBytes,_subtype="mp3");aMsg['Content-Disposition']='attachment; filename=check-in.mp3'
+              else: debug("Unknown audio format, skipping attachment")
               break
-          except: pass
-          if attempt:
-              debug("Gemini voice error, sleeping for retry")
-              time.sleep(postpone_Gemini_retryDelay)
-        debug("Saving Gemini response")
+          except:
+            if attempt: debug("LLM voice error, sleeping for retry"),time.sleep(postpone_LLM_retryDelay)
+            else: debug("LLM voice error after all retries, giving up: "+repr(sys.exc_info()))
+        debug("Saving LLM response")
         msg = email.mime.multipart.MIMEMultipart()
         user,domain = S(smtp_fromAddr).split("@")
         msg["From"]="LLM Diode <"+user+"@"+domain+">" # must be replyable so use an external from address
@@ -1991,7 +1994,7 @@ def do_postponed_foldercheck(dayToCheck="today"):
         if postponed_foldercheck: dayToCheck = today
         else: return
     def LLM_check(msg):
-        if not postpone_Gemini_API_key or not "Subject" in msg: return True # just save as normal
+        if not postpone_LLM_API_key or not "Subject" in msg: return True # just save as normal
         subject = msg["Subject"]
         L,Lkeep = S(subject).lower().endswith(postpone_LLM_subject_end.lower()),S(subject).lower().endswith(postpone_LLM_subject_keep_end.lower())
         if L: subject=subject[:-len(postpone_LLM_subject_end)]
