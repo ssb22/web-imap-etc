@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.008 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.009 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -273,9 +273,8 @@ postponed_maildir = None # or "path/to/maildir", will
 # If you want LLM assistance with your postponed messages,
 # have an API key (gratis tier available), and can ensure
 # what you expose to it is appropriate for their policy,
-postpone_LLM_model = "gemini/gemini-2.5-flash" # LiteLLM format (groq/qwen-2.5-72b-instruct etc also available, + OpenRouter, Cerebras...)
-# (last time I checked: Gemini = ~0.25 watt-hours, ~0.03g/CO2 per query; Groq less clear due to "neocloud" space rentals)
-# gemini-2.5-flash actually works better than gemini-3.8-flash for the current setup: 2.5 tends to get into a pattern of reading pending items from the previous day, whereas 3.8 may find some earlier in the thread but fail to 'notice' they were later changed to Done; needs a better context tracker than a thread of prose but meanwhile 2.5's shorter-range attention filter actually gives it an advantage in this situation
+postpone_LLM_model = "gemini/gemini-3.8-flash" # LiteLLM format: groq/qwen-2.5-72b-instruct etc also available, + OpenRouter, Cerebras, local ollama (don't need api_base if it can run 'ollama serve' itself) etc
+# Last time I checked: Gemini = ~0.25 watt-hours, ~0.03g/CO2 per query; Groq less clear due to "neocloud" space rentals; local depends on your setup
 postpone_LLM_API_key = None # or "key", obtain one from your provider
 postpone_LLM_voice = "Sulafat" # for MP3 attachment (empty=omit)
 postpone_LLM_voice_model = "gemini/gemini-2.5-flash-preview-tts" # or "openai/tts-1" etc if you've paid; check voice setting when changing
@@ -287,6 +286,7 @@ postpone_LLM_info_about_user = "(not filled in)"
 def postpone_LLM_day2extra(): return [""]*7 # ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], add extra sentences about your normal schedule on each day of the week; function so can vary with week number if needed
 postpone_LLM_reply_via_plus_addr = True # set to False if your SMTP cannot support 'plus addressing' i.e. user+1@domain
 postpone_LLM_rm_sig_and_html_from_self = True
+postpone_LLM_context_management = True # try False if a smaller model struggles with it
 voiceUplPath,voiceUplUrl = "","" # pathname + resulting (non-world-readable) URL to save a copy of the mp3 to work around some mobile clients making you scroll all the way to the bottom of a long conversation (possibly in large print) with no shortcut before you can access the attachments
 
 quiet = True # False = print messages (including quota)
@@ -1920,9 +1920,14 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
     do_postponed_foldercheck(dayToCheck) # may recurse
     extra = postpone_LLM_day2extra()[time.localtime()[6]]
     if context or dayToCheck=="today" and extra: # need to call the LLM (TODO: option to call it even when no specific context messages?)
-        prompt0 = "\n-----\n".join(sorted(context,key=lambda c:len(c))) ; del context
-        # Gemini policy in 3rd-party programs: don't call itself Gemini (or anything similar) or the application, must give it another name.  Hard to find a not-quite-human name not already taken by a prominent "AI" project.  Diode/Filament/Dioptre/Aspheric seemed search clear in August 2026.
-        prompt = time.strftime("Your name is Diode. You are assisting a user of ImapFix, a free+libre server tool to organise IMAP inboxes. You run overnight only. You look at messages the user left for you, and leave a morning check-in, delivered as voice so keep it speech-friendly. Please generate the check-in for %A %d %B. Answer specific questions; help cope with overload or avoidance by guiding focus to concrete actions; gently but firmly sustain momentum. Any limitations mentioned should be treated as practical context, not constant fragility: consider what constraint applies to tasks but don't overly soften every ask. If appropriate, you can ask the user to reply to your check-in with progress: you'll see any reply tomorrow night.\nInfo about user: ")+postpone_LLM_info_about_user+("\nNormal schedule for today: " if extra else "")+extra+"\n\n"+prompt0
+        context.sort(key=lambda c:len(c))
+        prompt0 = "\n-----\n".join(context)
+        trim_prompt0 = "\n-----\n".join(re.sub(".*:\n(\n*>.*(\n|$))+\n*$","",c) for c in context) # removes quoted part if and only if user has not inserted inline replies i.e. quotes all the way to end of message assuming no signature or postpone_LLM_rm_sig_and_html_from_self is True
+        del context
+        llmName="Diode" # Gemini policy in 3rd-party programs: don't call itself Gemini (or anything similar) or the application, must give it another name.  Hard to find a not-quite-human name not already taken by a prominent "AI" project.  Diode/Filament/Dioptre/Aspheric seemed search clear in August 2026.
+        prompt = "Your name is "+llmName+time.strftime(". You are assisting a user of ImapFix, a free+libre server tool to organise IMAP inboxes. You run overnight only. You look at messages the user left for you, and leave a morning check-in, delivered as voice so keep it speech-friendly. Please generate the check-in for %A %d %B. Answer specific questions; help cope with overload or avoidance by guiding focus to concrete actions; gently but firmly sustain momentum. Any limitations mentioned should be treated as practical context, not constant fragility: consider what constraint applies to tasks but don't overly soften every ask. If appropriate, you can ask the user to reply to your check-in with progress: you'll see any reply tomorrow night.\n")
+        if postpone_LLM_context_management: prompt += "Context management: Please periodically compact the email thread by including one or more notes to yourself anywhere in the output in <note>text here</note> format.  Notes are omitted from voice output, instead added to your next input via the thread.  You can capture pending tasks, completion dates, plan when next to bring up less frequent items or anything else appropriate.  When you write new notes, the system automatically clears (1) any previous \"LLM's own notes\" section and (2) quoted sections from the thread to compact to last interaction only, so ensure you capture anything you still want to keep from both of these in any new notes you write.  This arrangement lets you track long-term goals without needing to infer from a long thread. Remind the user that ongoing items are still being tracked by naming an example or two in passing even on days when focus is elsewhere.\n" # Not implementing a more complex memory-edit system because the rewrite friction adds incidental decay pressure to completed items, which is otherwise hard to prompt well
+        prompt += "Info about user: "+postpone_LLM_info_about_user+("\nNormal schedule for today: " if extra else "")+extra+"\n\n"+prompt0
         debug("Calling LLM")
         error = False
         for attempt in range(postpone_LLM_retries,-1,-1):
@@ -1934,6 +1939,10 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
               debug("LLM error, sleeping for retry")
               time.sleep(postpone_LLM_retryDelay)
           else: response,error = "LLM unavailable: "+repr(sys.exc_info()), True
+        if postpone_LLM_context_management:
+            notes = re.findall("(?s)(?<=<note>).*?(?=</note>)",response)
+            response = re.sub("(?s)<note>.*?</note>","",response)
+        else: notes = []
         response = re.sub(r"(?i)(?<![A-Z0-9*])\*\*?([^ *]|[^ *][^*]*[^ *])\*\*?(?=$|[^A-Z0-9*])",r"\1"," "+response)[1:] # rm markdown emph (synth "asterisk asterisk" unhelpful and no model seems to infer it shouldn't use it if asked to be 'speech friendly')
         aBytes = aMsg = None
         if postpone_LLM_voice and not error:
@@ -1964,10 +1973,13 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
         debug("Saving LLM response")
         msg = email.mime.multipart.MIMEMultipart()
         user,domain = S(smtp_fromAddr).split("@")
-        msg["From"]="LLM Diode <"+user+"@"+domain+">" # must be replyable so use an external from address
+        msg["From"]="LLM "+llmName+" <"+user+"@"+domain+">" # must be replyable so use an external from address
         if postpone_LLM_reply_via_plus_addr: msg["Reply-To"]=user+"+diode@"+domain
         msg["Subject"]="check-in "+postpone_LLM_subject_end
         msg["Date"]=email.utils.formatdate(localtime=True)
+        if notes:
+            nHead=time.strftime("LLM's own notes on %d %B %Y:\n")
+            prompt0 = trim_prompt0+"\n-----\n"+nHead+"\n".join(notes).replace(nHead,"") # model sometimes guesses it should duplicate the header as well as using <note>
         if aBytes and voiceUplPath:
             open(voiceUplPath,"wb").write(aBytes)
             if voiceUplUrl: response = voiceUplUrl+"\n\n"+response
