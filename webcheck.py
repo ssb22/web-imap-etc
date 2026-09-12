@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (compatible with both Python 2 and Python 3)
 
-"""webcheck.py v1.610 (c) 2014-26 Silas S. Brown.
+"""webcheck.py v1.611 (c) 2014-26 Silas S. Brown.
 License: Apache 2""" # (see below)
 # See webcheck.html for description and usage instructions
 
@@ -345,7 +345,7 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       except OSError:
         print ("webcheck misconfigured: couldn't run edbrowse")
         return # no need to update delayer, and probably no need to return failRet if it's an edbrowse misconfiguration
-      child.stdin.write(B("b "+url[4:].replace('\\','\n')+"\n")),child.stdin.flush(),time.sleep(3) # some pages now take extra time to JS-render and get messages like "lines 57 through 740 have been updated"
+      child.stdin.write(B("b "+url[4:].replace('\\','\n')+"\n")),child.stdin.flush(),time.sleep(5) # some pages now take extra time to JS-render and get messages like "lines 57 through 740 have been updated"
       edcmd = B(",p\nqt\n") # but this isn't really the page source (asking edbrowse for page source would be equivalent to fetching it ourselves; it doesn't tell us the DOM)
       u = None
       if TimeoutExpired:
