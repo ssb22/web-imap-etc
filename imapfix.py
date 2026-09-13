@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.01 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.011 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -277,7 +277,7 @@ postpone_LLM_model = "gemini/gemini-3.8-flash" # LiteLLM format: groq/qwen-2.5-7
 # Last time I checked: Gemini = ~0.25 watt-hours, ~0.03g/CO2 per query; Groq less clear due to "neocloud" space rentals; local depends on your setup
 postpone_LLM_API_key = None # or "key", obtain one from your provider
 postpone_LLM_voice = "Sulafat" # for MP3 attachment (empty=omit)
-postpone_LLM_voice_instructions = "[Accent: British RP] " # or "", not all voices/languages can take instructions.  Best not ask Gemini voices for Standard Southern British English: the models mix it with Cockney (Google docs label it Croydon) as if trained on Only Fools And Horses episodes; tried West Midlands / Coventry for vague parity with eSpeak but it was an obvious caricature that also transposed letters in abbreviations; tried light German: yes a "Germans read correctly" stereotype seemed to help but the accent still sounded caricatured.  I'm hoping its idea of RP is not "stereotypical Church of England rector telling Jehovah's Witnesses to leave his village" but not yet tested due to free preview rate limits.
+postpone_LLM_voice_instructions = "" # in gemini-2.5-flash-preview-tts you could try something like "[Accent: a Chinese speaker with good command of English]" if you want an alternative to the default American. "[Accent: British RP]" gets old-style Pathe newsreader, "[Accent: Standard Southern British English]" mixes it with Cockney as if trained on Only Fools And Horses episodes, "[Accent: West Midlands / Coventry]" not like eSpeak but an obvious caricature that also transposes letters in abbreviations, "[Accent: light German]" still a bit caricatured, etc
 postpone_LLM_voice_model = "gemini/gemini-2.5-flash-preview-tts" # or "openai/tts-1" etc if you've paid; check voice setting when changing
 postpone_LLM_API_voice_key = None # leave at None = same as other API key
 postpone_LLM_retries,postpone_LLM_retryDelay = 3,5
@@ -1927,7 +1927,7 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
         del context
         llmName="Diode" # Gemini policy in 3rd-party programs: don't call itself Gemini (or anything similar) or the application, must give it another name.  Hard to find a not-quite-human name not already taken by a prominent "AI" project.  Diode/Filament/Dioptre/Aspheric seemed search clear in August 2026.
         prompt = "Your name is "+llmName+time.strftime(". You are assisting a user of ImapFix, a free+libre server tool to organise IMAP inboxes. You run overnight only. You look at messages the user left for you, and leave a morning check-in, delivered as voice so keep it speech-friendly. Please generate the check-in for %A %d %B. Answer specific questions; help cope with overload or avoidance by guiding focus to concrete actions; gently but firmly sustain momentum. User may mention limitations but you cannot sense real-time capacity so always provide optional extra tasks that substantially move longer-term goals forward. You can ask user to reply to your check-in with progress: you'll see any reply tomorrow night.\n")
-        if postpone_LLM_context_management: prompt += "Context management: Please periodically compact the email thread by including one or more notes to yourself anywhere in the output in <note>text here</note> format.  Notes are omitted from voice output, instead added to your next input via the thread.  You can capture pending tasks, completion dates, plan when next to bring up less frequent items or anything else appropriate.  When you write new notes, the system automatically clears (1) any previous \"LLM's own notes\" section and (2) quoted sections from the thread to compact to last interaction only, so ensure you capture anything you still want to keep from both of these in any new notes you write.  This arrangement lets you track long-term goals without needing to infer from a long thread. Be alert to should-do sentiments in messages or user information that lack concrete schedule, and ongoing items in LLM's own notes accidentally recorded without next check-in date; add next date. Tell user about any check-in dates you add or change.\n" # Not implementing a more complex memory-edit system because the rewrite friction adds incidental decay pressure to completed items, which is otherwise hard to prompt well
+        if postpone_LLM_context_management: prompt += "Context management: Please periodically compact the email thread by including one or more notes to yourself anywhere in the output in <note>text here</note> format.  Notes are omitted from voice output, instead added to your next input via the thread.  You can capture pending tasks, completion dates, plan when next to bring up less frequent items or anything else appropriate.  When you write new notes, the system automatically clears (1) any previous \"LLM's own notes\" section and (2) quoted sections from the thread to compact to last interaction only, so ensure you capture anything you still want to keep from both of these in any new notes you write.  This arrangement lets you track long-term goals without needing to infer from a long thread. Be alert to should-do sentiments in messages or user information that lack concrete schedule, and ongoing items in LLM's own notes accidentally recorded without next check-in date; add next date. Old completed items no longer mentioned in the thread are safe to drop.\n"
         prompt += "Info about user: "+postpone_LLM_info_about_user+("\nNormal schedule for today: " if extra else "")+extra+"\n\n"+prompt0
         debug("Calling LLM")
         error = False
@@ -1951,7 +1951,7 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
          if postpone_LLM_voice_model.startswith("gemini/"): os.environ["GEMINI_API_KEY"] = postpone_LLM_API_voice_key or postpone_LLM_API_key # workaround for at least some versions of litellm that seem unable to pass api_key properly to Gemini for speech (hope they still work for openai etc)
          for attempt in range(postpone_LLM_retries,-1,-1):
           try:
-              aBytes = litellm.speech(model=postpone_LLM_voice_model,input=postpone_LLM_voice_instructions+response,voice=postpone_LLM_voice,api_key=postpone_LLM_API_voice_key or postpone_LLM_API_key).content
+              aBytes = litellm.speech(model=postpone_LLM_voice_model,input=postpone_LLM_voice_instructions+(" " if postpone_LLM_voice_instructions else "")+response,voice=postpone_LLM_voice,api_key=postpone_LLM_API_voice_key or postpone_LLM_API_key).content
               if aBytes.startswith(b"RIFF") and lameenc:
                   debug("Encoding as MP3")
                   enc = lameenc.Encoder()
@@ -2024,26 +2024,30 @@ def do_postponed_foldercheck(dayToCheck="today"):
         try: maildir = get_maildir(postponed_maildir+os.sep+dayToCheck,False) # don't create if not exist
         except: maildir = None
         if maildir:
-            said = False ; toDel = []
+            said=saidL=False ; toDel = []
             for msgID,msg in maildir.iteritems():
-                if not said:
-                    debug("Moving messages from maildir ",postponed_maildir+os.sep+dayToCheck," to ",filtered_inbox)
-                    said = True
                 reDate(msg)
-                if LLM_check(msg): save_to(filtered_inbox,myAsString(msg),mayNeedNewMsgID=False)
+                if LLM_check(msg):
+                    if not said:
+                        debug("Moving messages from maildir ",postponed_maildir+os.sep+dayToCheck," to ",filtered_inbox) ; said = True
+                    save_to(filtered_inbox,myAsString(msg),mayNeedNewMsgID=False)
+                elif not saidL:
+                    debug("LLM context loading from maildir ",postponed_maildir+os.sep+dayToCheck) ; saidL=True
                 toDel.append(msgID)
             for msgID in toDel: del maildir[msgID]
             clean_empty_maildir(postponed_maildir+os.sep+dayToCheck)
     f = folderList(dayToCheck)
     if not len(f)==1: return # no folder of that name
-    folder = f[0] ; select(folder) ; said = False
+    folder = f[0] ; select(folder) ; said=saidL=False
     for msgID,flags,message in yield_all_messages():
-        if not said:
-            debug("Moving messages from ",folder," to ",filtered_inbox)
-            said = True
         msg = message_from_bytes(message)
         reDate(msg)
-        if LLM_check(msg): save_to(filtered_inbox,myAsString(msg))
+        if LLM_check(msg):
+            if not said:
+                debug("Moving messages from ",folder," to ",filtered_inbox) ; said = True
+            save_to(filtered_inbox,myAsString(msg))
+        elif not saidL:
+            debug("LLM context loading from ",folder) ; saidL=True
         imap.store(msgID, '+FLAGS', '\\Deleted')
     if said: check_ok(imap.expunge())
     check_ok(select()) ; do_delete(folder)
