@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.011 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.012 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -277,10 +277,10 @@ postpone_LLM_model = "gemini/gemini-3.8-flash" # LiteLLM format: groq/qwen-2.5-7
 # Last time I checked: Gemini = ~0.25 watt-hours, ~0.03g/CO2 per query; Groq less clear due to "neocloud" space rentals; local depends on your setup
 postpone_LLM_API_key = None # or "key", obtain one from your provider
 postpone_LLM_voice = "Sulafat" # for MP3 attachment (empty=omit)
-postpone_LLM_voice_instructions = "" # in gemini-2.5-flash-preview-tts you could try something like "[Accent: a Chinese speaker with good command of English]" if you want an alternative to the default American. "[Accent: British RP]" gets old-style Pathe newsreader, "[Accent: Standard Southern British English]" mixes it with Cockney as if trained on Only Fools And Horses episodes, "[Accent: West Midlands / Coventry]" not like eSpeak but an obvious caricature that also transposes letters in abbreviations, "[Accent: light German]" still a bit caricatured, etc
+postpone_LLM_voice_instructions = "[Accent: a Chinese speaker with good command of English; tone: warm and encouraging]" # or "" (gemini-2.5-flash-preview-tts defaults to American; "British RP" gets old-style Pathe newsreader, "Standard Southern British English" mixes it with Cockney as if trained on Only Fools And Horses episodes, "West Midlands / Coventry" not like eSpeak but an obvious caricature that also transposes letters in abbreviations, "light German" still a bit caricatured, etc)
 postpone_LLM_voice_model = "gemini/gemini-2.5-flash-preview-tts" # or "openai/tts-1" etc if you've paid; check voice setting when changing
 postpone_LLM_API_voice_key = None # leave at None = same as other API key
-postpone_LLM_retries,postpone_LLM_retryDelay = 3,5
+postpone_LLM_retries,postpone_LLM_retryDelay = 10,10
 postpone_LLM_subject_end = '[L]' # case-insensitive, must occur at end of Subject in a postponed message for LLM to 'see' it, or of authenticated message to be postponed to next day for LLM to see (latter assumes postponed_foldercheck is True either here or on another instance)
 postpone_LLM_subject_keep_end = '[LK]' # as postpone_LLM_subject_end but does not delete original message after merging its text into the LLM thread
 postpone_LLM_info_about_user = "(not filled in)"
@@ -1600,7 +1600,7 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
     is_unspecified = cType and cType.startswith("text/") and not specified_charset
     try: p0 = message.get_payload(decode=True) # in most cases we need it (TODO: in a few small cases we don't, but low-priority as the entire message has probably been loaded into RAM already)
     except:
-        message['X-ImapFix-Globalise-Charset-Decode-Error'] = repr(sys.exc_info()[1]).strip()
+        message['X-ImapFix-Globalise-Charset-Decode-Error'] = repr(sys.exc_info()[1])
         return True
     if specified_charset=='us-ascii' and re.search(b'[\x80-\xff]',p0): # mislabelled ASCII
         force_change = is_unspecified = True
@@ -1935,11 +1935,11 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
           try:
             response = litellm.completion(model=postpone_LLM_model,messages=[{"role":"user","content":prompt}],api_key=postpone_LLM_API_key).choices[0].message.content.strip()
             break
-          except: pass
-          if attempt:
+          except: # (will use exc_info for compatibility across Python versions)
+            if attempt:
               debug("LLM error, sleeping for retry")
               time.sleep(postpone_LLM_retryDelay)
-          else: response,error = "LLM unavailable: "+repr(sys.exc_info()), True
+            else: response,error = "LLM unavailable: "+repr(sys.exc_info()[1]), True
         if postpone_LLM_context_management:
             notes = re.findall("(?s)(?<=<note>).*?(?=</note>)",response)
             response = re.sub("(?s)<note>.*?</note>","",response)
@@ -1970,7 +1970,7 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
               break
           except:
             if attempt: debug("LLM voice error, sleeping for retry"),time.sleep(postpone_LLM_retryDelay)
-            else: debug("LLM voice error after all retries, giving up: "+repr(sys.exc_info()))
+            else: debug("LLM voice error after all retries, giving up: "+repr(sys.exc_info()[1]))
         debug("Saving LLM response")
         msg = email.mime.multipart.MIMEMultipart()
         user,domain = S(smtp_fromAddr).split("@")
