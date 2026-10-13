@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.013 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.014 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -280,7 +280,7 @@ postpone_LLM_voice = "Sulafat" # for MP3 attachment (empty=omit)
 postpone_LLM_voice_instructions = "[Accent: a Chinese speaker with good command of English; tone: warm and encouraging]" # or "" (gemini-2.5-flash-preview-tts defaults to American; "British RP" gets old-style Pathe newsreader, "Standard Southern British English" mixes it with Cockney as if trained on Only Fools And Horses episodes, "West Midlands / Coventry" not like eSpeak but an obvious caricature that also transposes letters in abbreviations, "light German" still a bit caricatured, etc)
 postpone_LLM_voice_model = "gemini/gemini-2.5-flash-preview-tts" # or "openai/tts-1" etc if you've paid; check voice setting when changing
 postpone_LLM_API_voice_key = None # leave at None = same as other API key
-postpone_LLM_retries,postpone_LLM_retryDelay = 10,10
+postpone_LLM_retries,postpone_LLM_retryDelay = 15,15
 postpone_LLM_subject_end = '[L]' # case-insensitive, must occur at end of Subject in a postponed message for LLM to 'see' it, or of authenticated message to be postponed to next day for LLM to see (latter assumes postponed_foldercheck is True either here or on another instance)
 postpone_LLM_subject_keep_end = '[LK]' # as postpone_LLM_subject_end but does not delete original message after merging its text into the LLM thread
 postpone_LLM_info_about_user = "(not filled in)"
@@ -288,6 +288,7 @@ def postpone_LLM_day2extra(): return [""]*7 # ["Mon","Tue","Wed","Thu","Fri","Sa
 postpone_LLM_reply_via_plus_addr = True # set to False if your SMTP cannot support 'plus addressing' i.e. user+1@domain
 postpone_LLM_rm_sig_and_html_from_self = True
 postpone_LLM_context_management = True # try False if a smaller model struggles with it
+postpone_LLM_context_cc_file = "" # if set, pathname of file that is OVERWRITTEN EVERY TIME with copy of latest context, in case you want to discuss it with another LLM
 voiceUplPath,voiceUplUrl = "","" # pathname + resulting (non-world-readable) URL to save a copy of the mp3 to work around some mobile clients making you scroll all the way to the bottom of a long conversation (possibly in large print) with no shortcut before you can access the attachments
 
 quiet = True # False = print messages (including quota)
@@ -862,11 +863,11 @@ def yield_all_messages(searchQuery=None,since=None):
 
 def rewrite_deliveryfail(msg):
     if not failed_address_to_subject: return
-    subj = msg.get("Subject","")
-    if not subj.lower().startswith("mail delivery") or not msg.get("From","").lower().startswith("mail delivery"): return
+    subj = str(msg.get("Subject",""))
+    if not subj.lower().startswith("mail delivery") or not str(msg.get("From","")).lower().startswith("mail delivery"): return
     fr = msg.get("X-Failed-Recipients","")
     if not fr: return
-    del msg['Subject'] ; msg['Subject']=fr+' '+subj
+    del msg['Subject'] ; msg['Subject']=str(fr)+' '+subj
     return True
 
 for k in forced_names.keys():
@@ -879,7 +880,7 @@ def forced_from(msg):
             del msg['From']
             msg["From"] = forced_names[fr.lower()] + ' <'+fr.lower()+'>'
             return True
-    fr = msg.get("From","").strip()
+    fr = str(msg.get("From","")).strip()
     if f(fr): return True
     if fr.endswith('>') and '<' in fr and f(fr[fr.rindex('<')+1:-1]): return True
     # TODO: any other formats to check?
@@ -893,7 +894,7 @@ def quote_display_name_if_needed(msg):
             # should be OK to leave unchanged if it didn't use @ etc
             return displayName
         else: return '"'+displayName+'"'
-    f = msg.get("From","").strip()
+    f = str(msg.get("From","")).strip()
     f2 = re.sub(r'^[^<"]*(?= <[^>]*>$)',ensureQuoted,f)
     if not f==f2:
         del msg['From'] ; msg['From'] = f2 ; return True
@@ -901,7 +902,7 @@ def quote_display_name_if_needed(msg):
 def body_text(msg,omit_html=False):
     "Returns a representation of the message's body text (all parts), for rules"
     if msg.is_multipart(): return b"\n".join(body_text(p) for p in msg.get_payload())
-    if not msg.get("Content-Type","").startswith("text/") or omit_html and "html" in msg["Content-Type"]: return b""
+    if not str(msg.get("Content-Type","")).startswith("text/") or omit_html and "html" in msg["Content-Type"]: return b""
     return msg.get_payload(decode=True).strip()
 
 def rewrite_importance(msg):
@@ -1303,7 +1304,7 @@ def delete_attachment(msg):
 def delete_images(msg):
     return walk_msg(msg,delete_image)
 def delete_image(msg):
-    if msg.get("Content-Type","").startswith("image/"):
+    if str(msg.get("Content-Type","")).startswith("image/"):
         msg.set_payload(b"") # empty: this is enough to stop the spamprobe crash (don't need to remove the attachment altogether)
         return True
 
@@ -1549,7 +1550,7 @@ def size_of_first_part(message):
     return len(message.get_payload())
 
 def getCharset(message):
-    t=message.get("Content-Type","")
+    t=str(message.get("Content-Type",""))
     if "charset=" in t: return t[t.index("charset=")+len("charset="):]
 def getFirstPart(message):
     if message.is_multipart():
@@ -1589,7 +1590,7 @@ def globalise_charsets(message,will_use_8bit=False,force_change=False):
         for i in message.get_payload():
             if globalise_charsets(i,will_use_8bit,force_change): changed = True
         return changed
-    cType = message.get("Content-Type","")
+    cType = str(message.get("Content-Type",""))
     if not cType.startswith("text/") and ('Content-Disposition' in message or cType.startswith("image/")): return changed # don't risk messing up PDF attachments, images etc
     is_html = cType and cType.startswith("text/html")
     specified_charset = getCharset(message)
@@ -1679,7 +1680,7 @@ def quopri_to_u8_8bitOnly(s): # used by imap_8bit and archive_8bit (off by defau
 
 def has_rpmsg(msg):
     if msg.is_multipart(): return any(has_rpmsg(m) for m in msg.get_payload())
-    else: return msg.get("Content-Type","").startswith("application/x-microsoft-rpmsg-message")
+    else: return str(msg.get("Content-Type","")).startswith("application/x-microsoft-rpmsg-message")
 
 def walk_msg(message,partFunc,*args):
     if message.is_multipart():
@@ -1690,7 +1691,7 @@ def walk_msg(message,partFunc,*args):
         o,to_attach = to_attach,[]
         for i in message.get_payload():
           changed = walk_msg(i,partFunc,*args) or changed
-        if to_attach and message.get("Content-Type","").startswith("multipart/alternative"): # can happen with Exchange clients even if only one attachment
+        if to_attach and str(message.get("Content-Type","")).startswith("multipart/alternative"): # can happen with Exchange clients even if only one attachment
             ct = message["Content-Type"].replace("multipart/alternative","multipart/mixed",1)
             del message["Content-Type"]
             message["Content-Type"] = ct
@@ -1852,8 +1853,8 @@ def add_tnef1(outdir,cmd,message,accum):
     debug("Getting MS payload")
     payload = message.get_payload(decode=True)
     debug("Running converter on MS payload")
-    os.mkdir(outdir)
-    os.popen(cmd,"wb").write(payload)
+    os.mkdir(outdir);o=os.popen(cmd,"w");(o.buffer if type(u"")==type("") else o).write(payload)
+    o.close()
     ret = False
     for f in listdir(outdir):
         debug("Adding ",repr(f))
@@ -1926,7 +1927,8 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
         trim_prompt0 = "\n-----\n".join(re.sub(".*:\n(\n*>.*(\n|$))+\n*$","",c) for c in context) # removes quoted part if and only if user has not inserted inline replies i.e. quotes all the way to end of message assuming no signature or postpone_LLM_rm_sig_and_html_from_self is True
         del context
         llmName="Diode" # Gemini policy in 3rd-party programs: don't call itself Gemini (or anything similar) or the application, must give it another name.  Hard to find a not-quite-human name not already taken by a prominent "AI" project.  Diode/Filament/Dioptre/Aspheric seemed search clear in August 2026.
-        prompt = "Your name is "+llmName+time.strftime(". You are assisting a user of ImapFix, a free+libre server tool to organise IMAP inboxes. You run overnight only. You look at messages the user left for you, and leave a morning check-in, delivered as voice so keep it speech-friendly. Please generate the check-in for %A %d %B. Answer specific questions; help cope with overload or avoidance by guiding focus to concrete actions; gently but firmly sustain momentum. User may mention limitations but you cannot sense real-time capacity so always provide optional extra tasks that substantially move longer-term goals forward. You can ask user to reply to your check-in with progress: you'll see any reply tomorrow night.\n")
+        style = "Answer specific questions; help cope with overload or avoidance by guiding focus to concrete actions; gently but firmly sustain momentum. User may mention limitations but you cannot sense real-time capacity so always provide optional extra tasks that substantially move longer-term goals forward."
+        prompt = "Your name is "+llmName+time.strftime(". You are assisting a user of ImapFix, a free+libre server tool to organise IMAP inboxes. You run overnight only. You look at messages the user left for you, and leave a morning check-in, delivered as voice so keep it speech-friendly. Please generate the check-in for %A %d %B. ")+style+" You can ask user to reply to your check-in with progress: you'll see any reply tomorrow night.\n"
         if postpone_LLM_context_management: prompt += "Context management: Please periodically compact the email thread by including one or more notes to yourself anywhere in the output in <note>text here</note> format.  Notes are omitted from voice output, instead added to your next input via the thread.  You can capture pending tasks, completion dates, plan when next to bring up less frequent items or anything else appropriate.  When you write new notes, the system automatically clears (1) any previous \"LLM's own notes\" section and (2) quoted sections from the thread to compact to last interaction only, so ensure you capture anything you still want to keep from both of these in any new notes you write.  This arrangement lets you track long-term goals without needing to infer from a long thread. Be alert to should-do sentiments in messages or user information that lack concrete schedule, and ongoing items in LLM's own notes accidentally recorded without next check-in date; add next date. Old completed items no longer mentioned in the thread are safe to drop.\n"
         prompt += "Info about user: "+postpone_LLM_info_about_user+("\nNormal schedule for today: " if extra else "")+extra+"\n\n"+prompt0
         debug("Calling LLM")
@@ -1937,7 +1939,7 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
             break
           except: # (will use exc_info for compatibility across Python versions)
             if attempt:
-              debug("LLM error, sleeping for retry")
+              debug("LLM error (%d retries left, sleeping)" % attempt)
               time.sleep(postpone_LLM_retryDelay)
             else: response,error = "LLM unavailable: "+repr(sys.exc_info()[1]), True
         if postpone_LLM_context_management:
@@ -1969,9 +1971,10 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
               else: debug("Unknown audio format, skipping attachment")
               break
           except:
-            if attempt: debug("LLM voice error, sleeping for retry"),time.sleep(postpone_LLM_retryDelay)
+            if attempt: debug("LLM voice error (%d retries left, sleeping)" % attempt),time.sleep(postpone_LLM_retryDelay)
             else: debug("LLM voice error after all retries, giving up: "+repr(sys.exc_info()[1]))
         debug("Saving LLM response")
+        if postpone_LLM_context_cc_file: open(postpone_LLM_context_cc_file,"w").write("# "+llmName+" context dump\n"+llmName+" is an LLM running on "+postpone_LLM_model+" with prompts to assist a user of ImapFix, a free+libre server tool to organise IMAP inboxes. "+llmName+" runs overnight only, examining any messages the user left for it, and leaves a morning check-in to be delivered as voice"+(" (currently set to "+postpone_LLM_voice_model+" "+postpone_LLM_voice+(" with performance instructions "+postpone_LLM_voice_instructions if postpone_LLM_voice_instructions else "")+")" if postpone_LLM_voice else "")+". "+llmName+" is told it can ask user to reply to its check-ins with progress (so \"accountability\" can help with the psychology) and will see any reply the following night; context is kept in the email thread (quote-reply assumed). "+llmName+time.strftime(" was last run for %A %d %B.\n## Style specificed in system prompt\n")+style+"\n## Info about user\n"+postpone_LLM_info_about_user+("\n## Normal schedule for today\n" if extra else "")+extra+"\n## Messages and notes that were accumulated for attention today\n"+prompt0+"\n## Today's "+llmName+" response\n"+response+("\n## Latest version of "+llmName+" private notes\n(These notes cause the email thread to be compacted)\n"+"\n".join(notes) if notes else "")+"\n## Suggested use of this file\nThis file is produced in case the user wants to discuss their current status with a non-"+llmName+" LLM during the day.  Unlike "+llmName+", you can interact with the user in real time, checking their current situation and not suggesting escalations or drastic changes until you've checked if small adjustments work, helping them break tasks into smaller steps if needed.\n\nEnd of "+llmName+" context dump.  Reminder: you are not "+llmName+".\n")
         msg = email.mime.multipart.MIMEMultipart()
         user,domain = S(smtp_fromAddr).split("@")
         msg["From"]="LLM "+llmName+" <"+user+"@"+domain+">" # must be replyable so use an external from address
@@ -1984,7 +1987,8 @@ def wrapped_postponed_foldercheck(dayToCheck="today"):
         if aBytes and voiceUplPath:
             open(voiceUplPath,"wb").write(aBytes)
             if voiceUplUrl: response = voiceUplUrl+"\n\n"+response
-        msg.attach(email.mime.text.MIMEText(response+"\n\nInput was:\n"+"".join("> "+L+"\n" for L in prompt0.split("\n")),"plain","utf-8"))
+        response += "\n\nInput was:\n"+"".join("> "+L+"\n" for L in prompt0.split("\n"))
+        msg.attach(email.mime.text.MIMEText(response,"plain","utf-8"))
         if aMsg: msg.attach(aMsg)
         globalise_charsets(msg)
         save_to(filtered_inbox,myAsString(msg))
@@ -2053,17 +2057,17 @@ def do_postponed_foldercheck(dayToCheck="today"):
     check_ok(select()) ; do_delete(folder)
 
 def reDate(msg):
-    theFrom = msg.get('From','').replace('"','').strip()
+    theFrom = str(msg.get('From','')).replace('"','').strip()
     if theFrom==imapfix_name: # pre v1.5
         del msg['From'] ; msg['From'] = from_line # K-9 5.8+
-    old_date = msg.get("Date","")
+    old_date = str(msg.get("Date",""))
     if old_date:
         if theFrom.endswith(from_addr): pass # no need to add old date if it's a --note or --multinote
         elif authenticates(msg) and 'To' in msg and (username in msg['To'] or re.sub("[+][^@+ ]*@","@",getAddr(msg['To']))==re.sub("[+][^@+ ]*@","@",getAddr(msg.get('From','')))): pass # probably no need to add old date if it's a message from yourself to yourself (similar to --note/--multinote)
         else: walk_msg(msg,addOldDateFunc(old_date))
         del msg['Date']
     msg['Date'] = email.utils.formatdate(localtime=True)
-def getAddr(a): return ''.join(a.split()[-1:]).replace('<','').replace('>','')
+def getAddr(a): return ''.join(str(a).split()[-1:]).replace('<','').replace('>','')
 def addOldDateFunc(old_date):
     def addOldDate(message):
         newPara = b""
