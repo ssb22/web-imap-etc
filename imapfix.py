@@ -280,7 +280,7 @@ postpone_LLM_voice = "Sulafat" # for MP3 attachment (empty=omit)
 postpone_LLM_voice_instructions = "[Accent: a Chinese speaker with good command of English; tone: warm and encouraging]" # or "" (gemini-2.5-flash-preview-tts defaults to American; "British RP" gets old-style Pathe newsreader, "Standard Southern British English" mixes it with Cockney as if trained on Only Fools And Horses episodes, "West Midlands / Coventry" not like eSpeak but an obvious caricature that also transposes letters in abbreviations, "light German" still a bit caricatured, etc)
 postpone_LLM_voice_model = "gemini/gemini-2.5-flash-preview-tts" # or "openai/tts-1" etc if you've paid; check voice setting when changing
 postpone_LLM_API_voice_key = None # leave at None = same as other API key
-postpone_LLM_retries,postpone_LLM_retryDelay = 15,15
+postpone_LLM_retries,postpone_LLM_retryDelay = 20,20
 postpone_LLM_subject_end = '[L]' # case-insensitive, must occur at end of Subject in a postponed message for LLM to 'see' it, or of authenticated message to be postponed to next day for LLM to see (latter assumes postponed_foldercheck is True either here or on another instance)
 postpone_LLM_subject_keep_end = '[LK]' # as postpone_LLM_subject_end but does not delete original message after merging its text into the LLM thread
 postpone_LLM_info_about_user = "(not filled in)"
