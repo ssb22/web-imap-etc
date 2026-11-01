@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # (works on either Python 2 or Python 3)
 
-"ImapFix v3.015 (c) 2013-26 Silas S. Brown.  License: Apache 2"
+"ImapFix v3.016 (c) 2013-26 Silas S. Brown.  License: Apache 2"
 
 # Put your configuration into imapfix_config.py,
 # overriding these options:
@@ -233,6 +233,7 @@ midnight_command = None
 
 calendar_file = None # set to run 'calendar' command on it
 # and send output lines as messages
+calendar_function = None # or a Python function that returns a list of extra calendar lines for today (or None), for when you need a date specification too complex for 'calendar'
 
 postponed_foldercheck = False
 # if True, check for folders named YYYY-MM-DD according to
@@ -2083,14 +2084,18 @@ def addOldDateFunc(old_date):
     return addOldDate
 
 def do_calendar():
-    for l in os.popen("calendar -A 0 -f \"%s\"" % calendar_file):
-        if not l.strip(): continue
+    def calLine(l):
+        if not l.strip(): return
         subj = l.split()[1:]
-        if not subj: continue
+        if not subj: return
         if re.match("^[0-9*]*$",subj[0]): subj=subj[1:] # month day txt
         subj = ' '.join(l.split()[2:])
         if len(subj)>60: subj=subj[:57]+"..."
         save_to(filtered_inbox,"From: "+from_line.replace(from_name,"calendar",1)+"\r\nSubject: "+subj+"\r\nDate: "+email.utils.formatdate(localtime=True)+"\r\n\r\n"+l+"\n")
+    if calendar_file:
+        for l in os.popen("calendar -A 0 -f \"%s\"" % calendar_file): calLine(l)
+    if calendar_function:
+        for l in calendar_function() or []: calLine(l)
 
 setAlarmAt = 0
 def checkAlarmDelay():
@@ -2174,7 +2179,7 @@ def mainloop():
     if not oldDay==newDay:
       oldDay=newDay
       if midnight_command: os.system(midnight_command)
-      if calendar_file: do_calendar()
+      if calendar_file or calendar_function: do_calendar()
       if postponed_foldercheck or postponed_daynames:
           wrapped_postponed_foldercheck()
       if train_spamprobe_nightly: do_nightly_train()
