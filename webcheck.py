@@ -43,6 +43,7 @@ except ImportError: # Python 3
     def __init__(self): _HTMLParser.__init__(self,convert_charrefs=False)
 try: from commands import getoutput
 except: from subprocess import getoutput
+from subprocess import Popen,PIPE
 try: import urlparse # Python 2
 except ImportError: import urllib.parse as urlparse # Python 3
 try: from StringIO import StringIO # Python 2
@@ -337,7 +338,6 @@ def doJob(opener,delayer,url,checklist,extraHeaders):
       except: u,content = None,B("no")
       textContent = content
   elif url.startswith("e://"): # run edbrowse
-      from subprocess import Popen,PIPE
       try: from subprocess import TimeoutExpired # Python 3.3+
       except: TimeoutExpired = None
       edEnv=os.environ.copy() ; edEnv["TMPDIR"]=getoutput("(TMPDIR=/dev/shm mktemp -d -t edXXXXXX || mktemp -d -t edXXXXXX) 2>/dev/null") # ensure unique cache dir if we're running several threads (TODO: what about edbrowse 3.7.6 and below, which hard-codes a single cache dir in /tmp: had we better ensure only one of these is run at a time, just in case?  3.7.7+ honours TMPDIR)
@@ -685,7 +685,11 @@ def tryRead0(url,opener,monitorError):
     u = None
     try:
         u = opener.open(url,timeout=60)
-        return u,tryGzip(u.read())
+        if u.headers.get("x-amzn-waf-action")=="challenge" and u.headers.get("Content-Length")=="0":
+          # 2026-11: Amazon Web Application Firewall now seems to accept curl but not Python for RSS feeds
+          c=Popen(["curl","-L",url],-1,stdout=PIPE,stderr=PIPE)
+          return None,c.communicate()[0]
+        else: return u,tryGzip(u.read())
     except HTTPError as e:
         if e.code==304: return None,None # not modified
         elif monitorError: return None,tryGzip(e.fp.read()) # as might want to monitor some phrase on a 404 page
@@ -694,6 +698,7 @@ def tryRead0(url,opener,monitorError):
         try:
             if sys.version_info >= (2,7,9) and not verify_SSL_certificates: u = build_opener(OurRedirHandler(),HTTPCookieProcessor(),HTTPSHandler(context=ssl._create_unverified_context())).open(url,timeout=60)
             else: u = build_opener(OurRedirHandler(),HTTPCookieProcessor()).open(url,timeout=60)
+            ####
             return u,tryGzip(u.read())
         except HTTPError as e:
           if monitorError: return u,tryGzip(e.fp.read())
